@@ -22,8 +22,8 @@ config = SphinxConfig("../../pyproject.toml")
 
 extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 
                'sphinxcontrib.bibtex', 'numpydoc',
-             # 'sphinx.ext.autosummary',  # Disabled
-             #'sphinx.ext.autodoc', #disabled
+             'sphinx.ext.autosummary',  
+             'sphinx.ext.autodoc'
              ]
 autosummary_generate = False
 
