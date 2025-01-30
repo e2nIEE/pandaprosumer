@@ -1,0 +1,17 @@
+*.pyc
+*~
+build/
+dist/
+.cache/
+.idea
+.cache
+*__pycache__*
+*.pyproj
+*.user
+*.sln
+*.bak
+*.orig
+doc/.build/*
+doc/_build/*
+doc/build/*
+
