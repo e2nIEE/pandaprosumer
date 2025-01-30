@@ -31,10 +31,19 @@ classifiers = [
     "Programming Language :: Python :: 3.12"
 ]
 dependencies = [
-    "pandapower ~= 2.14.11",
-    "pandapipes ~= 0.11.0",
-    "matplotlib",
-    "shapely",
+    "astral==3.2",
+        "converter==1.0.0",
+        "matplotlib==3.7.1",
+        "numpy==1.24.3",
+        "pandapipes==0.11.0",
+        "pandapower==2.14.11",
+        "pandas==2.0.2",
+        "savReaderWriter==3.4.2",
+        "scipy==1.10.1",
+        "seaborn==0.12.2",
+        "simbench==1.4.0",
+        "tqdm==4.65.0",
+        "numba==0.59.1"
 ]
 keywords = [
     "prosumer", "analysis", "controller", "automation", "grid", "energy", "engineering",
