@@ -20,9 +20,10 @@ release = '0.1'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 config = SphinxConfig("../../pyproject.toml")
 
-extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'sphinx.ext.autodoc', 'numpydoc',
+extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'numpydoc',
                'sphinxcontrib.bibtex',
              # 'sphinx.ext.autosummary',  # Disabled
+             #'sphinx.ext.autodoc', #disabled
              ]
 
 # Path to the list of references (bibtex file)
