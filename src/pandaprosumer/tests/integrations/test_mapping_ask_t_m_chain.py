@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pandaprosumer.mapping import GenericMapping
-from tests.integrations.base_controller import BaseControllerData
+from pandaprosumer.tests.integrations.base_controller import BaseControllerData
 
 from ..create_elements_controllers import *
 

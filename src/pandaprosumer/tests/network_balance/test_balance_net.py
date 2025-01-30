@@ -17,7 +17,7 @@ from pandaprosumer.energy_system.create_energy_system import create_empty_energy
 from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import \
     run_timeseries as run_timeseries_system
 from pandaprosumer.mapping import FluidMixEnergySystemMapping, GenericEnergySystemMapping
-from tests.create_elements_controllers import *
+from pandaprosumer.tests.create_elements_controllers import *
 from .create_networks import *
 from .create_prosumers import *
 
