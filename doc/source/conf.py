@@ -27,9 +27,9 @@ extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax
 
 # Path to the list of references (bibtex file)
 bibtex_bibfiles = ['references.bib']
-
+numpydoc_show_inherited_class_members = False
 # Add any paths that contain templates here, relative to this directory.
-#templates_path = ['_templates']
+templates_path = ['_templates']
 exclude_patterns = ['_build', '**.ipynb_checkpoints']
 
 
