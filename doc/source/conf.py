@@ -25,6 +25,7 @@ extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax
              # 'sphinx.ext.autosummary',  # Disabled
              #'sphinx.ext.autodoc', #disabled
              ]
+autosummary_generate = False
 
 # Path to the list of references (bibtex file)
 bibtex_bibfiles = ['references.bib']
