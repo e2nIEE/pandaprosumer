@@ -3,7 +3,7 @@
 
 # pandapipes-master branch is designed to work with pandapower-master branch
 
-name: ppipes_master
+name: pandaprosumer_master
 
 on:
   push:
