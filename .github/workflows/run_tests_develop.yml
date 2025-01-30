@@ -131,4 +131,4 @@ jobs:
         run: python --version
 
       - name: Check Sphinx build
-        run: sphinx-build -b html doc/source doc/_build -W --keep-going
+        run: sphinx-build -b html doc/source doc/build -W --keep-going
