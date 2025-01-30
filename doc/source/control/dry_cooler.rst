@@ -7,11 +7,11 @@ Dry Cooler Controller
 Controller Data
 ==================
 
-.. autoclass:: pandaprosumer2.controller.data_model.dry_cooler.DryCoolerControllerData
+.. autoclass:: pandaprosumer.controller.data_model.dry_cooler.DryCoolerControllerData
     :members:
 
 Controller
 ==============
 
-.. autoclass:: pandaprosumer2.controller.models.dry_cooler.DryCoolerController
+.. autoclass:: pandaprosumer.controller.models.dry_cooler.DryCoolerController
     :members:

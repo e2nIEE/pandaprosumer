@@ -14,7 +14,7 @@ Dry Cooler
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_dry_cooler
+.. autofunction:: pandaprosumer.create_dry_cooler
 
 Input Parameters
 =========================

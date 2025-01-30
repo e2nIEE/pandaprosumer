@@ -14,7 +14,7 @@ Heat Demand
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_heat_demand
+.. autofunction:: pandaprosumer.create_heat_demand
 
 Input Parameters
 =========================

@@ -7,11 +7,11 @@ Electric Boiler Controller
 Controller Data
 ==================
 
-.. autoclass:: pandaprosumer2.controller.data_model.electric_boiler.ElectricBoilerControllerData
+.. autoclass:: pandaprosumer.controller.data_model.electric_boiler.ElectricBoilerControllerData
     :members:
 
 Controller
 ==============
 
-.. autoclass:: pandaprosumer2.controller.models.electric_boiler.ElectricBoilerController
+.. autoclass:: pandaprosumer.controller.models.electric_boiler.ElectricBoilerController
     :members:

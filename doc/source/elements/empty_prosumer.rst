@@ -7,12 +7,12 @@ Empty Prosumer
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_empty_prosumer_container
+.. autofunction:: pandaprosumer.create_empty_prosumer_container
 
 Period
 ====================
 
-.. autofunction:: pandaprosumer2.create_period
+.. autofunction:: pandaprosumer.create_period
 
 
 Input Parameters

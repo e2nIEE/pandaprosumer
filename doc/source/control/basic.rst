@@ -7,7 +7,7 @@ Mapped Controller
 Controller
 ==============
 
-.. autoclass:: pandaprosumer2.controller.mapped.MappedController
+.. autoclass:: pandaprosumer.controller.mapped.MappedController
     :members:
 
 .. _basic_controller:
@@ -19,5 +19,5 @@ Basic Controller
 Controller
 ==============
 
-.. autoclass:: pandaprosumer2.controller.base.BasicProsumerController
+.. autoclass:: pandaprosumer.controller.base.BasicProsumerController
     :members:

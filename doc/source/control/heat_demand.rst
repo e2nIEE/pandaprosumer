@@ -7,11 +7,11 @@ Heat Demand Controller
 Controller Data
 ==================
 
-.. autoclass:: pandaprosumer2.controller.data_model.heat_demand.HeatDemandControllerData
+.. autoclass:: pandaprosumer.controller.data_model.heat_demand.HeatDemandControllerData
     :members:
 
 Controller
 ==============
 
-.. autoclass:: pandaprosumer2.controller.models.heat_demand.HeatDemandController
+.. autoclass:: pandaprosumer.controller.models.heat_demand.HeatDemandController
     :members:

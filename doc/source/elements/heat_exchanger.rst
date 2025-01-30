@@ -14,7 +14,7 @@ Heat Exchanger
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_heat_exchanger
+.. autofunction:: pandaprosumer.create_heat_exchanger
 
 Input Parameters
 =========================

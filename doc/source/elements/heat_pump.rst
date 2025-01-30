@@ -13,7 +13,7 @@ Heat Pump
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_heat_pump
+.. autofunction:: pandaprosumer.create_heat_pump
 
 Input Parameters
 =========================

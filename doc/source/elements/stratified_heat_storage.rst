@@ -14,7 +14,7 @@ Stratified Heat Storage
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_stratified_heat_storage
+.. autofunction:: pandaprosumer.create_stratified_heat_storage
 
 Input Parameters
 =========================

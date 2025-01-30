@@ -14,7 +14,7 @@ Electric Boiler
 Create Function
 =====================
 
-.. autofunction:: pandaprosumer2.create_electric_boiler
+.. autofunction:: pandaprosumer.create_electric_boiler
 
 Input Parameters
 =========================

@@ -12,11 +12,11 @@ Run Function
 
 Simple prosumer time series simulation:
 
-.. autofunction:: pandaprosumer2.run_time_series.run_timeseries
+.. autofunction:: pandaprosumer.run_time_series.run_timeseries
 
 :ref:`Energy systems <energy_systems>` time series simulation:
 
-.. autofunction:: pandaprosumer2.energy_system.timeseries.run_time_series_energy_system.run_timeseries
+.. autofunction:: pandaprosumer.energy_system.timeseries.run_time_series_energy_system.run_timeseries
 
 Results
 ============

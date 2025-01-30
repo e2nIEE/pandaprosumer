@@ -16,7 +16,7 @@ the input of the responder controller.
 Generic Mapping
 ===================================
 
-.. automodule:: pandaprosumer2.mapping.generic
+.. automodule:: pandaprosumer.mapping.generic
     :special-members:
     :exclude-members: __str__
     :members:
@@ -24,7 +24,7 @@ Generic Mapping
 Fluid Mix Mapping
 ===================================
 
-.. automodule:: pandaprosumer2.mapping.fluid_mix
+.. automodule:: pandaprosumer.mapping.fluid_mix
     :special-members:
     :exclude-members: __str__
     :members:
@@ -32,7 +32,7 @@ Fluid Mix Mapping
 Generic Energy System Mapping
 ===================================
 
-.. automodule:: pandaprosumer2.mapping.generic_energy_system
+.. automodule:: pandaprosumer.mapping.generic_energy_system
     :special-members:
     :exclude-members: __str__
     :members:
@@ -40,7 +40,7 @@ Generic Energy System Mapping
 Fluid Mix Energy System Mapping
 ===================================
 
-.. automodule:: pandaprosumer2.mapping.fluid_mix_energy_system
+.. automodule:: pandaprosumer.mapping.fluid_mix_energy_system
     :special-members:
     :exclude-members: __str__
     :members:
