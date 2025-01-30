@@ -17,17 +17,18 @@ release = '0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+config = SphinxConfig("../../pyproject.toml")
 
-extensions = ['sphinx.ext.autodoc',
-              'sphinx.ext.autosummary',
-              'sphinx.ext.viewcode',
-              'sphinxcontrib.bibtex',]
-
-templates_path = ['_templates']
-exclude_patterns = []
+extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'sphinx.ext.autodoc', 'numpydoc',
+              'sphinx.ext.autosummary', 'sphinxcontrib.bibtex']
 
 # Path to the list of references (bibtex file)
 bibtex_bibfiles = ['references.bib']
+
+# Add any paths that contain templates here, relative to this directory.
+templates_path = ['_templates']
+exclude_patterns = ['_build', '**.ipynb_checkpoints']
+
 
 
 # -- Options for HTML output -------------------------------------------------
