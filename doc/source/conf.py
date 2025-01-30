@@ -20,8 +20,9 @@ release = '0.1'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 config = SphinxConfig("../../pyproject.toml")
 
-extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'numpydoc',
-               'sphinxcontrib.bibtex',
+extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 
+               'sphinxcontrib.bibtex'
+             # 'numpydoc',
              # 'sphinx.ext.autosummary',  # Disabled
              #'sphinx.ext.autodoc', #disabled
              ]
