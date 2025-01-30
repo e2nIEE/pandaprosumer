@@ -1,4 +1,4 @@
-from pandaprosumer2.create import create_empty_prosumer_container
+from pandaprosumer.create import create_empty_prosumer_container
 
 
 class TestProsumer:

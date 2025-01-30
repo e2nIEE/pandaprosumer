@@ -1,7 +1,7 @@
 import pandas as pd
 
 from pandapower.timeseries.data_sources.frame_data import DFData
-from pandaprosumer2.create import create_period
+from pandaprosumer.create import create_period
 
 from ..data_sources import FROM_CLAUDIA
 

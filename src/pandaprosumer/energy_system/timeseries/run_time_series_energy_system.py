@@ -8,9 +8,9 @@ from pandapower import pandapowerNet
 from pandapower.control import control_diagnostic
 from pandapower.timeseries.run_time_series import init_default_outputwriter as init_output_writer_pp
 from pandapower.timeseries.run_time_series import run_loop, get_recycle_settings, init_output_writer
-from pandaprosumer2.energy_system.control.run_control_energy_system import prepare_run_ctrl, run_control
-from pandaprosumer2.run_time_series import control_diagnostic_pandaprosumer
-from pandaprosumer2.run_time_series import time_series_initialization, time_series_finalization
+from pandaprosumer.energy_system.control.run_control_energy_system import prepare_run_ctrl, run_control
+from pandaprosumer.run_time_series import control_diagnostic_pandaprosumer
+from pandaprosumer.run_time_series import time_series_initialization, time_series_finalization
 
 try:
     import pandaplan.core.pplog as logging

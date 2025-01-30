@@ -7,9 +7,9 @@ import pandas as pd
 import logging
 import math
 
-from pandaprosumer2.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C, CELSIUS_TO_K
-from pandaprosumer2.controller.base import BasicProsumerController
-from pandaprosumer2.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C, CELSIUS_TO_K
+from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 logger = logging.getLogger(__name__)
 

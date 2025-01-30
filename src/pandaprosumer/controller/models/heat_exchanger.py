@@ -6,10 +6,10 @@ import logging
 import numpy as np
 from pandapipes import call_lib
 
-from pandaprosumer2.controller.base import BasicProsumerController
-from pandaprosumer2.constants import CELSIUS_TO_K, HeatExchangerControl, TEMPERATURE_CONVERGENCE_THRESHOLD_C
-from pandaprosumer2.mapping import FluidMixMapping
-from pandaprosumer2.controller.models.dry_cooler import compute_temp as compute_temp_reverse
+from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.constants import CELSIUS_TO_K, HeatExchangerControl, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.mapping import FluidMixMapping
+from pandaprosumer.controller.models.dry_cooler import compute_temp as compute_temp_reverse
 
 logger = logging.getLogger()
 

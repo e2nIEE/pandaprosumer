@@ -1,4 +1,4 @@
-from pandaprosumer2.mapping import GenericMapping
+from pandaprosumer.mapping import GenericMapping
 from ..create_elements_controllers import *
 
 

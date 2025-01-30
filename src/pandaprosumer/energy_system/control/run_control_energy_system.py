@@ -5,14 +5,14 @@
 import numpy as np
 import pandas as pd
 
-import pandaprosumer2 as ppros
+import pandaprosumer as ppros
 from pandapipes.multinet.control.run_control_multinet import prepare_ctrl_variables_for_net, _evaluate_multinet, \
     net_initialization_multinet
 from pandapower.control.run_control import control_initialization, \
     control_finalization, \
     control_implementation, get_controller_order, NetCalculationNotConverged
-from pandaprosumer2.run_control import prepare_run_ctrl as prepare_run_ctrl_ppros
-from pandaprosumer2.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
+from pandaprosumer.run_control import prepare_run_ctrl as prepare_run_ctrl_ppros
+from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 
 
 try:
@@ -40,7 +40,7 @@ def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
     4. Call finalize_control() on each controller
 
     :param energy_system: energy system with energy system controllers, distinct controllers, several pandapipes/pandapower nets and pandaprosumer
-    :type energy_system: pandaprosumer2.EnergySystem
+    :type energy_system: pandaprosumer.EnergySystem
     :param ctrl_variables: contains all relevant information and boundaries required for a successful control run. To \
            define ctrl_variables yourself, following entries for each net/prosumer are required:\n
            - level (list): gives a list of levels to be investigated \n
@@ -84,7 +84,7 @@ def get_controller_order_energy_system(energy_system):
     If levels are specified, the levels and orders are executed in ascending order.
 
     :param energy_system: energy system with energy system controllers, distinct controllers, several pandapipes/pandapower nets and pandaprosumer
-    :type energy_system: pandaprosumer2.EnergySystem
+    :type energy_system: pandaprosumer.EnergySystem
     :return: nested list of tuples given the correct order of the controllers, respectively for each level
     :rtype: list
     """
@@ -155,7 +155,7 @@ def prepare_run_ctrl(energy_system, ctrl_variables, **kwargs):
     You don't need to define it for each component. If one component is not defined, the default settings are used.
 
     :param energy_system: energy system with energy system controllers, distinct controllers, several pandapipes/pandapower nets and pandaprosumer
-    :type energy_system: pandaprosumer2.EnergySystem
+    :type energy_system: pandaprosumer.EnergySystem
     :param ctrl_variables: contains all relevant information and boundaries required for a successful control run.
     :type ctrl_variables: dict, default: None
     :return: adapted ctrl_variables for all components with all required boundary information

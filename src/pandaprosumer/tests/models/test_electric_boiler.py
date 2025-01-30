@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from pandaprosumer2.create import create_empty_prosumer_container, create_electric_boiler, create_period
-from pandaprosumer2.controller import ElectricBoilerController, ElectricBoilerControllerData
-from pandaprosumer2.run_time_series import run_timeseries
+from pandaprosumer.create import create_empty_prosumer_container, create_electric_boiler, create_period
+from pandaprosumer.controller import ElectricBoilerController, ElectricBoilerControllerData
+from pandaprosumer.run_time_series import run_timeseries
 from ..create_elements_controllers import *
 
 

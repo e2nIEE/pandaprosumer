@@ -5,7 +5,7 @@ from pandapower.control import get_controller_order
 from pandapower.create import _get_multiple_index_with_check
 from pandapower.timeseries import DFData
 from pandapower.timeseries.run_time_series import run_loop
-from pandaprosumer2.run_control import run_control, prepare_run_ctrl
+from pandaprosumer.run_control import run_control, prepare_run_ctrl
 
 try:
     import pandaplan.core.pplog as pplog

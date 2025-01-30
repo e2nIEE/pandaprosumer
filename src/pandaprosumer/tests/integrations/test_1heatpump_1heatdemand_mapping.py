@@ -1,8 +1,8 @@
 import pytest
 from pandas.testing import assert_frame_equal, assert_series_equal
 
-from pandaprosumer2.run_time_series import run_timeseries
-from pandaprosumer2.mapping import GenericMapping, FluidMixMapping
+from pandaprosumer.run_time_series import run_timeseries
+from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 
 from ..create_elements_controllers import *
 

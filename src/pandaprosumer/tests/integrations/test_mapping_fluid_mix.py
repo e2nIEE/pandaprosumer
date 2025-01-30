@@ -1,6 +1,6 @@
 import pytest
 
-from pandaprosumer2.mapping import GenericMapping
+from pandaprosumer.mapping import GenericMapping
 from tests.integrations.base_controller import BaseControllerData
 
 from ..create_elements_controllers import *

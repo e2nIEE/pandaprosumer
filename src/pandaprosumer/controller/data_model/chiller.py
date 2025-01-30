@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import List, Callable
 
-from pandaprosumer2.element.component_toolbox import enforce_types
+from pandaprosumer.element.component_toolbox import enforce_types
 
 
 @enforce_types

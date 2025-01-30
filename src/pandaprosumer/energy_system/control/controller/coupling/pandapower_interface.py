@@ -1,4 +1,4 @@
-from pandaprosumer2.controller.mapped import MappedController
+from pandaprosumer.controller.mapped import MappedController
 
 
 class LoadControl(MappedController):

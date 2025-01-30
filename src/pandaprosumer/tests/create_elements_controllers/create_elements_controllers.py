@@ -1,5 +1,5 @@
-from pandaprosumer2.create import *
-from pandaprosumer2.controller import *
+from pandaprosumer.create import *
+from pandaprosumer.controller import *
 
 
 def init_const_profile_controller(prosumer, input_columns, result_columns, period, data_source, level=0, order=0):

@@ -11,10 +11,10 @@ import pandapipes
 import pandas as pd
 
 from pandapipes import create_fluid_from_lib, call_lib
-from pandaprosumer2.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer2.constants import CELSIUS_TO_K, HeatExchangerControl
-from pandaprosumer2.controller.base import BasicProsumerController
-from pandaprosumer2.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.constants import CELSIUS_TO_K, HeatExchangerControl
+from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
 
 logger = logging.getLogger()
 

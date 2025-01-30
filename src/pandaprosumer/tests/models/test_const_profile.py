@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 from pandapower.timeseries.data_sources.frame_data import DFData
 
-from pandaprosumer2.controller import ConstProfileController
-from pandaprosumer2.controller.data_model.const_profile import ConstProfileControllerData
-from pandaprosumer2.create import create_empty_prosumer_container, create_period
+from pandaprosumer.controller import ConstProfileController
+from pandaprosumer.controller.data_model.const_profile import ConstProfileControllerData
+from pandaprosumer.create import create_empty_prosumer_container, create_period
 
 from ..data_sources import FROM_CLAUDIA
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
-from pandaprosumer2.element.component_toolbox import enforce_types
+from pandaprosumer.element.component_toolbox import enforce_types
 
 
 @enforce_types

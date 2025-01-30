@@ -7,15 +7,15 @@ import pyromat as pm
 
 from pandapower.timeseries.data_sources.frame_data import DFData
 
-from pandaprosumer2.controller.const_profile import ConstProfileController
-from pandaprosumer2.controller.data_model.const_profile import ConstProfileControllerData
-from pandaprosumer2.run_time_series import run_timeseries
-from pandaprosumer2.create import create_empty_prosumer_container, define_period, define_senergy_nets_chiller, cr
-from pandaprosumer2.controller import SenergyNetsChillerController, SenergyNetsChillerControllerData, \
+from pandaprosumer.controller.const_profile import ConstProfileController
+from pandaprosumer.controller.data_model.const_profile import ConstProfileControllerData
+from pandaprosumer.run_time_series import run_timeseries
+from pandaprosumer.create import create_empty_prosumer_container, define_period, define_senergy_nets_chiller, cr
+from pandaprosumer.controller import SenergyNetsChillerController, SenergyNetsChillerControllerData, \
     HeatDemandController, HeatDemandControllerData
-from pandaprosumer2.mapping import GenericMapping
+from pandaprosumer.mapping import GenericMapping
 
-from pandaprosumer2 import ppros2_dir
+from pandaprosumer import ppros2_dir
 
 
 def _define_and_get_period_and_data_source(prosumer):

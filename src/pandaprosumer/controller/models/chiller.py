@@ -6,7 +6,7 @@ from CoolProp.CoolProp import PropsSI
 Module containing the ChillerController class.
 """
 
-from pandaprosumer2.controller.base import BasicProsumerController
+from pandaprosumer.controller.base import BasicProsumerController
 
 
 class SenergyNetsChillerController(BasicProsumerController):

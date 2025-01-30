@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
-from pandaprosumer2.create import create_empty_prosumer_container, define_senergy_nets_chiller, define_period
-from pandaprosumer2.controller.models.chiller import SenergyNetsChillerController
-from pandaprosumer2.controller.data_model.chiller import SenergyNetsChillerControllerData
-from pandaprosumer2.run_time_series import run_timeseries
+from pandaprosumer.create import create_empty_prosumer_container, define_senergy_nets_chiller, define_period
+from pandaprosumer.controller.models.chiller import SenergyNetsChillerController
+from pandaprosumer.controller.data_model.chiller import SenergyNetsChillerControllerData
+from pandaprosumer.run_time_series import run_timeseries
 from ..create_elements_controllers import *
 
 

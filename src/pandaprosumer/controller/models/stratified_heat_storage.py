@@ -8,9 +8,9 @@ from functools import partial
 import matplotlib.pyplot as plt
 from numba import njit
 
-from pandaprosumer2.controller.base import BasicProsumerController
-from pandaprosumer2.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
-from pandaprosumer2.mapping import FluidMixMapping
+from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.mapping import FluidMixMapping
 
 
 @njit

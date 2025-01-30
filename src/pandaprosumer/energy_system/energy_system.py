@@ -13,7 +13,7 @@ from pandapower.auxiliary import ADict
 from pandapipes import __version__
 from pandapipes import pandapipesNet
 
-from pandaprosumer2.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
+from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 
 try:
     import pandaplan.core.pplog as logging

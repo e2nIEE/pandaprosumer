@@ -1,2 +1,2 @@
-from pandaprosumer2.location_period.location import *
-from pandaprosumer2.location_period.period import *
+from pandaprosumer.location_period.location import *
+from pandaprosumer.location_period.period import *

@@ -5,9 +5,9 @@ Module containing the PandaPipesFeedConnectorController class.
 import numpy as np
 import pandas as pd
 from pandapipes import create_fluid_from_lib, call_lib
-from pandaprosumer2.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
-from pandaprosumer2.controller.base import BasicProsumerController
+from pandaprosumer.controller.base import BasicProsumerController
 
 
 class PandapipesConnectorController(BasicProsumerController):

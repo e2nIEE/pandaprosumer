@@ -1,22 +1,22 @@
 import pytest
 from pandas._testing import assert_series_equal
 
-from pandaprosumer2.energy_system.control.controller import NetControllerData
-from pandaprosumer2.energy_system.control.controller.coupling.heat_demand_energy_system import \
+from pandaprosumer.energy_system.control.controller import NetControllerData
+from pandaprosumer.energy_system.control.controller.coupling.heat_demand_energy_system import \
     HeatDemandEnergySystemController
-from pandaprosumer2.energy_system.control.controller.coupling.pandapipes_control import NetMassControl, NetTempControl
-from pandaprosumer2.energy_system.control.controller.coupling.pandapipes_connector import \
+from pandaprosumer.energy_system.control.controller.coupling.pandapipes_control import NetMassControl, NetTempControl
+from pandaprosumer.energy_system.control.controller.coupling.pandapipes_connector import \
     PandapipesConnectorController
-from pandaprosumer2.energy_system.control.controller.coupling.pandapipes_interface import ReadPipeControl, \
+from pandaprosumer.energy_system.control.controller.coupling.pandapipes_interface import ReadPipeControl, \
     WritePipeControl, ReadPipeProdControl, WritePipeProdControl
-from pandaprosumer2.energy_system.control.controller.coupling.pandapower_interface import LoadControl
-from pandaprosumer2.energy_system.control.controller.data_model.pandapipes_connector import \
+from pandaprosumer.energy_system.control.controller.coupling.pandapower_interface import LoadControl
+from pandaprosumer.energy_system.control.controller.data_model.pandapipes_connector import \
     PandapipesConnectorControllerData
-from pandaprosumer2.energy_system.create_energy_system import create_empty_energy_system, add_net_to_energy_system, \
+from pandaprosumer.energy_system.create_energy_system import create_empty_energy_system, add_net_to_energy_system, \
     add_pandaprosumer_to_energy_system
-from pandaprosumer2.energy_system.timeseries.run_time_series_energy_system import \
+from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import \
     run_timeseries as run_timeseries_system
-from pandaprosumer2.mapping import FluidMixEnergySystemMapping, GenericEnergySystemMapping
+from pandaprosumer.mapping import FluidMixEnergySystemMapping, GenericEnergySystemMapping
 from tests.create_elements_controllers import *
 from .create_networks import *
 from .create_prosumers import *

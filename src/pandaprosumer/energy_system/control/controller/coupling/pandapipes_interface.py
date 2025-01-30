@@ -1,7 +1,7 @@
-from pandaprosumer2.controller.mapped import MappedController
+from pandaprosumer.controller.mapped import MappedController
 import numpy as np
 import pandas as pd
-from pandaprosumer2.mapping import FluidMixMapping, GenericEnergySystemMapping
+from pandaprosumer.mapping import FluidMixMapping, GenericEnergySystemMapping
 
 
 class ReadPipeControl(MappedController):

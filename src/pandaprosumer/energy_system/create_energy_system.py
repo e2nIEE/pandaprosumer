@@ -15,8 +15,8 @@ import pandas as pd
 
 from pandapipes import pandapipesNet
 from pandapower import pandapowerNet
-from pandaprosumer2.energy_system import EnergySystem
-from pandaprosumer2.energy_system import get_default_energy_system_structure
+from pandaprosumer.energy_system import EnergySystem
+from pandaprosumer.energy_system import get_default_energy_system_structure
 
 try:
     import pandaplan.core.pplog as logging
@@ -49,7 +49,7 @@ def add_pandaprosumer_to_energy_system(energy_system, pandaprosumer, pandaprosum
     Add a pandaprosumer to the energy system structure.
 
     :param energy_system: energy system to which a pandaprosumer will be added
-    :type energy_system: pandaprosumer2.EnergySystem
+    :type energy_system: pandaprosumer.EnergySystem
     :param net: pandaprosumer that will be added to the energy system
     :type net: pandaprosumerContainer
     :param net_name: unique name for the added pandaprosumer
@@ -76,7 +76,7 @@ def add_net_to_energy_system(energy_system, net, net_name='my_network', overwrit
     Add a pandapipes or pandapower net to the energy system structure.
 
     :param energy_system: energy system to which a pandapipes/pandapower net will be added
-    :type energy_system: pandaprosumer2.EnergySystem
+    :type energy_system: pandaprosumer.EnergySystem
     :param net: pandapipes or pandapower net that will be added to the energy system
     :type net: pandapowerNet or pandapipesNet
     :param net_name: unique name for the added net, e.g. 'power', 'gas', or 'power_net1'

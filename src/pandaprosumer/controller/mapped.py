@@ -7,7 +7,7 @@ import pandas as pd
 import logging as pplog
 
 from pandapower.control.basic_controller import Controller
-from pandaprosumer2.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
 

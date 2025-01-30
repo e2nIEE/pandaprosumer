@@ -1,7 +1,7 @@
 import pytest
 
-from pandaprosumer2.create import create_empty_prosumer_container, create_period, create_heat_demand
-from pandaprosumer2.controller import HeatDemandController, HeatDemandControllerData
+from pandaprosumer.create import create_empty_prosumer_container, create_period, create_heat_demand
+from pandaprosumer.controller import HeatDemandController, HeatDemandControllerData
 from ..create_elements_controllers import *
 
 

@@ -5,11 +5,11 @@ import pandas as pd
 from pandapipes import Fluid, create_fluid_from_lib
 
 from pandapower.create import _get_index_with_check, _set_entries, _add_to_entries_if_not_nan
-from pandaprosumer2.element import *
-from pandaprosumer2.location_period import Period
-from pandaprosumer2.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
-from pandaprosumer2.prosumer_toolbox import add_new_element, load_library_entry
-from pandaprosumer2.time_series.time_series import TimeSeries
+from pandaprosumer.element import *
+from pandaprosumer.location_period import Period
+from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
+from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
+from pandaprosumer.time_series.time_series import TimeSeries
 
 logger = logging.getLogger()
 

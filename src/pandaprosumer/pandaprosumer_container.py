@@ -4,7 +4,7 @@ import pandas as pd
 from numpy import dtype
 
 from pandapower.auxiliary import ADict
-from pandaprosumer2 import __version__
+from pandaprosumer import __version__
 
 import logging
 
