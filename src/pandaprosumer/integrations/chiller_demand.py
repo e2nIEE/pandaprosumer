@@ -10,7 +10,7 @@ from pandapower.timeseries.data_sources.frame_data import DFData
 from pandaprosumer.controller.const_profile import ConstProfileController
 from pandaprosumer.controller.data_model.const_profile import ConstProfileControllerData
 from pandaprosumer.run_time_series import run_timeseries
-from pandaprosumer.create import create_empty_prosumer_container, define_period, define_senergy_nets_chiller, cr
+from pandaprosumer.create import create_empty_prosumer_container, define_period, define_senergy_nets_chiller, 
 from pandaprosumer.controller import SenergyNetsChillerController, SenergyNetsChillerControllerData, \
     HeatDemandController, HeatDemandControllerData
 from pandaprosumer.mapping import GenericMapping
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     # Create a SenergyNetsHeatPump component. Get back the index of this component.
     # The table it gets created in is called "heat_pump"
     define_senergy_nets_chiller(prosumer)
-    define_heat_demand(
+    create_heat_demand(
         prosumer
     )
 
