@@ -112,9 +112,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check sphinx build
-        uses: ammaraskar/sphinx-action@7.4.7
+
+      - name: Set up Python environment
+        uses: actions/setup-python@v2
         with:
-          pre-build-command: "python -m pip install uv && uv pip install .[docs] --system --link-mode=copy"
-          build-command: "sphinx-build -b html source _build -W"
-          docs-folder: "doc/"
+          python-version: '3.11'  # Specify the desired Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install uv
+          uv pip install .[docs] --system --link-mode=copy
+
+      - name: List installed packages
+        run: pip list
+
+      - name: Show Python version
+        run: python --version
+
+      - name: Check Sphinx build
+        run: sphinx-build -b html doc/source doc/_build -W --keep-going
