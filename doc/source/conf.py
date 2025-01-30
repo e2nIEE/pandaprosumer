@@ -21,7 +21,9 @@ release = '0.1'
 config = SphinxConfig("../../pyproject.toml")
 
 extensions = ['sphinx_rtd_theme',  'sphinx.ext.intersphinx', 'sphinx.ext.mathjax', 'sphinx.ext.autodoc', 'numpydoc',
-               'sphinxcontrib.bibtex']
+               'sphinxcontrib.bibtex',
+             # 'sphinx.ext.autosummary',  # Disabled
+             ]
 
 # Path to the list of references (bibtex file)
 bibtex_bibfiles = ['references.bib']
