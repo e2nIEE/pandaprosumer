@@ -1,22 +1,11 @@
-# Pandaprosumer
 
 Pandaprosumer is a library directly inspired by Pandapower and Pandapipes for the modelling of energy systems, especially sector coupling elements. It is
 still firmly work-in-progress.
 
-## Examples
+Getting started:
 
-Examples can be found in `./tutorials`
-
-## Documentation
-
-Documentation is built using Sphinx. To build:
-
-```sh
-cd docs
-make clean; make html
-```
-
-You can then access it at [https://pandaprosumer.readthedocs.io/en/latest/](https://pandaprosumer.readthedocs.io/en/latest/)
+- `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
+- `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/tree/master/tutorials>`_
 
 ## Credits
 
