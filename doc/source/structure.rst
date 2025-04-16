@@ -23,7 +23,7 @@ pandaprosumer leverages the control loop of pandapower and builds upon it to man
 
 Mappings define data connections between controllers and are described in detail in :ref:`Mappings <mappings>`.
 
-.. figure:: /pics/prosumer_structure.png
+.. figure:: /pics/prosumer_structure.PNG
     :width: 120em
     :alt: Prosumer Structure
     :align: center
