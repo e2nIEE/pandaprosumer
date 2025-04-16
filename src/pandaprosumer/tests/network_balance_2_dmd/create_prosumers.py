@@ -1,6 +1,6 @@
 from pandaprosumer.mapping import GenericMapping
 from pandaprosumer import *
-from tests.data_sources.define_period import *
+from pandaprosumer.tests.data_sources.define_period import *
 
 
 def create_prosumer_prod(hp_level):
