@@ -8,25 +8,91 @@ Dry Cooler
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A dry cooler element should be associated to a :ref:`dry cooler controller <dry_cooler_controller>` 
-    to map it to other prosumers elements
+    A dry cooler consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+
+Create Controlled Function
+=============================
 
 .. autofunction:: pandaprosumer.create_controlled_dry_cooler
 
-Input Parameters
-=========================
 
-*prosumer.dry_cooler*
+Controller
+===============================
+
+.. figure:: ../elements/controller_pics/dry_cooler_controller.png
+    :width: 30em
+    :alt: Dry Cooler Controller logic
+    :align: center
+
+
+Input Static Data
+--------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "name", "A custom name for this heat pump", "N/A"
+    "n_nom_rpm", "Nominal rotational speed of the fans", "rpm"
+    "p_fan_nom_kw ", "Nominal electric power of each fan", "kw"
+    "qair_nom_m3_per_h ", "Nominal air flow", "m3/h"
+    "t_air_in_nom_c ", "Air nominal input temperature", "Degree Celsius"
+    "t_air_out_nom_c ", " Air nominal output temperature", "Degree Celsius"
+    "t_fluid_in_nom_c ", "Water nominal input temperature", "Degree Celsius"
+    "t_fluid_out_nom_c ", "Water nominal output temperature", "Degree Celsius"
+    "fans_number", "Number of fans in the dry cooler", "int"
+    "adiabatic_mode ", "Whether to use the air adiabatic pre-cooling", "boolean"
+    "phi_adiabatic_sat_percent ", "Adiabatic Pre-Cooling saturation level", "%"
+    "min_delta_t_air_c", "Minimum air temperature difference", "Degree Celsius"
+
+
+Input Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "mdot_fluid_kg_per_s", "Water required mass flow rate", "kg/s"
+    "t_in_c", "Water input required temperature", "Degree Celsius"
+    "t_out_c", "Water output expected temperature", "Degree Celsius"
+    "t_air_in_c", "Input dry bulb temperature of the ambient air", "Degree Celsius"
+    "phi_air_in_percent", "Input relative humidity of the ambient air.", "Degree Celsius"
+
+
+
+Output Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "q_exchanged_kw", "Extracted heat power", "kW"
+    "p_fans_kw", "Electrical power consumed by the fans", "kW"
+    "n_rpm", "Fans rotational speed", "rpm"
+    "mdot_air_m3_per_h", "Air mass flow through the cooler", "m3/h"
+
+Mapping
+----------------
+The Dry Cooler Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapping>`.
+
+- The dry cooler can be used as responder for a FluidMix mapping, taking the output from another controller as its input
+
+- No output are mapped, as the dry cooler does not act as an initiator.
+
 
 
 Model
 =================
 
-The dry cooler model is based on a combination of the :ref:`heat demand controller <heat_demand_controller>`
-and of the :ref:`heat_exchanger_controller <heat_exchanger_controller>`.
+.. autoclass:: pandaprosumer.controller.models.DryCoolerController
+    :members:
+
+
+The dry cooler model is based on a combination of the :ref:`heat demand controller <heat_demand_element>`
+and of the :ref:`heat_exchanger_element <heat_exchanger_element>`.
 
 The dry cooler is a heat exchanger that uses air to cool down a fluid.
 
@@ -137,7 +203,3 @@ with temperature in °C and in % as input arguments.
 
 We assume that the air is saturated with water at the wet bulb temperature after going through the adiabatic 
 pre-cooling system when it is activated, and that the air is then cooled down to this temperature.
-
-
-Result Parameters
-=========================

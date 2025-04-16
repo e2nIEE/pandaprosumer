@@ -85,8 +85,14 @@ class HeatDemandController(BasicProsumerController):
         self.applied = False
         q_to_receive_kw = 0.
         for responder in self._get_generic_mapped_responders(prosumer):
+            # The demand is normally not mapped to anything
             q_to_receive_kw += responder.q_to_receive_kw(prosumer)
-        q_to_receive_kw += self._q_demand_kw
+        q_to_receive_kw += self._q_demand_kw # The actual demand
+        if not np.isnan(self._get_input('q_received_kw')):
+            # If there is already some power in the input, don't require it again
+            q_received_kw = self._get_input('q_received_kw')
+            q_to_receive_kw -= q_received_kw
+            q_to_receive_kw = max(0., q_to_receive_kw)
         return q_to_receive_kw
 
     def _demand_q_tf_tr_m(self, prosumer):

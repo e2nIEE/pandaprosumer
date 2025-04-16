@@ -8,22 +8,83 @@ Heat Exchanger
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A heat exchanger element should be associated to a 
-    :ref:`heat exchanger controller <heat_exchanger_controller>` to map it to other prosumers elements
+    A heat exchanger consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+Create Controlled Function
+============================
 
 .. autofunction:: pandaprosumer.create_controlled_heat_exchanger
 
-Input Parameters
-=========================
 
-*prosumer.heat_exchanger*
- 
+Controller
+==========================
+
+.. figure:: ../elements/controller_pics/heat_exchanger_controller.png
+    :width: 30em
+    :alt: Heat Exchanger Controller logic
+    :align: center
+
+Input Static Data
+------------------------
+These are the physical parameters required for the Heat Exchanger element to enable the model calculation:
+
+.. csv-table:: Input Static Data: Heat Exchanger Element
+   :header: "Parameter", "Description", "Unit"
+
+   "name", "Unique name or identifier for the Heat Exchanger element.", "N/A"
+   "t_1_in_nom_c", "Primary nominal input temperature", "Degree Celsius"
+   "t_1_out_nom_c", "Primary nominal output temperature", "Degree Celsius"
+   "t_2_in_nom_c", "Secondary nominal input temperature", "Degree Celsius"
+   "t_2_out_nom_c", "Secondary nominal output temperature", "Degree Celsius"
+   "mdot_2_nom_kg_per_s", "Secondary nominal mass flow", "kg/s"
+   "delta_t_hot_default_c", "Default difference between the hot (feed) temperatures", "Degree Celsius"
+   "max_q_kw", "Maximum heat power through the heat exchanger", "kW"
+   "min_delta_t_1_c", "Minimum temperature difference at the primary side", "Degree Celsius"
+   "primary_fluid", "Fluid at the primary side of the heat exchanger. If None, the prosumer’s fluid will be used", "N/A"
+   "secondary_fluid", "Fluid at the secondary side of the heat exchanger. If None, the prosumer’s fluid will be used", "N/A"
+
+
+Input Time Series
+---------------------------
+
+.. csv-table:: Input Time Series: Heat Exchanger
+   :header: "Parameter", "Description", "Unit", "Datatype"
+
+  "t_feed_in_c ", "The feed temperature from the heating network", "Degree Celsius"
+
+Output Time Series
+---------------------------
+
+.. csv-table:: Output Time Series: Heat Exchanger
+   :header: "Parameter", "Description", "Unit"
+
+   "mdot_1_kg_per_s ", "The mass flow rate at the primary side of the heat exchanger", "kg/s"
+   "t_1_in_c ", "The feed input temperature at the primary side of the heat exchanger", "Degree Celsius"
+   "t_1_out_c ", "The return output temperature at the primary side of the heat exchanger", "Degree Celsius"
+   "mdot_2_kg_per_s ", "The mass flow rate at the secondary side of the heat exchanger", "kW"
+   "t_2_in_c ", "The return input temperature at the secondary side of the heat exchanger ", "Degree Celsius"
+   "t_2_out_c ", "The feed output temperature at the secondary side of the heat exchanger", "Degree Celsius"
+
+Mapping
+----------------
+The Heat Exchanger Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapping>`.
+
+- The heat exchanger can be used as responder for a FluidMix mapping, taking the output from another controller as its input
+
+- The following outputs are mapped:
+
+  - ``mdot_2_kg_per_s``
+  - ``t_2_out_c``
 
 Model
 =================
+
+.. autoclass:: pandaprosumer.controller.models.HeatExchangerController
+    :members:
+
 
 Model of a simple heat exchanger based on logarithmic mean temperature difference (LMTD) calculation
 with countercurrent flows.
@@ -154,7 +215,3 @@ and the secondary output temperature :math:`T_{2_\text{out}}` is set to :math:`T
 If the calculated primary mass flow :math:`\dot{m}_1` is greater than the maximum mass flow available :math:`\dot{m}_{1_\text{max}}`,
 then the secondary mass flow :math:`\dot{m}_2` is set so that 
 :math:`Q_r = \dot{m}_{1_\text{max}} * Cp_1 * \Delta T_1`, considering the same :math:`\Delta T_1` as first calculated.
-
-
-Result Parameters
-=========================

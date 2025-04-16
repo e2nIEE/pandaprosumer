@@ -20,7 +20,7 @@ class HeatExchangerControllerData:
     input_columns : List[str]
         List of input column names.
 
-        **t_feedin_c** - The feed temperature from the heating network [°C]
+        **t_feed_in_c** - The feed temperature from the heating network [°C]
 
     result_columns : List[str]
         List of result column names.

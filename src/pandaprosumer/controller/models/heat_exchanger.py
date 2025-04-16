@@ -24,7 +24,6 @@ def solve_dichotomy(f, x_min, x_max):
     :param x_min: Minimum value.
     :param x_max: Maximum value.
     :return: The found value of x after convergence
-    :return: The found value of x after convergence
     """
     x_mean = (x_max + x_min) / 2
     while (abs(f(x_mean)) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD

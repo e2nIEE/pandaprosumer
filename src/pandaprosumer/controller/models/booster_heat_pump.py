@@ -357,8 +357,8 @@ class BoosterHeatPumpController(BasicProsumerController):
             - q_remain_kw - Remaining heat in kW
             - cop_floor - COP for the floor heating
             - cop_radiator - COP for the radiator heating
-            - pel_floor_kw - Electrical power for the floor heating in kW
-            - pel_radiator_kw - Electrical power for the radiator heating in kW
+            - pel_floor_kw - Electrical power needed for the floor heating in kW
+            - pel_radiator_kw - Electrical power needed for the radiator heating in kW
             - q_floor_kw - Heat for the floor heating in kW
             - q_radiator_kw - Heat for the radiator heating in kW
         """

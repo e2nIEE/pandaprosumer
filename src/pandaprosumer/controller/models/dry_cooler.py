@@ -260,6 +260,10 @@ class DryCoolerController(BasicProsumerController):
         cp_air_j_per_kgk = self.cooling_fluid.get_heat_capacity(CELSIUS_TO_K + t_air_in_c)
         q_exchanged_w = cp_fluid_j_per_kgk * mdot_fluid_kg_per_s * delta_t_fluid_c
 
+        if abs(q_exchanged_w) < 1e-6:
+            mdot_air_kg_per_s = 0.
+            return mdot_air_kg_per_s, t_air_in_c, t_air_in_c, mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c
+
         delta_t_air_n = t_hot_air_nom_c - t_cold_air_nom_c
         cp_air_nom_j_per_kg_k = self.cooling_fluid.get_heat_capacity(CELSIUS_TO_K + (t_hot_air_nom_c + t_cold_air_nom_c) / 2)
         q_exchanged_nom_w = cp_air_nom_j_per_kg_k * mdot_air_nom_kg_per_s * delta_t_air_n

@@ -1,27 +1,90 @@
 ﻿.. _ice_chp_element:
 
-=============
+================================================
 Internal Combustion Engine Combined Heat & Power
-=============
+================================================
 
 .. seealso::
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    An internal combustion engine (ICE) combined heat & power (CHP) element should be associated to a :ref:`ICE CHP controller <ice_chp_controller>` to map it to other prosumers elements
+    An internal combustion Engine consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+Create Controlled Function
+======================================
 
 .. autofunction:: pandaprosumer.create_controlled_ice_chp
 
-Input Parameters
-=========================
 
-*prosumer.heat_demand*
+Controller
+===========
+
+.. figure:: ../elements/controller_pics/ice_chp_controller.png
+    :width: 30em
+    :alt: ice chp logic
+    :align: center
+
+
+
+Input Static Data
+--------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "size", "Size of the system", "m³"
+    "fuel", "Type of fuel used", "N/A"
+    "altitude", "Altitude in meters", "m"
+    "in_service", "Indicates if the system is in service", "N/A"
+    "name", "Custom name for the instance", "N/A"
+
+
+Input Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "cycle", "Cycle number of the process", "N/A"
+    "t_intake_k", "Intake temperature in Kelvin", "K"
+
+
+Output Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "load", "Load on the system", "N/A"
+    "p_in_kw", "Input power in kilowatts", "kW"
+    "p_el_out_kw", "Electrical output power in kilowatts", "kW"
+    "p_th_out_kw", "Thermal output power in kilowatts", "kW"
+    "p_rad_out_kw", "Radiative output power in kilowatts", "kW"
+    "ice_chp_efficiency", "ICE CHP efficiency", "%"
+    "mdot_fuel_in_kg_per_s", "Mass flow rate of fuel input", "kg/s"
+    "acc_m_fuel_in_kg", "Accumulated fuel input mass", "kg"
+    "acc_co2_equiv_kg", "Accumulated CO2 equivalent emissions", "kg"
+    "acc_co2_inst_kg", "Instantaneous CO2 emissions", "kg"
+    "acc_nox_mg", "Accumulated NOx emissions", "mg"
+    "acc_time_ice_chp_oper_s", "Accumulated operational time of ICE CHP", "s"
+
+
+Mapping
+----------------
+
+The Internal Combustion Engine model uses Generic Mapping Scheme.
+
 
 Model
 =================
+
+.. autoclass:: pandaprosumer.controller.models.ice_chp.IceChpController
+    :members:
+
+
 The ICE CHP module is map based. Its engine response is read from tabulated data contained 
 in a map associated with the chosen size of the ICE CHP. Maps for three sizes are provided: 
 
@@ -111,8 +174,6 @@ An instance of the ICE CHP is defined by its size, fuel type, and altitude. A CH
     An example of reading data from an ICE CHP map. (source: Faculty of Mechanical Engineering, University of Ljubljana)
 
 
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 The evaporator of the heat pump should get heat from a District Heating Network or from the ambient air.
 
 The condenser should be connected to downstream elements in the prosumer or to a District Heating Network.
@@ -259,7 +320,3 @@ which is usually water
     * Assume a constant :math:`\Delta T_\text{evap}`
 
     * Assume a constant :math:`\eta_\text{C}`
-///////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-Result Parameters
-=========================

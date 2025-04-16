@@ -6,8 +6,9 @@ from pandaprosumer.controller import *
 import numpy as np
 
 
-def create_controlled_const_profile(prosumer, input_columns, result_columns, period, data_source, level=0, order=0,  temp_fluid_map_idx = None,
-                                                              mdot_fluid_map_idx = None):
+def create_controlled_const_profile(prosumer, input_columns, result_columns, period, data_source, level=0, order=0,
+                                    temp_fluid_map_idx=None,
+                                    mdot_fluid_map_idx=None):
     const_controller_data = ConstProfileControllerData(
         input_columns=input_columns,
         result_columns=result_columns,
@@ -23,25 +24,24 @@ def create_controlled_const_profile(prosumer, input_columns, result_columns, per
     return const_profile.index
 
 
-
 def create_controlled_heat_pump(prosumer,
-                                 delta_t_evap_c=15.,
-                                 carnot_efficiency=0.5,
-                                 pinch_c=None,
-                                 delta_t_hot_default_c=5,
-                                 max_p_comp_kw=np.nan,
-                                 min_p_comp_kw=np.nan,
-                                 max_t_cond_out_c=np.nan,
-                                 max_cop=np.nan,
-                                 cond_fluid=None,
-                                 evap_fluid=None,
-                                 name=None,
-                                 index=None,
-                                 in_service=True,
-                                level = 0,
-                                order = 0,
-                                period = 0,
-                                 **kwargs):
+                                delta_t_evap_c=15.,
+                                carnot_efficiency=0.5,
+                                pinch_c=None,
+                                delta_t_hot_default_c=5,
+                                max_p_comp_kw=np.nan,
+                                min_p_comp_kw=np.nan,
+                                max_t_cond_out_c=np.nan,
+                                max_cop=np.nan,
+                                cond_fluid=None,
+                                evap_fluid=None,
+                                name=None,
+                                index=None,
+                                in_service=True,
+                                level=0,
+                                order=0,
+                                period=0,
+                                **kwargs):
     """
         Creates a heat pump element in prosumer["heat_pump"] and an heat pump controller
 
@@ -89,10 +89,9 @@ def create_controlled_heat_pump(prosumer,
             create_controlled_heat_pump(prosumer, "heat_pump1")
         """
 
-
     heat_pump_index = create_heat_pump(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order","level","kwargs"}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs
     )
     heat_pump_controller_data = HeatPumpControllerData(
@@ -108,16 +107,15 @@ def create_controlled_heat_pump(prosumer,
     return heat_pump.index
 
 
-
 def create_controlled_heat_demand(prosumer,
-                                    scaling=1.0,
-                                    name=None,
-                                    index=None,
-                                    in_service=True,
-                                  period = 0,
-                                  level = 0,
-                                  order = 0,
-                                    **kwargs):
+                                  scaling=1.0,
+                                  name=None,
+                                  index=None,
+                                  in_service=True,
+                                  period=0,
+                                  level=0,
+                                  order=0,
+                                  **kwargs):
     """
         Creates a heat demand element and a controller in prosumer["heat_demand"] and an heat demand controller
 
@@ -152,10 +150,9 @@ def create_controlled_heat_demand(prosumer,
             create_controlled_heat_demand(prosumer, "heat_demand1")
         """
 
-
     heat_demand_index = create_heat_demand(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order","level", "kwargs"}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs
     )
     heat_demand_controller_data = HeatDemandControllerData(
@@ -297,23 +294,23 @@ def create_controlled_stratified_heat_storage(prosumer,
 
 
 def create_controlled_heat_exchanger(prosumer,
-                                        t_1_in_nom_c=90,
-                                        t_1_out_nom_c=65,
-                                        t_2_in_nom_c=50,
-                                        t_2_out_nom_c=60,
-                                        mdot_2_nom_kg_per_s=0.4,
-                                        delta_t_hot_default_c=5,
-                                        max_q_kw=None,
-                                        min_delta_t_1_c=5,
-                                        primary_fluid=None,
-                                        secondary_fluid=None,
-                                        name=None,
-                                        index=None,
-                                        in_service=True,
-                                     level = 0,
-                                     order = 0,
-                                     period = 0,
-                                    **kwargs):
+                                     t_1_in_nom_c=90,
+                                     t_1_out_nom_c=65,
+                                     t_2_in_nom_c=50,
+                                     t_2_out_nom_c=60,
+                                     mdot_2_nom_kg_per_s=0.4,
+                                     delta_t_hot_default_c=5,
+                                     max_q_kw=None,
+                                     min_delta_t_1_c=5,
+                                     primary_fluid=None,
+                                     secondary_fluid=None,
+                                     name=None,
+                                     index=None,
+                                     in_service=True,
+                                     level=0,
+                                     order=0,
+                                     period=0,
+                                     **kwargs):
     """
             Creates a heat exchanger element in prosumer["heat_exchanger"] and an heat exchanger controller
 
@@ -365,7 +362,7 @@ def create_controlled_heat_exchanger(prosumer,
 
     heat_exchanger_index = create_heat_exchanger(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period","order","level","kwargs"}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs
     )
     heat_exchanger_controller_data = HeatExchangerControllerData(
@@ -383,15 +380,15 @@ def create_controlled_heat_exchanger(prosumer,
 
 
 def create_controlled_electric_boiler(prosumer,
-                                       max_p_kw,
-                                       efficiency_percent=100,
-                                       name=None,
-                                       index=None,
-                                       in_service=True,
-                                      level =0,
-                                      order = 0,
-                                      period = 0,
-                                       **kwargs):
+                                      max_p_kw,
+                                      efficiency_percent=100,
+                                      name=None,
+                                      index=None,
+                                      in_service=True,
+                                      level=0,
+                                      order=0,
+                                      period=0,
+                                      **kwargs):
     """
             Creates an electric boiler element in prosumer["electric_boiler"] and an electric boiler controller
 
@@ -425,8 +422,8 @@ def create_controlled_electric_boiler(prosumer,
 
     electric_boiler_index = create_electric_boiler(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period","order",'level','kwargs'}},
-    **kwargs)
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'kwargs'}},
+        **kwargs)
     electric_boiler_controller_data = ElectricBoilerControllerData(
         element_name='electric_boiler',
         element_index=[electric_boiler_index],
@@ -442,16 +439,16 @@ def create_controlled_electric_boiler(prosumer,
 
 
 def create_controlled_gas_boiler(prosumer,
-                                   max_q_kw,
-                                   heating_value_kj_per_kg = 50e3,
-                                   efficiency_percent=100,
-                                   name=None,
-                                   index=None,
-                                   in_service=True,
-                                 period = 0,
-                                 level = 0,
-                                 order = 0,
-                                    **kwargs):
+                                 max_q_kw,
+                                 heating_value_kj_per_kg=50e3,
+                                 efficiency_percent=100,
+                                 name=None,
+                                 index=None,
+                                 in_service=True,
+                                 period=0,
+                                 level=0,
+                                 order=0,
+                                 **kwargs):
     """
             Creates an gas boiler element in prosumer["gas_boiler"] and a gas boiler controller
 
@@ -479,8 +476,6 @@ def create_controlled_gas_boiler(prosumer,
 
             **period** (int, default 0) - Index of the period, default is 0
 
-
-
         OUTPUT:
             **index** (int) - The unique ID of the created gas boiler
 
@@ -490,8 +485,8 @@ def create_controlled_gas_boiler(prosumer,
 
     gas_boiler_index = create_gas_boiler(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period","order",'level','kwargs'}},
-    **kwargs)
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'kwargs'}},
+        **kwargs)
     gas_boiler_controller_data = GasBoilerControllerData(
         element_name='gas_boiler',
         element_index=[gas_boiler_index],
@@ -507,24 +502,24 @@ def create_controlled_gas_boiler(prosumer,
 
 
 def create_controlled_dry_cooler(prosumer,
-                                    n_nom_rpm,
-                                    p_fan_nom_kw,
-                                    qair_nom_m3_per_h,
-                                    t_air_in_nom_c=15,
-                                    t_air_out_nom_c=35,
-                                    t_fluid_in_nom_c=65,
-                                    t_fluid_out_nom_c=40,
-                                    fans_number=1,
-                                    adiabatic_mode=False,
-                                    phi_adiabatic_sat_percent=99,
-                                    min_delta_t_air_c=0,
-                                    name=None,
-                                    index=None,
-                                    in_service=True,
-                                    period = 0,
-                                    level = 0,
-                                 order = 0,
-                                    **kwargs):
+                                 n_nom_rpm,
+                                 p_fan_nom_kw,
+                                 qair_nom_m3_per_h,
+                                 t_air_in_nom_c=15,
+                                 t_air_out_nom_c=35,
+                                 t_fluid_in_nom_c=65,
+                                 t_fluid_out_nom_c=40,
+                                 fans_number=1,
+                                 adiabatic_mode=False,
+                                 phi_adiabatic_sat_percent=99,
+                                 min_delta_t_air_c=0,
+                                 name=None,
+                                 index=None,
+                                 in_service=True,
+                                 period=0,
+                                 level=0,
+                                 order=0,
+                                 **kwargs):
     """
            Creates a dry cooler element in prosumer["dry_cooler"] and a dry cooler controller
 
@@ -577,7 +572,7 @@ def create_controlled_dry_cooler(prosumer,
 
     dry_cooler_index = create_dry_cooler(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period","order",'level','kwargs'}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'kwargs'}},
         **kwargs
     )
 
@@ -596,6 +591,34 @@ def create_controlled_dry_cooler(prosumer,
 
 
 def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+    """
+               Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
+
+           INPUT:
+               **prosumer** - The prosumer within this booster_heat_pump should be created
+
+               **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
+
+           OPTIONAL:
+               **name** (string, default None) - The name of the BHP instance
+
+               **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+                   higher than the highest already existing index is selected.
+
+               **in_service** (boolean, default True) - True for in_service or False for out of service
+
+               **level** (int, default 0) - The level of the controller
+
+                **order** (int, default 0) - The order of the controller
+
+                **period** (int, default 0) - Index of the period, default is 0
+
+           OUTPUT:
+               **index** (int) - The unique ID of the created BHP
+
+           EXAMPLE:
+               create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
+           """
     bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
@@ -625,8 +648,50 @@ def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, ind
 
     return bhp.index
 
-def create_controlled_ice_chp(prosumer, chp_size, fuel, altitude, name=None, index=None, in_service=True, level=0, order=0, period=0):
-    ice_chp_index = create_ice_chp(prosumer, chp_size, fuel, altitude, name=name)
+def create_controlled_ice_chp(prosumer,
+                              size,
+                              fuel,
+                              altitude,
+                              name=None,
+                              index=None,
+                              in_service=True,
+                              level=0,
+                              order=0,
+                              period=0,
+                              **kwargs):
+    """
+           Creates an ICE CHP element in prosumer["ice_chp"] and an ICE CHP controller
+
+       INPUT:
+           **prosumer** - The prosumer within this ice_chp should be created
+
+           **size** (float) - ICE CHP rating [kW]
+
+           **fuel** (string) - Type of the fuel used in the calculation
+
+           **altitude** (float) - Altitude above sea level of the ICE CHP installation site [m]
+
+       OPTIONAL:
+           **name** (string, default None) - The name of the ICE CHP instance
+
+           **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+               higher than the highest already existing index is selected.
+
+           **in_service** (boolean, default True) - True for in_service or False for out of service
+
+           **level** (int, default 0) - The level of the controller
+
+            **order** (int, default 0) - The order of the controller
+
+            **period** (int, default 0) - Index of the period, default is 0
+
+       OUTPUT:
+           **index** (int) - The unique ID of the created ICE CHP
+
+       EXAMPLE:
+           create_controlled_ice_chp(prosumer, 350, "ng", 0, "example_ice_chp")
+       """
+    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, name, in_service, index, **kwargs)
     ice_chp_controller_data = IceChpControllerData(
         element_name='ice_chp',
         element_index=[ice_chp_index],
@@ -638,3 +703,98 @@ def create_controlled_ice_chp(prosumer, chp_size, fuel, altitude, name=None, ind
                                level=level,
                                name='ice_chp_controller')
     return ice_chp.index
+
+
+def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_cond=5.0,
+                              pp_evap=5.0, plf_cc=0.9,
+                              w_evap_pump=200.0, w_cond_pump=200.0,
+                              eng_eff=1.0, n_ref="R410A",
+                              name=None,
+                              index=None,
+                              in_service=True,
+                              period=0,
+                              level=0,
+                              order=0,
+                              **kwargs):
+    """
+    Creates a chiller element in prosumer["chiller"] and a chiller controller.
+
+    INPUT:
+        **prosumer** - The prosumer within which this chiller should be created.
+
+        **max_q_kw** (float) - Maximal cooling power of the chiller [kW].
+
+    OPTIONAL:
+        **cooling_value_kj_per_kg** (float, default 200e3) - Cooling Value of the refrigerant [kJ/kg].
+
+        **efficiency_percent** (float, default 100) - Chiller Efficiency [%].
+
+        **name** (string, default None) - The name for this chiller.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **level** (int, default 0) - The level of the controller.
+
+        **order** (int, default 0) - The order of the controller.
+
+        **period** (int, default 0) - Index of the period, default is 0.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created chiller.
+
+    EXAMPLE:
+        create_controlled_chiller(prosumer, "chiller_1")
+    """
+
+    chiller_index = create_chiller(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs)
+
+    chiller_controller_data = ChillerControllerData(
+        element_name='sn_chiller',
+        element_index=[chiller_index],
+        period_index=period,
+        **kwargs
+    )
+
+    chiller_controller = ChillerController(prosumer,
+                                           chiller_controller_data,
+                                           order=order,
+                                           level=level,
+                                           name='sn_chiller')
+    return chiller_controller.index
+
+
+def create_controlled_heat_storage(prosumer,
+                                   q_capacity_kwh=0.,
+                                   name=None,
+                                   index=None,
+                                   in_service=True,
+                                   level=0,
+                                   order=0,
+                                   init_soc=0.,
+                                   period=0,
+                                   **kwargs):
+    heat_storage_index = create_heat_storage(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'init_soc', 'kwargs'}},
+        **kwargs
+    )
+    heat_storage_controller_data = HeatStorageControllerData(
+        element_name='heat_storage',
+        element_index=[heat_storage_index],
+        period_index=period,
+        **kwargs
+    )
+    hs = HeatStorageController(
+        prosumer,
+        heat_storage_controller_data,
+        order=order,
+        level=level,
+        init_soc=init_soc,
+        name='heat_storage_controller'
+    )
+    return hs.index

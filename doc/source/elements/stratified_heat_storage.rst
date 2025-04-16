@@ -4,26 +4,97 @@
 Stratified Heat Storage
 ========================
 
+
 .. seealso::
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A stratified heat storage element should be associated to a
-    :ref:`stratified heat storage controller <stratified_heat_storage_controller>` to map it to other prosumers elements
+    A Stratified Heat Storage consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+Create Controlled Function
+=============================
 
 .. autofunction:: pandaprosumer.create_controlled_stratified_heat_storage
 
-Input Parameters
-=========================
+Controller
+===========================
 
-*prosumer.stratified_heat_storage*
- 
+.. figure:: ../elements/controller_pics/stratified_heat_storage_controller.png
+    :width: 30em
+    :alt: Stratified Heat Storage Controller logic
+    :align: center
+
+
+Input Static Data
+--------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "name", "A custom name for this Stratified Heat Storage", "N/A"
+    "tank_height_m ", "The height of the storage tank", "m"
+    "tank_internal_radius_m  ", "The internal radius of the storage tank", "m"
+    "tank_external_radius_m  ", "tank_external_radius (without insulation)", "m"
+    "insulation_thickness_m  ", "insulation thickness", "m"
+    "n_layers  ", " number of layers used for the calculations", "N/A"
+    "min_useful_temp_c  ", "Temperature used as a threshold to calculate the amount of stored energy", "Degree Celsius"
+    "k_fluid_w_per_mk  ", "Thermal conductivity of storage fluid (prosumer.fluid)", "Degree Celsius"
+    "k_insu_w_per_mk ", "Thermal conductivity of insulation", "W/(mK)"
+    "k_wall_w_per_mk  ", "Thermal conductivity of the tank wall", "W/(mK)"
+    "h_ext_w_per_m2k  ", "Heat transfer coefficient with the environment (Convection between tank and air)", "W/(m²K)"
+    "t_ext_c ", "The ambient temperature used for calculating heat losses", "Degree Celsius"
+    "height_charge_in_m  ", "The height of the inlet charging point in m.", "m"
+    "height_charge_our_m  ", "The height of the outlet charging point in m.", "m"
+    "height_discharge_in_m  ", "The height of the inlet discharging point in m.", "m"
+    "height_discharge_out_m  ", "The height of the outlet discharging point in m.", "m"
+
+
+
+Input Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "mdot_discharge_kg_per_s", "Mass flow rate of discharge", "kg/s"
+    "t_discharge_c", "Discharge temperature", "°C"
+    "q_delivered_kw", "Delivered heat power", "kW"
+    "e_stored_kwh", "Stored energy", "kWh"
+
+
+Output Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "mdot_discharge_kg_per_s ", "The storage discharge mass flow", "kg/s"
+    "t_discharge_c ", "The storage discharge temperature", "Degree Celsius"
+    "q_delivered_kw ", "The storage delivered power to the downstream elements", "kW"
+    "e_stored_kwh ", "The total stored heat energy in the storage above the element minimum usefully temperature compared to the initial state", "kWh"
+
+Mapping
+-----------------------
+The Stratified Heat Storage Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapping>`.
+
+
+- The stratified heat storage can be used as responder for a FluidMix mapping, taking the output from another controller as its input
+
+- The stratified heat storage can be used as initiator for a FluidMix mapping, making its output to another controller
+
+
+
    
 Model
 =================
+
+
+.. autoclass:: pandaprosumer.controller.models.stratified_heat_storage.StratifiedHeatStorageController
+    :members:
+
 
 Thermal energy storage means heating or cooling a medium to use the energy when needed later. In its simplest form,
 this could mean using a water tank for heat storage, where the water is heated at times when there is a lot of energy,
@@ -235,8 +306,5 @@ in stratified heat storage models.
 
 .. figure:: superbee_limiter.png
     :width: 25em
-    :alt: suberbee limiter scheme
+    :alt: superbee limiter scheme
     :align: center
-
-Result Parameters
-=========================

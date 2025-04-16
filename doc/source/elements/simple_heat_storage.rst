@@ -8,21 +8,68 @@ Heat Storage
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A heat storage element should be associated to a :ref:`heat storage controller <simple_heat_storage_controller>`
-    to ensure it interacts correctly with other system components.
+    A Heat Storage consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+Create Controlled Function
+===========================
 
 .. autofunction:: pandaprosumer.create_controlled_heat_storage
 
-Input Parameters
-=========================
+Controller
+========================
 
-*prosumer.heat_storage*
+Graphical representation here
+
+
+Input Static Data
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "name", "Custom name for the Storage", "N/A"
+    "in_service", "Indicates if the Storage is in service", "N/A"
+    "q_capacity_kwh", "Capacity in kilowatt-hours", "kWh"
+
+
+Input Time Series
+--------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "q_received_kw", "Received heat power", "kW"
+
+
+
+Output Time Series
+---------------------
+
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "soc", "State of Charge", "%"
+    "q_delivered_kw", "Delivered heat power", "kW"
+
+
+
+Mapping
+----------
+
+The Simple Storage model uses Generic Mapping Scheme.
+
+
 
 Model
 =================
+
+.. autoclass:: pandaprosumer.controller.models.HeatStorageController
+    :members:
+
 
 The heat storage model computes the heat received and delivered by the storage element, and updates the state of charge (SOC) accordingly.
 
@@ -38,10 +85,3 @@ The heat storage model computes the heat received and delivered by the storage e
 The SOC is adjusted each timestep to reflect the energy balance within the storage unit.
 If the requested heat exceeds available storage, the delivery is capped to the actual available energy.
 
-Result Parameters
-=========================
-
-The following results are stored in the output:
-
-* **State of Charge (SOC)** – The current energy level relative to storage capacity.
-* **Delivered Power** – The amount of heat delivered during the timestep.

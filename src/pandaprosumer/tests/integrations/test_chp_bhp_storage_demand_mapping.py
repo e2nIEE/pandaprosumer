@@ -38,7 +38,7 @@ class TestChpBhpStorageDemandMapping:
                       't_source_k': [278, 295, 295, 400],
                       'demand': [100, 100, 500, 500],
                       'mode': [1, 1, 1, 1],
-                      'temperature_ice_chp_k': [273, 273, 273, 273]})
+                      't_intake_k': [273, 273, 273, 273]})
 
         dur = pd.date_range(start, end, freq="15min", tz='utc')
         demand_data.index = dur
@@ -54,8 +54,8 @@ class TestChpBhpStorageDemandMapping:
         create_heat_demand(prosumer, scaling=1.0, name='heat_demand_controller')
 
         const_controller_data = ConstProfileControllerData(
-            input_columns=['cycle', 't_source_k', 'demand', 'mode', 'temperature_ice_chp_k'],
-            result_columns=["cycle_cp", 't_source_cp', "demand_cp", 'mode_cp', 'temperature_ice_chp_cp'],
+            input_columns=['cycle', 't_source_k', 'demand', 'mode', 't_intake_k'],
+            result_columns=["cycle_cp", 't_source_cp', "demand_cp", 'mode_cp', 't_intake_cp'],
             period_index=period
         )
         ice_chp_controller_data = IceChpControllerData(
@@ -117,9 +117,9 @@ class TestChpBhpStorageDemandMapping:
         GenericMapping(
             prosumer,
             initiator_id=0,
-            initiator_column="temperature_ice_chp_cp",
+            initiator_column="t_intake_cp",
             responder_id=1,
-            responder_column="temperature_ice_chp_k",
+            responder_column="t_intake_k",
             order=0
         )
         GenericMapping(
@@ -187,6 +187,7 @@ class TestChpBhpStorageDemandMapping:
         }
 
         chp_data_res = {
+            'load': [100.0, 100.0, 100.0, 100.0],
             "p_in_kw": [875.0, 875.0, 875.0, 875.0],
             "p_el_out_kw": [350.0, 350.0, 350.0, 350.0],
             "p_th_out_kw": [305.78, 305.78, 305.78, 305.78],
@@ -194,9 +195,9 @@ class TestChpBhpStorageDemandMapping:
             "ice_chp_efficiency": [74.946286, 74.946286, 74.946286, 74.946286],
             "mdot_fuel_in_kg_per_s": [0.017117, 0.017117, 0.017117, 0.017117],
             "acc_m_fuel_in_kg": [15.404930, 30.809859, 46.214789, 61.619718],
-            "acc_co2_eq_kg_per_s": [50.75, 101.50, 152.25, 203.00],
+            "acc_co2_equiv_kg": [50.75, 101.50, 152.25, 203.00],
             "acc_co2_inst_kg": [44.058099, 88.116197, 132.174296, 176.232394],
-            "acc_nox_mg": [215.25, 430.50, 645.75, 861.00],
+            "acc_nox_mg": [193725.0, 387450.0, 581175.0, 774900.0],
             "acc_time_ice_chp_oper_s": [900.0, 1800.0, 2700.0, 3600.0]
         }
 
@@ -205,7 +206,7 @@ class TestChpBhpStorageDemandMapping:
             "cop_radiator": [3.590375, 5.260540, 5.260540, 0.000000],
             "p_el_floor": [350.0, 350.0, 350.0, 0.0],
             "p_el_radiator": [350.0, 350.0, 350.0, 0.0],
-            "q_remain": [5093.15, 5089.58, 5489.58, 5500.00],
+            "q_remain": [20093.15, 20089.58, 20489.58, 20500.0],
             "q_floor": [6.85, 10.42, 10.42, 0.00],
             "q_radiator": [6.85, 10.42, 10.42, 0.00]
         }

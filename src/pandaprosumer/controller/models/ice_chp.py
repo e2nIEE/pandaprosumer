@@ -7,6 +7,7 @@ import os
 import sys
 import logging  
 logging.basicConfig(handlers=[logging.NullHandler()], force=True)              #prevents printing warnings to the console                                                             
+logger = logging.getLogger("ice_chp_logger")
 
 
 class IceChpController(BasicProsumerController):
@@ -32,7 +33,7 @@ class IceChpController(BasicProsumerController):
         prosumer: prosumer container
         chp_object: chp component - Chp()
         data_source: object of type pandas.DataFrame ---> dataset in pandas format
-        order: order of the chp object in the network (list) ---> default: 0 (CHP is the first element in the network)
+        order: order of the chp object in the network (list) ---> default: 0 
         level:
         in_service: (bool) optional ---> default: True
         index: optional ---> default: None
@@ -46,27 +47,7 @@ class IceChpController(BasicProsumerController):
             index=index,
             **kwargs,
         )
-        
-        
-        # === Pertains to handling of warnings ===
-        log_directory = "."  # input("ICE CHP warnings will be saved to a dedicated log file.\n Please specify the directory where the log file will be saved: ")
-        os.makedirs(log_directory, exist_ok=True)
-        warnings_path = os.path.join(log_directory, "ice_chp.log")
-        # Creates a logger
-        self.logger = logging.getLogger("ice_chp_logger")
-        self.logger.setLevel(logging.DEBUG)
-        # Creates a file handler
-        self.file_handler = logging.FileHandler(warnings_path)
-        self.file_handler.setLevel(logging.WARNING)
-        # Formatting the file handler
-        formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s')
-        self.file_handler.setFormatter(formatter)
-        # Adding the file handler to the logger
-        self.logger.addHandler(self.file_handler)
-        #----------------------------------------
-        
-        
-        # === Pertains to ICE CHP ===
+                
         # Initialising variables that sum results of all time steps:
         self.acc_m_fuel_in_kg = 0
         self.acc_m_co2_equiv_kg = 0
@@ -132,16 +113,16 @@ class IceChpController(BasicProsumerController):
 
 
     def control_step(self, prosumer):
-        # logs('ice_chp_control')
         #       
         # ICE CHP CALCULATIONS:
         # =====================
         # New CHP instance:
         # 1 - Read time step input data:
         cycle_type = self._get_input("cycle")
-        t_ice_chp_k = self._get_input("temperature_ice_chp_k")
+        t_ice_chp_k = self._get_input("t_intake_k")
         #
         q_requested_kw = self.q_requested_kw(prosumer)
+
         #
         # 2 - Calculations:
         # 2a - Calculate CHP outputs:
@@ -153,12 +134,14 @@ class IceChpController(BasicProsumerController):
         p_rad_out_kw = self.calculate_radiation(load, self.ice_chp_map)
         mdot_fuel_in_kg_per_s = self.calculate_fuel_input_mass_flow(p_in_kw, self.fuel_type, self.fuel_data)
         m_fuel_in_kg = mdot_fuel_in_kg_per_s * self.resol                
-        self.acc_m_fuel_in_kg += m_fuel_in_kg                                  # cumulative fuel consumption
+        self.acc_m_fuel_in_kg += m_fuel_in_kg
+        #
+        # cumulative fuel consumption
         #
         # 2b - Calculate emissions:
         m_co2_equiv_kg = self.calculate_co2_equiv_mass_flow(p_in_kw, self.fuel_type, self.fuel_data) * self.resol
         m_co2_inst_kg = self.calculate_co2_instant_mass_flow(mdot_fuel_in_kg_per_s, self.fuel_type, self.fuel_data) * self.resol
-        m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map)
+        m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map) * self.resol
         # Calculate cumulative emissions
         self.acc_m_co2_equiv_kg += m_co2_equiv_kg
         self.acc_m_co2_inst_kg += m_co2_inst_kg
@@ -177,7 +160,9 @@ class IceChpController(BasicProsumerController):
         ice_chp_efficiency = self.calculate_efficiency(p_in_kw, p_loss_kw)
         #
         # 5 - Results array:
-        result = np.array([pd.Series(p_in_kw),
+        result = np.array([
+                  pd.Series(load),
+                  pd.Series(p_in_kw),
                   pd.Series(p_el_out_kw),
                   pd.Series(p_th_out_kw),
                   pd.Series(p_rad_out_kw),
@@ -239,7 +224,7 @@ class IceChpController(BasicProsumerController):
                 #
                 chp_map_data = json_data["chp_ice_map"][index]
                 #
-                self.logger.warning(f"The chosen ICE CHP size ({size_kw} kW) is not in the list. The next bigger size ({ice_chp_sizes_nominal[index]} kW) will be used.\n")
+                logger.warning(f"The chosen ICE CHP size ({size_kw} kW) is not in the list. The next bigger size ({ice_chp_sizes_nominal[index]} kW) will be used.\n")
                 #
                 return chp_map_data
    
@@ -324,7 +309,7 @@ class IceChpController(BasicProsumerController):
         if cycle == 1:
             # Check if the value of the desired output is within the range of the chosen CHP:
             if demand_kw > max(map_p_el):
-                self.logger.warning(f"[Event at {time}]: The demand ({demand_kw} kW) is greater than the maximum output of the chosen CHP ({max(map_p_el)} kW). The maximum CHP output will be used.\n")
+                logger.warning(f"[Event at {time}]: The demand ({demand_kw} kW) is greater than the maximum output of the chosen CHP ({max(map_p_el)} kW). The maximum CHP output will be used.\n")
                 load = map_load_limits[1]
             else:
                 if demand_kw in map_p_el:
@@ -339,7 +324,7 @@ class IceChpController(BasicProsumerController):
         elif cycle == 2:
             # Check if the value of the desired output is within the range of the chosen CHP:
             if demand_kw > max(map_p_th_recovered):
-                self.logger.warning(f"[Event at {time}]: The demand ({demand_kw}kW) is greater than the maximum output the chosen CHP can generate ({max(map_p_th_recovered)}kW). The maximum CHP output will be used.\n")
+                logger.warning(f"[Event at {time}]: The demand ({demand_kw} kW) is greater than the maximum output the chosen CHP can generate ({max(map_p_th_recovered)} kW). The maximum CHP output will be used.\n")
                 load = map_load_limits[1]
             else:
                 if demand_kw in map_p_th_recovered:
@@ -350,18 +335,18 @@ class IceChpController(BasicProsumerController):
                     # If the desired thermal demand is not a map value ---> interpolate
                     load = np.interp(demand_kw, map_p_th_recovered[::-1], map_load[::-1])    
                     #
-        # Run a limit check:
-        if load < map_load_limits[0] and load > 0:                  
-            self.logger.warning(f"[Event at {time}]: The current engine load ({load}%) is below the allowed lower limit ({map_load_limits[0]}%). The load will drop to 0%.\n")
-            load = 0
-        elif load > map_load_limits[1]:
-            self.logger.warning(f"[Event at {time}]: The current engine load ({load}%) is greater than the allowed upper limit ({map_load_limits[1]}%). The load will drop to the maximum limit.\n")
-            load = map_load_limits[1]    
-        #
-        # Calculate the altitude ratio and perceived load at altitude:
+        # Calculate the ratio and perceived load:
         ratio = self.calculate_density_ratio(temperature_k, altitude_m, map_chp)
         load_actual = load * ratio 
-        #   
+        #
+        # Run a limit check:
+        if load_actual < map_load_limits[0] and load > 0:                  
+            logger.warning(f"[Event at {time}]: The current engine load ({load}%) is below the allowed lower limit ({map_load_limits[0]}%). The load will drop to 0%.\n")
+            load_actual = 0
+        elif load_actual > map_load_limits[1]:
+            logger.warning(f"[Event at {time}]: The current engine load ({load}%) is greater than the allowed upper limit ({map_load_limits[1]}%). The load will drop to the maximum limit.\n")
+            load_actual = map_load_limits[1]    
+        #
         return load, load_actual
 
 
@@ -372,7 +357,7 @@ class IceChpController(BasicProsumerController):
 
             :param load_calc: CHP load in % 
             :param map_engine: data for the chosen CHP size
-            :return p_in_kw: required energy flow for the defined load/output power in [kW]
+            :return p_in_kw: required energy flow for the defined load/output power in kW
             """
         map_load = map_chp['engine_load_percent']
         map_p_in = map_chp['energy_flow_input_kw']
@@ -393,7 +378,7 @@ class IceChpController(BasicProsumerController):
         Determines the required fuel mass flow.
 
             :param p_in_kw: required energy flow into the CHP in kW
-            :param fuel_type: selected fuel type (options: natural_gas, sng1, sng2, sng3, sng4, sng5, sng6)
+            :param fuel_type: selected fuel type (options: ng, sng1, sng2, sng3, sng4, sng5, sng6)
             :param map_fuel: data for the fuels in the fuels JSON file
             :return mdot_fuel_in_kg_per_s: required fuel mass flow in kg/s 
             """
@@ -511,12 +496,12 @@ class IceChpController(BasicProsumerController):
 
             :param mdot_fuel_kg_per_s: fuel mass flow in kg/s
             :param r_oxidised_c: fraction of fully oxidised carbon
-            :param fuel_type: selected fuel type (options: natural_gas, sng1, sng2, sng3, sng4, sng5, sng6) 
+            :param fuel_type: selected fuel type (options: ng, sng1, sng2, sng3, sng4, sng5, sng6) 
             :param map_fuel: data for the chosen CHP size from the map in the JSON file 
             :return mdot_co2_inst_kg_per_s: mass flow of CO2 emissions at the location of the ICE CHP in kg/s
             """
-        _c_mass_molar_kg_per_mol = 0.012
-        _co2_mass_molar_kg_per_mol = 0.044
+        _mass_molar_c_kg_per_mol = 0.012
+        _mass_molar_co2_kg_per_mol = 0.044
         #
         # Get data from the fuel map ---> carbon fraction: 
         fuel_names = map_fuel['fuel_types']
@@ -524,7 +509,7 @@ class IceChpController(BasicProsumerController):
         r_total_c_all = map_fuel['carbon_fraction']                                #fraction of carbon in the chemical composition of the fuel [/]
         r_total_c = r_total_c_all[_position]
         #
-        mdot_co2_inst_kg_per_s = mdot_fuel_kg_per_s * r_total_c * (_co2_mass_molar_kg_per_mol/_c_mass_molar_kg_per_mol)
+        mdot_co2_inst_kg_per_s = mdot_fuel_kg_per_s * r_total_c * (_mass_molar_co2_kg_per_mol/_mass_molar_c_kg_per_mol)
         #
         return mdot_co2_inst_kg_per_s
 
@@ -534,7 +519,7 @@ class IceChpController(BasicProsumerController):
         Calculates equivalent CO2 emissions.
 
             :param p_in_kw: input energy flow in kW
-            :param fuel_type: selected fuel type (options: natural_gas, sng1, sng2, sng3, sng4, sng5, sng6) 
+            :param fuel_type: selected fuel type (options: ng, sng1, sng2, sng3, sng4, sng5, sng6) 
             :param map_fuel: data for the chosen CHP size from the map in the JSON file 
             :return mdot_co2_inst_kg_per_s: mass flow of CO2 emissions at the location of the ICE CHP in kg/s
             """
@@ -564,26 +549,14 @@ class IceChpController(BasicProsumerController):
             # If the calculated engine load is a map value
             _position = map_load.index(load)    
             vdot_exhaust_m3n_per_h = map_exhaust[_position]
-            mdot_nox_mg_per_s = dm_nox_mg_per_m3n * vdot_exhaust_m3n_per_h * (1 / 3600)
         else:
             # If the calculated engine load is not a map value ---> interpolate
-            vdot_exhaust_m3n_per_h_int = np.interp(load, map_load[::-1], map_exhaust[::-1])    
-            mdot_nox_mg_per_s = dm_nox_mg_per_m3n * vdot_exhaust_m3n_per_h_int * (1 / 3600)
+            vdot_exhaust_m3n_per_h = np.interp(load, map_load[::-1], map_exhaust[::-1])    
+        #
+        mdot_nox_mg_per_s = dm_nox_mg_per_m3n * vdot_exhaust_m3n_per_h * (1 / 3600)
         #
         return mdot_nox_mg_per_s
     
     #=============================== END OF ICE CHP ===================================
     
-    
-    def remove_logfile_handler(self):
-        """
-        Removes the file handler from the logger if it exists.
-        """
-        # If we still have a reference to our FileHandler, remove and close it
-        if self.file_handler in self.logger.handlers:
-            self.logger.removeHandler(self.file_handler)
-        self.file_handler.close()
-        self.file_handler = None
-
-
         

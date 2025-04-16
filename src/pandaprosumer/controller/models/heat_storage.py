@@ -33,10 +33,6 @@ class HeatStorageController(BasicProsumerController):
         super().__init__(prosumer, heat_storage_object, order=order, level=level, in_service=in_service, index=index, **kwargs)
         self._soc = float(init_soc)
 
-    @property
-    def _q_received_kw(self):
-        return self._get_input("q_received_kw")
-
     def q_to_receive_kw(self, prosumer):
         """
         Calculates the heat to receive in kW.
@@ -46,16 +42,15 @@ class HeatStorageController(BasicProsumerController):
         """
         self.applied = False
         _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
-        fill_level_kwh = self._soc * _q_capacity_kwh
-        q_to_receive_kwh = _q_capacity_kwh - fill_level_kwh
-        print('HS q_to_receive')
-        print(fill_level_kwh)
-        print(_q_capacity_kwh)
-        print(q_to_receive_kwh)
-        for responder in self._get_generic_mapped_responders(prosumer):
-            q_to_receive_kwh += responder.q_to_receive_kw(prosumer)
-        print(q_to_receive_kwh)
-        return q_to_receive_kwh
+        fill_level_kwh = min(self._soc, 1) * _q_capacity_kwh
+        q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
+        q_to_receive_kw += self.q_to_deliver_kw(prosumer)
+        if not np.isnan(self._get_input('q_received_kw')):
+            # If there is already some power in the input, don't require it again
+            q_received_kw = self._get_input('q_received_kw')
+            q_to_receive_kw -= q_received_kw
+            q_to_receive_kw = max(0., q_to_receive_kw)
+        return q_to_receive_kw
 
     def q_to_deliver_kw(self, prosumer):
         """
@@ -76,35 +71,26 @@ class HeatStorageController(BasicProsumerController):
         :param prosumer: The prosumer object
         """
         super().control_step(prosumer)
-        print("HS control_step")
         q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
         _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
-        print('q_to_deliver_kw', q_to_deliver_kw)
-        print('_q_capacity_kwh', _q_capacity_kwh)
-        print('soc init', self._soc)
-        print('resol', self.resol)
-        print('self._q_received_kw', self._q_received_kw)
-        e_received_kwh = self._q_received_kw * self.resol / 3600
+        e_received_kwh = self._get_input("q_received_kw") * self.resol / 3600
         potential_kwh = self._soc * _q_capacity_kwh + e_received_kwh
-        print('potential_kwh', potential_kwh)
         demand_kwh = q_to_deliver_kw * self.resol / 3600
-        print('demand_kwh1', demand_kwh)
         if demand_kwh > potential_kwh:
+            # Cannot meet the demand
             demand_kwh = potential_kwh
-            print('demand_kwh2', demand_kwh)
         if not isinstance(demand_kwh, np.ndarray) and demand_kwh == 0:
             demand_kwh = np.array([0.]) / self.resol / 3600
-            print('demand_kwh3', demand_kwh)
-        if potential_kwh -demand_kwh > _q_capacity_kwh: # Prevent overcharging: limit stored energy to max capacity
-            potential_kwh = _q_capacity_kwh + demand_kwh
         fill_level_kwh = potential_kwh - demand_kwh
-        self._soc = fill_level_kwh / _q_capacity_kwh
-        print('demand_kwh4', demand_kwh)
-        demand_kw = demand_kwh / (self.resol / 3600)
-        print('demand_kw', demand_kw)
-        print('soc', self._soc)
-        result = np.array([pd.Series(self._soc), pd.Series(demand_kw)])
-        # Demand_kwh should be named after the delivery capacity considering the current charge status
 
+        excess_energy_kwh = max(0, fill_level_kwh - _q_capacity_kwh)
+        if excess_energy_kwh > 0:
+            raise ValueError(f"Excess energy detected: {excess_energy_kwh} kWh exceeds the maximum capacity.")
+
+        self._soc = fill_level_kwh / _q_capacity_kwh
+        demand_kw = demand_kwh / (self.resol / 3600)
+        assert 0 <= self._soc <= 1, (f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name}"
+                                     f"at timestep {self.time}")
+        result = np.array([pd.Series(self._soc), pd.Series(demand_kw)])
         self.finalize(prosumer, result.T)
         self.applied = True

@@ -6,6 +6,9 @@ from pandapipes import Fluid, create_fluid_from_lib
 
 from pandapower.create import _get_index_with_check, _set_entries, _add_to_entries_if_not_nan
 from pandaprosumer.element import *
+from pandapower.create import _get_index_with_check, _set_entries
+from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
+     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -667,4 +670,98 @@ def create_heat_storage(prosumer,
     entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
+    return int(index)
+
+def create_chiller(
+        prosumer,
+        cp_water=4.18,
+        t_sh=5.0,  # °C of super heating in the evaporator
+        t_sc=2.0,
+        pp_cond=5.0,
+        pp_evap=5.0,
+        plf_cc=0.9,
+        w_evap_pump=200.0,
+        w_cond_pump=200.0,
+        eng_eff=1.0,
+        n_ref="R410A",
+        in_service=True,
+        index=None,
+        name=None,
+        **kwargs):
+
+    """Adds a new chiller to the list of prosumer elements and defines its datasheet values
+
+    :param prosumer: Empty prosumer container
+    :type prosumer: object of type prosumer
+    :param cp_water: Fluid specific heat capacity, units kJ/kgK, by default 4.18
+    :type cp_water: float, optional
+    :param t_sh: Degrees of superheating in the evaporator, units K, by default 5.0
+    :type t_sh: float, optional
+    :param t_sc: Degrees of subcooling in the condenser, units K, by default 5.0
+    :type t_sc: float, optional
+    :param pp_cond: Minimum temperature difference between fluids in the condenser, units K, by default 5.0
+    :type pp_cond: float, optional
+    :param pp_evap: Minimum temperature difference between fluids in the evaporator, units K, by default 5.0
+    :type pp_evap: float, optional
+    :param plf_cc: Partial load correction coefficient for all/nothing chillers, by default 0.9
+    :type plf_cc: float, optional
+    :param w_evap_pump: Evaporator pump electrical power,units kJ/h, by default 200.0
+    :type w_evap_pump: float, optional
+    :param w_cond_pump: Condenser pump electrical power,units kJ/h, by default 200.0
+    :type w_cond_pump: float, optional
+    :param eng_eff: Motor performance, by default 1.0
+    :type eng_eff: float, optional
+    :param n_ref: Refrigerant code, by default 'R410A', full list of codes here: http://www.coolprop.org/fluid_properties/PurePseudoPure.html#list-of-fluids
+    :type n_ref: string, optional
+    :param in_service: _description_, by default True
+    :type in_service: bool, optional
+    :param index: zero based index position of the element in the list, by default None
+    :type index: _type_, optional
+    :param # °C of super heating in the evaporatort_sc:  (Default value = 2.0)
+    :param # name:  (Default value = None)
+
+
+    """
+    add_new_element(
+        prosumer, ChillerElementData
+    )
+
+    index = _get_index_with_check(prosumer, "sn_chiller", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "cp_water",
+                "t_sh",
+                "t_sc",
+                "pp_cond",
+                "pp_evap",
+                "plf_cc",
+                "w_evap_pump",
+                "w_cond_pump",
+                "eng_eff",
+                "n_ref",
+                "in_service"
+
+            ],
+            [
+                name,
+                cp_water,
+                t_sh,
+                t_sc,
+                pp_cond,
+                pp_evap,
+                plf_cc,
+                w_evap_pump,
+                w_cond_pump,
+                eng_eff,
+                n_ref,
+                in_service
+
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)

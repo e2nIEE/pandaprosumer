@@ -34,17 +34,18 @@ def TVDResolutionInTime(layer_temps_c,
                              U_w_per_m2k,
                              U1_w_per_m2k,
                              UN_w_per_m2k,
-                             resol,
-                             max_dt_s):
-    if resol < max_dt_s:
+                             resol):
+    dt_max_s = 10
+
+    if resol < dt_max_s:
         # If the resolution is too small, we use a timestep
         # that is a multiple of the resolution
         nb_intervals = 1
         dt_s = resol
     else:
         # Calculate the number of intervals needed to reach the resolution
-        offset = 1 if resol // max_dt_s != resol / max_dt_s else 0
-        nb_intervals = int(resol // max_dt_s + offset)
+        offset = 1 if resol // dt_max_s != resol / dt_max_s else 0
+        nb_intervals = int(resol // dt_max_s + offset)
         dt_s = resol / nb_intervals
 
     # Repeat the calculation so the timestep is not too big
@@ -243,7 +244,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         return "stratified_heat_storage"
 
     def __init__(self, prosumer, stratified_heat_storage_object, order, level, init_layer_temps_c=None, plot=False,
-                 bypass=True, in_service=True, index=None, name=None, **kwargs):
+                 in_service=True, index=None, name=None, **kwargs):
         """
         Constructor method
         """
@@ -252,12 +253,12 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         # Not in the paper nomenclature, is the number of layers
         self.N_l = int(self._get_element_param(prosumer, 'n_layers'))
-        t_ext_c = float(self._get_element_param(prosumer, 't_ext_c'))
+        t_ext_c = self._get_element_param(prosumer, 't_ext_c')
 
         if init_layer_temps_c is None:
             self._layer_temps_c = [t_ext_c] * self.N_l
         elif not np.iterable(init_layer_temps_c):
-            self._layer_temps_c = [float(init_layer_temps_c)] * self.N_l
+            self._layer_temps_c = [init_layer_temps_c] * self.N_l
         else:
             self._layer_temps_c = init_layer_temps_c
 
@@ -296,9 +297,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
         self.mdot_previous_in_kg_per_s = np.nan
 
         # Used for debugging
-        self.plot = plot
-        self.bypass = bypass
-        if self.plot:
+        self.debug = plot
+        if self.debug:
             self._layer_temps_tab_c = []
             self.t_charge_tab_c = []
             self.t_discharge_tab_c = []
@@ -340,8 +340,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         t_charge_out_c = self._t_charge_out
 
         # If the storage is full -> do not required heat from upstream for charging
-        remaining_capacity_kwh = self._get_max_stored_energy_kwh(t_charge_in_c, t_required_in_c) - self._get_stored_energy_kwh(t_charge_in_c)
-        if mdot_demand_kg_per_s > 0 and remaining_capacity_kwh < self._get_element_param(prosumer, "max_remaining_capacity_kwh"):
+        if mdot_demand_kg_per_s > 0 and self._get_max_stored_energy_kwh(t_charge_in_c, t_required_in_c) - self._get_stored_energy_kwh(t_charge_in_c) < 1:
             # FixMe: Go here if min_useful_temp_c = t_charge_in_c > t_required_in_c = t_demand_out_c
             return t_demand_out_c, t_demand_in_c, mdot_demand_kg_per_s
 
@@ -403,11 +402,12 @@ class StratifiedHeatStorageController(BasicProsumerController):
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
 
-        if not self.bypass:
+        if self.debug:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
             mdot_discharge_kg_per_s = mdot_demand_kg_per_s
             mdot_bypass_kg_per_s = 0
             t_bypass_in_c = t_received_in_c
+
         else:
             # mass flow to provide at self._t_charge_c to provide the same energy to the demand
             if t_received_in_c - t_demand_out_c > 0:
@@ -415,6 +415,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
             else:
                 mdot_toprovide_kg_per_s = mdot_demand_kg_per_s
+                # if not self.debug:
             if mdot_toprovide_kg_per_s > mdot_received_kg_per_s:
                 # If this energy cannot be provided, no charging but discharge
                 mdot_bypass_kg_per_s = mdot_received_kg_per_s
@@ -423,7 +424,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 # mdot_discharge_kg_per_s = sum(mdot_demand_tab_kg_per_s) - mdot_bypass_kg_per_s
                 # If the required output temperature is between the feed and top layer temperature, calculate the
                 # discharge mass flow to get this required temperature
-                if abs(t_demand_out_c - t_discharge_out_c) > self._get_element_param(prosumer, "t_discharge_out_tol_c"):
+                if abs(t_demand_out_c - t_discharge_out_c) > 1e-3:
                     mdot_discharge_kg_per_s = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c) / (
                                 t_demand_out_c - t_discharge_out_c)
                 else:
@@ -468,11 +469,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
         t_ext_c = self._get_element_param(prosumer, 't_ext_c')
 
         k_fluid_w_per_mk = self._get_element_param(prosumer, 'k_fluid_w_per_mk')
-        # max_dt_s = (self.dz_m ** 2 * rho_kg_per_m3 * cp_discharge_j_per_kgk) / (2 * k_fluid_w_per_mk)
-        if np.isnan(self._get_element_param(prosumer, 'max_dt_s')):
-            max_dt_s = self.resol
-        else:
-            max_dt_s = self._get_element_param(prosumer, 'max_dt_s')
+        dt_max_s = (self.dz_m ** 2 * rho_kg_per_m3 * cp_discharge_j_per_kgk) / (2 * k_fluid_w_per_mk)
+        print("dt_max_s: ", dt_max_s, '; resol: ', self.resol)
         self._layer_temps_c = TVDResolutionInTime(layer_temps_c=np.array(self._layer_temps_c),
                                                   mdot_charge_kg_per_s=mdot_charge_kg_per_s,
                                                   t_charge_c=t_received_in_c,
@@ -490,12 +488,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                                   U_w_per_m2k=self.U_w_per_m2k,
                                                   U1_w_per_m2k=self.U1_w_per_m2k,
                                                   UN_w_per_m2k=self.UN_w_per_m2k,
-                                                  resol=self.resol,
-                                                  max_dt_s=max_dt_s)
+                                                  resol=self.resol)
 
-        assert (self._layer_temps_c > 0).all(), (f"The SHS model has diverged - "
-                                                 f"Negative temperature in the storage for "
-                                                 f"timestep {self.time} layers= {self._layer_temps_c}")
+        assert (self._layer_temps_c > 0).all(), f"The SHS model has diverged - Negative temperature in the storage for timestep {self.time} layers= {self._layer_temps_c}"
 
         cp_discharge_j_per_kgk = float(self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_discharge_out_c + t_demand_in_c) / 2))
         q_discharge_kw = mdot_discharge_kg_per_s * cp_discharge_j_per_kgk * (t_discharge_out_c - t_demand_in_c) / 1e3
@@ -613,7 +608,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
         # Used for debugging
-        if self.plot:
+        if self.debug:
             self._layer_temps_tab_c += [self._layer_temps_c]  # Store all the layers temps history for analysis
             self.t_charge_tab_c += [t_received_in_c]
             self.t_discharge_tab_c += [t_demand_in_c]

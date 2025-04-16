@@ -16,8 +16,6 @@ class HeatPumpController(BasicProsumerController):
     """
     Controller for heat pumps.
 
-    # ToDo: Add power ramp up/down constrain
-
     :param prosumer: The prosumer object
     :param heat_pump_object: The heat pump object
     :param order: The order of the controller
@@ -43,6 +41,7 @@ class HeatPumpController(BasicProsumerController):
         self.cond_fluid = call_lib(cond_fluid) if cond_fluid else prosumer.fluid
         self.evap_fluid = call_lib(evap_fluid) if evap_fluid else prosumer.fluid
         # FixMe: Does it works when evap fluid is a gas (e.g. air) ?
+        # ToDo: Add power ramp up/down constrain
         self.t_previous_evap_out_c = np.nan
         self.t_previous_evap_in_c = np.nan
         self.mdot_previous_evap_kg_per_s = np.nan

@@ -24,6 +24,6 @@ class BoosterHeatPumpControllerData:
     element_index: List[int]
     period_index: int = None
     element_name: str = 'booster_heat_pump'
-    input_columns: List[str] = field(default_factory=lambda: ["t_source_k", 'demand', 'mode', 'q_received_kw', 'p_received_kw'])
+    input_columns: List[str] = field(default_factory=lambda: ["t_source_k", 'demand', 'mode', 'q_received_kw', 'p_received_kw', 't_sink_k'])
     result_columns: List[str] = field(default_factory=lambda: ['cop', 'q_kw', 'q_remain_kw', 'p_el_kw'])
     

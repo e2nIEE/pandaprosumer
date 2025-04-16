@@ -14,7 +14,7 @@ logger = pplog.getLogger(__name__)
 
 class MappedController(Controller):
     """
-    Base class for all prosumer controllers that are associated to an element (or several?) and can be mapped.
+    Base class for all prosumer controllers that are associated to an element and can be mapped.
 
     :param container: The prosumer/net/energy_system object
     :param basic_prosumer_object: The basic prosumer object

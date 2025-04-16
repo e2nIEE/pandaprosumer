@@ -8,3 +8,4 @@ from .electric_boiler import *
 from .gas_boiler import *
 from .heat_exchanger import *
 from .heat_pump import *
+from .chiller import *

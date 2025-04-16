@@ -62,13 +62,13 @@ class BasicProsumerController(MappedController):
         (assuming that the return temperature is not changed!)
         Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
 
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
 
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
         # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
         # m = pd.Series(0, index=self.element_index)
+        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return np.array([])
@@ -95,13 +95,13 @@ class BasicProsumerController(MappedController):
         (assuming that the return temperature is not changed!)
         Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
 
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
-
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
         # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
         # m = pd.Series(0, index=self.element_index)
+        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return 0, 0, np.array([])

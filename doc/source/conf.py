@@ -24,6 +24,18 @@ extensions = ['sphinx.ext.autodoc',
               'sphinxcontrib.bibtex',
               "nbsphinx"]
 
+latex_engine = 'pdflatex'
+
+latex_elements = {
+    'papersize': 'a4paper',
+    'pointsize': '11pt',
+    'preamble': r'''
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{unicode-math}
+''',
+}
+
 templates_path = ['_templates']
 exclude_patterns = []
 
@@ -36,6 +48,12 @@ bibtex_bibfiles = ['references.bib']
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+html_css_files = ['custom.css']
+
 
 autosummary_generate = True
 
+# Custom CSS to handle text overflow
+html_css_files = [
+    'custom.css',
+]

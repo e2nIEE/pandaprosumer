@@ -8,21 +8,95 @@ Heat Pump
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A heat pump element should be associated to a :ref:`heat pump controller <heat_pump_controller>` to map it to other prosumers elements
+    A heat pump consists of an element and a controller. The element defines it's physical parameters,
+    while the controller governs the operational logic.
 
-Create Function
-=====================
+    The create_controlled function creates both and connects them.
+
+Create Controlled Function
+=============================
 
 .. autofunction:: pandaprosumer.create_controlled_heat_pump
 
-Input Parameters
-=========================
 
-*prosumer.heat_pump*
+Input Static Data
+--------------------
 
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "name", "A custom name for this heat pump", "N/A"
+    "delta_t_evap_c", "Constant temperature difference at the evaporator", "Degree Celsius"
+    "carnot_efficiency", "Carnot efficiency, usually between 0.4-0.6, used to simplify the calculation of the heat pump COP", "N/A"
+    "pinch_c", "description", "Degree Celsius"
+    "delta_t_hot_default_c", "Default difference between the hot (feed)", "Degree Celsius"
+    "max_p_comp_kw", "Maximum Power of the compressor", "kW"
+    "min_p_cond_out_c", "Minimum working power of the compressor", "Degree Celsius"
+    "max_cop", "Maximum COP", "N/A"
+    "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
+    "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
+    "in_service", "True for in_service or False for out of service", "boolean"
+
+
+Controller
+===========
+
+.. figure:: ../elements/controller_pics/heat_pump_controller.png
+    :width: 50em
+    :alt: Heat Pump Controller logic
+    :align: center
+
+
+
+Input Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "t_evap_in_c", "temperature of the heat source at the inlet of the evaporator.", "Degree Celsius"
+
+
+Output Time Series
+-------------------
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "q_cond_kw", "The provided power at the heat pump condenser", "kW"
+    "p_comp_kw", "The compressor consumed electrical power", "kW"
+    "q_evap_kw", "The extracted power at the heat pump evaporator", "kW"
+    "cop", "The operating Coefficient Of Performance", "N/A"
+    "mdot_cond_kg_per_s", "The mass flow rate at the condenser of the heat pump", "kg_per_s"
+    "t_cond_in_c", "The input temperature at the condenser of the heat pump (return pipe)", "Degree Celsius"
+    "t_cond_out_c", "The output temperature at the condenser of the heat pump (feed pipe)", "Degree Celsius"
+    "mdot_evap_kg_per_s", "The mass flow rate at the evaporator of the heat pump", "kg_per_s"
+    "t_evap_in_c", "The input temperature at the evaporator of the heat pump (feed pipe)", "Degree Celsius"
+    "t_evap_out_c", "The output temperature at the evaporator of the heat pump (return pipe)", "Degree Celsius"
+
+
+Mapping
+----------------
+The Heat Pump Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapping>`.
+
+- The heat pump can be used as responder for a FluidMix mapping, taking the output from another controller as its input
+
+- The following outputs are mapped:
+
+  - ``mdot_kg_per_s``
+  - ``t_cond_out_c``
+
+
+.. note::
+    If the heat pump is not mapped as a responder, it is considered to be connected to free air.
+    In this case, the input **t_evap_in_c** should be mapped from a timeseries of the ambient air temperature.
 
 Model
 =================
+
+.. autoclass:: pandaprosumer.controller.models.HeatPumpController
+    :members:
+
 
 The evaporator of the heat pump should get heat from a District Heating Network or from the ambient air.
 
@@ -170,15 +244,3 @@ which is usually water
     * Assume a constant :math:`\Delta T_\text{evap}`
 
     * Assume a constant :math:`\eta_\text{C}`
-
-Result Parameters
-=========================
-
-
-Tutorial
-=========================
-.. toctree::
-   :maxdepth: 2
-   :caption: Tutorial:
-
-   ../tutorials/heat_pump_model.ipynb
