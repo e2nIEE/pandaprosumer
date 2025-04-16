@@ -166,7 +166,7 @@ Data in the fuel map can also be modified if required. It should include at leat
 An instance of the ICE CHP is defined by its size, fuel type, and altitude. A CHP map is selected based on the size. 
 
 
-.. figure:: icechpmap.png
+.. figure:: ice_chp.png
     :width: 100em
     :alt: An example of reading data from an ICE CHP map.
     :align: center
