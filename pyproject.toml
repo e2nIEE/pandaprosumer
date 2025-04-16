@@ -46,7 +46,7 @@ dependencies = [
         "numba==0.59.1",
         "openpyxl==3.1.5",
         "sphinx-pyproject",
-        "coolprop==6.4.1
+        "coolprop==6.4.1"
 ]
 keywords = [
     "prosumer", "analysis", "controller", "automation", "grid", "energy", "engineering",
