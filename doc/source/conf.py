@@ -8,6 +8,7 @@
 
 import os
 import sys
+from sphinx_pyproject import SphinxConfig
 sys.path.insert(0, os.path.abspath('../../'))
 
 project = 'Pandaprosumer'
@@ -17,6 +18,7 @@ release = '0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+config = SphinxConfig("../../pyproject.toml")
 
 extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.autosummary',
