@@ -48,7 +48,6 @@ dependencies = [
         "sphinx-pyproject",
         "CoolProp==6.7.0",
         "pyomo==6.6.1",
-        "sphinxcontrib-bibtex>=2.5.0"
 ]
 keywords = [
     "prosumer", "analysis", "controller", "automation", "grid", "energy", "engineering",
