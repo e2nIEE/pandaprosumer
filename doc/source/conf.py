@@ -12,7 +12,7 @@ from sphinx_pyproject import SphinxConfig
 sys.path.insert(0, os.path.abspath('../../'))
 
 project = 'Pandaprosumer'
-copyright = '2024, Uni Kassel, European Institute for Energy Research'
+copyright = '2025, Uni Kassel, European Institute for Energy Research'
 author = 'Uni Kassel, European Institute for Energy Research'
 release = '0.1'
 
