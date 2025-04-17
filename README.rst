@@ -7,7 +7,7 @@ Getting started:
 - `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
 - `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/tree/master/tutorials>`_
 
-## Credits
+Credits
 
 Pandaprosumer was created at Uni Kassel and EIFER and has received support from the European Institute for Energy Research in the
 frame of the "Senergy Nets" project, funded by the European Union.
