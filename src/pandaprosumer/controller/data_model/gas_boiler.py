@@ -34,7 +34,7 @@ class GasBoilerControllerData:
         **mdot_gas_kg_per_s** - The gas mass flow rate through the boiler [kg/s]
     """
     element_index: List[int]
-    element_name: str = 'heat_pump'
+    element_name: str = 'gas_boiler'
     period_index: int = None
     input_columns: List[str] = field(
         default_factory=lambda: [])
