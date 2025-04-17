@@ -56,7 +56,7 @@ keywords = [
 ]
 
 [project.urls]
-Homepage = 
+Homepage = ""
 Documentation = "https://pandaprosumer.readthedocs.io"
 Source = "https://github.com/e2nIEE/pandaprosumer"
 Repository = "https://github.com/e2nIEE/pandaprosumer.git"
