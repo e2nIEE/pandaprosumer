@@ -7,8 +7,7 @@ name = "pandaprosumer"
 version = "0.1.0"  # File format version '__format_version__' is tracked in __init__.py
 authors=[
     { name = "Pratikshya Mohanty", email = "pratikshya.mohanty@iee.fraunhofer.de" },
-    { name = "Erik Prade", email = "erik.prade@iee.fraunhofer.de" },
-    
+    { name = "Erik Prade", email = "erik.prade@iee.fraunhofer.de" }
 ]
 description = "A prosumer simulation tool that complements pandapower and pandapipes in the simulation of multi energy systems"
 readme = "README.rst"
