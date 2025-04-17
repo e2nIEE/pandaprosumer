@@ -6,9 +6,6 @@ About pandaprosumer
 	:width: 200em
 	:align: left
 
-.. |br| raw:: html
-
-    <br />
 
 |br|
 |br|
