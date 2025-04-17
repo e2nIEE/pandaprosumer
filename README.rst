@@ -9,5 +9,5 @@ Getting started:
 
 Credits
 
-Pandaprosumer was created at Uni Kassel and EIFER and has received support from the European Institute for Energy Research in the
+Pandaprosumer was created at Uni Kassel and has received support from the European Institute for Energy Research in the
 frame of the "Senergy Nets" project, funded by the European Union.
