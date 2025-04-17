@@ -3,7 +3,7 @@ About pandaprosumer
 ##########################
 
 .. image:: doc/source/pics/prosumer.png
-	:width: 250em
+	:width: 200em
 	:align: left
 
 .. |br| raw:: html
