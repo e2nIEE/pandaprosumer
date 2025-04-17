@@ -41,7 +41,6 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                      'max_p_comp_kw': 100}
 
         shs_params = {"tank_height_m": 10.,
-
                       "tank_internal_radius_m": .564,
                       "tank_external_radius_m": .664,
                       "insulation_thickness_m": .1,
@@ -51,7 +50,8 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                       # "k_insu_w_per_mk": 0,
                       # "k_wall_w_per_mk": 0,
                       # "h_ext_w_per_m2k": 0,
-                      "t_ext_c": 20}
+                      "t_ext_c": 20,
+                      "max_dt_s": 10}
 
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
@@ -132,9 +132,6 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         assert not np.isnan(hp_res_df).any().any()
         assert not np.isnan(shs_res_df).any().any()
         assert not np.isnan(hd_res_df).any().any()
-        print(hp_res_df)
-        print(shs_res_df)
-        print(hd_res_df)
         assert_frame_equal(hp_res_df.sort_index(axis=1), hp_expected.sort_index(axis=1), check_dtype=False, atol=.01)
         assert_frame_equal(shs_res_df.sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01)
         assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, atol=.01)
@@ -183,7 +180,8 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                       # "k_insu_w_per_mk": 0,
                       # "k_wall_w_per_mk": 0,
                       # "h_ext_w_per_m2k": 0,
-                      "t_ext_c": 20}
+                      "t_ext_c": 20,
+                      "max_dt_s": 10}
 
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
@@ -269,9 +267,6 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         assert not np.isnan(hp_res_df).any().any()
         assert not np.isnan(shs_res_df).any().any()
         assert not np.isnan(hd_res_df).any().any()
-        print(hp_res_df)
-        print(shs_res_df)
-        print(hd_res_df)
         assert_frame_equal(hp_res_df.sort_index(axis=1), hp_expected.sort_index(axis=1), check_dtype=False, rtol=.2,atol=.01, check_names=False)
         assert_frame_equal(shs_res_df.sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01,check_names=False)
         assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, rtol=.001,atol=.01, check_names=False)
