@@ -3,8 +3,8 @@ About pandaprosumer
 ##########################
 
 .. image:: .doc/source/pics/prosumer.png
-		:width: 250em
-		:align: left
+	:width: 250em
+	:align: left
 
 .. |br| raw:: html
 
@@ -25,16 +25,18 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
 
 
 .. image:: .doc/source/pics/e2n.png
-		:width: 18em
-		:align: center
+	:target: https://www.uni-kassel.de/
+	:width: 18em
+	:align: center
 
 
 .. image:: .doc/source/pics/iee.png
-		:width: 18em
-		:align: left
+	:target: https://www.iee.fraunhofer.de/en.html
+	:width: 18em
+	:align: left
 
 |br|
 
 .. image:: .doc/source/pics/senergy.png
-		:width: 20em
-		:align: right
+	:width: 20em
+	:align: right
