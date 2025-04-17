@@ -21,13 +21,13 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
 
 .. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
 	:target: https://www.uni-kassel.de/
-	:width: 18em
+	:width: 200em
 	:align: center
 
 
 .. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/iee.png
 	:target: https://www.iee.fraunhofer.de/en.html
-	:width: 18em
+	:width: 200em
 	:align: left
 
 
@@ -35,6 +35,6 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
 
 
 .. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
-	:width: 20em
+	:width: 200em
 	:align: right
 
