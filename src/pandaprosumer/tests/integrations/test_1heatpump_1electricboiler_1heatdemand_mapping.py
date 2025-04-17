@@ -4,7 +4,8 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 
-from ..create_elements_controllers import *
+from pandaprosumer import *
+
 
 
 class Test1HeatPump1ElectricBoiler1HeatDemandMapping:
@@ -40,14 +41,17 @@ class Test1HeatPump1ElectricBoiler1HeatDemandMapping:
 
         elb_params = {'max_p_kw': 500}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
+        hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
+
+
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                             period, data_source, 0)
-        heat_pump_index = init_hp_element(prosumer, **hp_params)
-        hp_controller_index = init_hp_controller(prosumer, period, [heat_pump_index], 1)
-        electric_boiler_index = init_elb_element(prosumer, **elb_params)
-        elb_controller_index = init_elb_controller(prosumer, period, [electric_boiler_index], 2)
-        heat_demand_index = init_hd_element(prosumer)
-        hd_controller_index = init_hd_controller(prosumer, period, [heat_demand_index], 3)
+
+        hp_controller_index = create_controlled_heat_pump(prosumer,period=period,level=1,order = 0,**hp_params)
+
+        elb_controller_index = create_controlled_electric_boiler(prosumer,period=period,level = 1,order = 1,**elb_params)
+
+        hd_controller_index = create_controlled_heat_demand(prosumer,period=period,level=1, order=2,**hd_params)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

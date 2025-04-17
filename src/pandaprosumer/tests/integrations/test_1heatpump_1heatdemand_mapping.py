@@ -4,8 +4,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 
-from ..create_elements_controllers import *
-
+from pandaprosumer import *
 
 class Test1HeatPump1HeatDemandMapping:
     """
@@ -35,13 +34,13 @@ class Test1HeatPump1HeatDemandMapping:
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
+        hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
+
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                             period, data_source, level=0, order=0)
-        heat_pump_index = create_heat_pump(prosumer, **hp_params)
-        hp_controller_index = init_hp_controller(prosumer, period, [heat_pump_index], level=1, order=0)
-        heat_demand_index = create_heat_demand(prosumer)
-        hd_controller_index = init_hd_controller(prosumer, period, [heat_demand_index], level=1, order=1)
+        hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period=period,**hp_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, level = 1,order = 1,period = period, **hd_params)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

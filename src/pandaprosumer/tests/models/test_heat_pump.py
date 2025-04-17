@@ -1,24 +1,22 @@
-import numpy as np
+
 import pytest
 
-from pandaprosumer.create import create_empty_prosumer_container, create_heat_pump, create_period
-from pandaprosumer.controller import HeatPumpController, HeatPumpControllerData
-from pandaprosumer.run_time_series import run_timeseries
-from ..create_elements_controllers import *
+from pandaprosumer import *
 
+def _default_argument():
+    return {'max_p_comp_kw': 500,
+               'min_p_comp_kw': .01,
+               'max_t_cond_out_c': 100,
+               'max_cop': 10,
+               'pinch_c': 0
+               }
 
-def _create_heat_pump_controller(prosumer, **kwargs):
-    period = create_period(prosumer, 1,
-                           name="foo",
-                           start="2020-01-01 00:00:00",
-                           end="2020-01-01 00:00:09",
-                           timezone="utc")
-
-    heat_pump_index = init_hp_element(prosumer, **kwargs)
-    init_hp_controller(prosumer, period, [heat_pump_index])
-    hp_controller = prosumer.controller.iloc[0].object
-    return hp_controller
-
+def _default_period(prosumer):
+    return create_period(prosumer, 1,
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59",
+                               timezone="utc")
 
 class TestHeatPump:
     """
@@ -61,7 +59,7 @@ class TestHeatPump:
                   'max_cop': 5,
                   'evap_fluid': 'air'}
 
-        hp_idx = init_hp_element(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
+        hp_idx = create_heat_pump(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "heat_pump")
         assert len(prosumer.heat_pump) == 1
         assert hp_idx == 4
@@ -79,13 +77,9 @@ class TestHeatPump:
         Test the creation of a Heat Pump controller in a prosumer container
         """
         prosumer = create_empty_prosumer_container()
-        period = create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
-        heat_pump_index = init_hp_element(prosumer)
-        init_hp_controller(prosumer, period, [heat_pump_index])
+
+        create_controlled_heat_pump(prosumer,order = 0, period = _default_period(prosumer),**_default_argument())
+
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
@@ -95,15 +89,9 @@ class TestHeatPump:
         Test the input and result columns of a Heat Pump controller
         """
         prosumer = create_empty_prosumer_container()
-        period = create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
 
-        heat_pump_index = init_hp_element(prosumer)
-        init_hp_controller(prosumer, period, [heat_pump_index])
-        hp_controller = prosumer.controller.iloc[0].object
+        hp_controller_idx = create_controlled_heat_pump(prosumer,order = 0, period = _default_period(prosumer),**_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         input_columns_expected = ["t_evap_in_c"]
         result_columns_expected = ['q_cond_kw', 'p_comp_kw', 'q_evap_kw', 'cop',
@@ -117,39 +105,23 @@ class TestHeatPump:
         assert hp_controller.input_mass_flow_with_temp == {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                            FluidMixMapping.MASS_FLOW_KEY: np.nan}
 
-    def test_controller_columns(self):
-        """
-        Test to change the input and result columns of a Heat Pump controller
-        """
-        prosumer = create_empty_prosumer_container()
-        period = create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
 
-        heat_pump_index = init_hp_element(prosumer)
-        init_hp_controller(prosumer,
-                           period,
-                           [heat_pump_index],
-                           input_columns=['t_evap_in_c', 'mdot_kg_per_s'],
-                           result_columns=['p_comp_kw', 'q_evap_kw', 'm_kg_per_s', 'cop', 't_cond_out_c', 't_cond_in_c'])
-        hp_controller = prosumer.controller.iloc[0].object
 
-        input_columns_expected = ['t_evap_in_c', 'mdot_kg_per_s']
-        result_columns_expected = ['p_comp_kw', 'q_evap_kw', 'm_kg_per_s', 'cop', 't_cond_out_c', 't_cond_in_c']
 
-        assert hp_controller.input_columns == input_columns_expected
-        assert hp_controller.result_columns == result_columns_expected
+
 
     def test_controller_get_input(self):
         """
         Test the method to get the input values of a Heat Pump controller
+
         """
         prosumer = create_empty_prosumer_container()
         hp_params = {'carnot_efficiency': .5,
                      't_evap_in_c': 1.5}
-        hp_controller = _create_heat_pump_controller(prosumer, **hp_params)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **hp_params)
+
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         assert np.isnan(hp_controller._get_input('t_evap_in_c'))
         assert hp_controller._get_input('t_evap_in_c', prosumer) == pytest.approx(1.5)
@@ -167,8 +139,9 @@ class TestHeatPump:
         """
         prosumer = create_empty_prosumer_container()
         hp_params = {'carnot_efficiency': .5}
-        hp_controller = _create_heat_pump_controller(prosumer, **hp_params)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **hp_params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         assert hp_controller._get_element_param(prosumer, 'carnot_efficiency') == pytest.approx(.5)
         assert hp_controller._get_element_param(prosumer, 'evap_fluid') == 'water'
@@ -178,11 +151,12 @@ class TestHeatPump:
     def test_controller_run_control_no_demand(self):
         """
         Test the Heat Pump controller without any demand
-        Expect the Heat Pump to be off (no heat exchange at evaporator and condenser 
+        Expect the Heat Pump to be off (no heat exchange at evaporator and condenser
         and no electricity consumption)
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),**_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         hp_controller.inputs = np.array([[20]])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
@@ -198,7 +172,9 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         hp_controller.inputs = np.array([[20]])
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [2])
@@ -216,8 +192,9 @@ class TestHeatPump:
         Check the mass flow and temperature of the fluid dispatched to the 2 demands
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [1.5, .5])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
@@ -243,8 +220,9 @@ class TestHeatPump:
                   'max_t_cond_out_c': 100,
                   'max_cop': 10}
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer, **params)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [10])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
@@ -268,8 +246,9 @@ class TestHeatPump:
                   'max_t_cond_out_c': 100,
                   'max_cop': 10}
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer, **params)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [5, 4, 1.5])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
@@ -290,7 +269,11 @@ class TestHeatPump:
         return temperature and mass flow with no demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer, delta_t_hot_default_c=45)
+
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),delta_t_hot_default_c=45,
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+
         t_evap_in_needed_c, t_evap_out_needed_c, mdot_evap_kg_per_s = hp_controller.t_m_to_receive(prosumer)
         # Fixme: t_evap_out_needed_c should be 35 ?
         assert (t_evap_in_needed_c, t_evap_out_needed_c, mdot_evap_kg_per_s) == (0, 0, 0)
@@ -301,7 +284,10 @@ class TestHeatPump:
         return temperature and mass flow with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer, delta_t_hot_default_c=45)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        delta_t_hot_default_c=45,
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [1.5, .5])
         t_evap_in_required_c, t_evap_out_required_c, mdot_evap_kg_per_s = hp_controller.t_m_to_receive(prosumer)
         assert (t_evap_in_required_c, t_evap_out_required_c, mdot_evap_kg_per_s) == (35, 35-15, pytest.approx(4.9707))
@@ -312,7 +298,9 @@ class TestHeatPump:
         return temperature and mass flow with no demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         t_evap_in_needed_c, t_evap_out_needed_c, mdot_evap_kg_per_s = hp_controller.t_m_to_receive_for_t(prosumer, 35)
         # Fixme: t_evap_out_needed_c should be 35 ?
         assert (t_evap_in_needed_c, t_evap_out_needed_c, mdot_evap_kg_per_s) == (0, 0, 0)
@@ -323,7 +311,11 @@ class TestHeatPump:
         return temperature and mass flow with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
+
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+
         hp_controller.t_m_to_deliver = lambda x: (80, 30, [1.5, .5])
         t_evap_in_required_c, t_evap_out_required_c, mdot_evap_kg_per_s = hp_controller.t_m_to_receive_for_t(prosumer, 35)
         assert (t_evap_in_required_c, t_evap_out_required_c, mdot_evap_kg_per_s) == (35, 35-15, pytest.approx(4.9707))
@@ -333,7 +325,9 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         hp_controller.inputs = np.array([[20]])
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
@@ -352,8 +346,9 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 4.39167745 + .5
@@ -371,8 +366,9 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand
         """
         prosumer = create_empty_prosumer_container()
-        hp_controller = _create_heat_pump_controller(prosumer)
-
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 4.39167745 - .5

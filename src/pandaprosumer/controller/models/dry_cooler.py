@@ -4,7 +4,7 @@ Module containing the DryCoolerController class.
 
 import logging
 import numpy as np
-from scipy.optimize import fsolve
+from scipy import optimize
 from math import log
 
 import pandapipes
@@ -49,7 +49,7 @@ def _solve_t_bc_c(t_wb_c, phi_air_out_percent):
 
     # Use fsolve to find the root of the equation, starting with an initial guess
     t_bc_c_initial_guess = np.array([t_wb_c])
-    t_bc_c_solution = fsolve(equation, t_bc_c_initial_guess)
+    t_bc_c_solution = optimize.fsolve(equation, t_bc_c_initial_guess)
 
     return t_bc_c_solution[0]  # fsolve returns an array, so return the first element
 
@@ -85,8 +85,14 @@ def solve_dichotomy(f, x_min, x_max):
     :return: The found value of x after convergence
     """
     x_mean = (x_max + x_min) / 2
+    nb_runs = 0
     while (abs(f(x_mean)) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD
            and abs(x_max - x_min) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD):
+        nb_runs += 1
+        if nb_runs > 300:
+            logger.warning(f"Dichotomy did not converge after {nb_runs} runs."
+                           f"Reached xmin={x_min}, xmax={x_max}. Continuing with x_mean={x_mean}")
+            break
         x_mean = (x_max + x_min) / 2
         if f(x_mean) < 0:
             x_min = x_mean
@@ -113,25 +119,25 @@ def calculate_hot_temperature_difference(a, delta_t_cold):
         # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0
         x_min = (1 - a) / a
         x_max = 3 * x_min
-
     x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max)
+    # x_mean = optimize.newton(dichotomy_fun, (x_min + x_max) / 2)
     delta_t_hot = (1 + x_mean) * delta_t_cold
     return delta_t_hot
 
 
-def compute_temp(q_ratio, q_u_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
-                 delta_t_hot_nom, delta_t_cold_nom, cp_air_j_per_kgk):
+def compute_temp(q_ratio, q_exchanged_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
+                 delta_t_hot_nom_c, delta_t_cold_nom_c, cp_air_j_per_kgk):
     """
     Calculate the return temperature and the mass flow rate of the air
 
     :param q_ratio: The ratio of the exchanged heat and the nominal exchanged heat
-    :param q_u_w: The heat to be exchanged
+    :param q_exchanged_w: The heat to be exchanged
     :param t_air_in_c: The air (cold) input temperature
     :param t_fluid_in_c: The fluid (hot) input temperature
     :param t_fluid_out_c: The fluid (cold) output temperature
-    :param delta_t_hot_nom: The temperature difference between the nominal
+    :param delta_t_hot_nom_c: The temperature difference between the nominal
         primary hot and secondary hot (out) temperature
-    :param delta_t_cold_nom: The temperature difference between the nominal
+    :param delta_t_cold_nom_c: The temperature difference between the nominal
         primary cold and secondary cold (out) temperature
     :param cp_air_j_per_kgk: The heat capacity of the air
 
@@ -143,29 +149,32 @@ def compute_temp(q_ratio, q_u_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
     else:
         delta_t_cold = t_fluid_out_c - t_air_in_c
         # Logarithmic mean temperature difference (LMTD) at nominal conditions
-        lmtd_nom = (delta_t_hot_nom - delta_t_cold_nom) / np.log(delta_t_hot_nom / delta_t_cold_nom)
+        if delta_t_hot_nom_c == delta_t_cold_nom_c:
+            lmtd_nom = delta_t_hot_nom_c
+        else:
+            lmtd_nom = (delta_t_hot_nom_c - delta_t_cold_nom_c) / np.log(delta_t_hot_nom_c / delta_t_cold_nom_c)
         a_cold = delta_t_cold / (q_ratio * lmtd_nom)
         if a_cold > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
             logger.warning("Heat Exchanger state too far from nominal conditions. "
                            f"The temperature difference between the primary (t_in_1_c={t_air_in_c}°C) and "
                            f"secondary side (t_out_2_c={t_fluid_out_c}°C) may be too high or the transferred heat "
-                           "q_u_w={q_u_w}W too small compared to the nominal conditions")
+                           "q_exchanged_w={q_exchanged_w}W too small compared to the nominal conditions")
             t_air_out_c = t_air_in_c
         else:
             delta_t_hot = calculate_hot_temperature_difference(a_cold, delta_t_cold)
             t_air_out_c = t_fluid_in_c - delta_t_hot
 
-    # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_u
-    # mdot_air_kg_per_s = q_u_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
+    # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_exchanged
+    # mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
     if t_air_out_c - t_air_in_c == 0:
         mdot_air_kg_per_s = 0
     else:
-        mdot_air_kg_per_s = q_u_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
+        mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
     # elif a_cold == 0:  # Note: Can go there with 'a_cold' not defined if T_in_1 is nan
     #     mdot_air_kg_per_s = HeatExchangerControl.MIN_PRIMARY_MASS_FLOW_KG_PER_S  # 0.2 m3/h  FixMe: Why ?
     # else:
-    #     # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_u
-    #     mdot_air_kg_per_s = q_u_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
+    #     # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_exchanged
+    #     mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
     # if t_air_out_c < t_air_in_c:
     #     # The fluid on the primary side should not cool down
     #     t_air_out_c = t_air_in_c
@@ -219,8 +228,12 @@ class DryCoolerController(BasicProsumerController):
         mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s')
 
         if not np.isnan(self.t_previous_out_c):
+            assert self.mdot_previous_in_kg_per_s >= 0
+            assert self.t_previous_in_c >= self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
+            assert mdot_required_kg_per_s >= 0
+            assert t_feed_required_c >= t_return_required_c
             return t_feed_required_c, t_return_required_c, mdot_required_kg_per_s
 
     def _calculate_air_cooled_heat_exchanger(self, prosumer, t_fluid_in_c, t_fluid_out_c, mdot_fluid_kg_per_s, t_air_in_c):
@@ -245,18 +258,25 @@ class DryCoolerController(BasicProsumerController):
         delta_t_fluid_c = t_fluid_in_c - t_fluid_out_c
         cp_fluid_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_fluid_in_c + t_fluid_out_c) / 2)
         cp_air_j_per_kgk = self.cooling_fluid.get_heat_capacity(CELSIUS_TO_K + t_air_in_c)
-        q_u_w = cp_fluid_j_per_kgk * mdot_fluid_kg_per_s * delta_t_fluid_c
+        q_exchanged_w = cp_fluid_j_per_kgk * mdot_fluid_kg_per_s * delta_t_fluid_c
+
+        if abs(q_exchanged_w) < 1e-6:
+            mdot_air_kg_per_s = 0.
+            return mdot_air_kg_per_s, t_air_in_c, t_air_in_c, mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c
 
         delta_t_air_n = t_hot_air_nom_c - t_cold_air_nom_c
         cp_air_nom_j_per_kg_k = self.cooling_fluid.get_heat_capacity(CELSIUS_TO_K + (t_hot_air_nom_c + t_cold_air_nom_c) / 2)
-        q_u_nom_w = cp_air_nom_j_per_kg_k * mdot_air_nom_kg_per_s * delta_t_air_n
-        q_ratio = q_u_w / q_u_nom_w
+        q_exchanged_nom_w = cp_air_nom_j_per_kg_k * mdot_air_nom_kg_per_s * delta_t_air_n
+        q_ratio = q_exchanged_w / q_exchanged_nom_w
 
         delta_t_hot_nom_c = t_hot_fluid_nom_c - t_hot_air_nom_c
         delta_t_cold_nom_c = t_cold_fluid_nom_c - t_cold_air_nom_c
 
         delta_t_cold_c = t_fluid_out_c - t_air_in_c
-        lmtd_nom = (delta_t_hot_nom_c - delta_t_cold_nom_c) / np.log(delta_t_hot_nom_c / delta_t_cold_nom_c)
+        if delta_t_hot_nom_c == delta_t_cold_nom_c:
+            lmtd_nom = delta_t_hot_nom_c
+        else:
+            lmtd_nom = (delta_t_hot_nom_c - delta_t_cold_nom_c) / np.log(delta_t_hot_nom_c / delta_t_cold_nom_c)
         a_cold = delta_t_cold_c / (q_ratio * lmtd_nom)
 
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
@@ -265,19 +285,19 @@ class DryCoolerController(BasicProsumerController):
         min_a = np.log(1 + max_x) / max_x
 
         if min_delta_t_air_c and a_cold < min_a:
-            # If 'a' is too low, q_u_w is too big so reduce mdot_fluid_kg_per_s
+            # If 'a' is too low, q_exchanged_w is too big so reduce mdot_fluid_kg_per_s
             # else t_air_out_c would be colder than t_air_in_c
             a_cold = min_a
             q_ratio = delta_t_cold_c / (min_a * lmtd_nom)
-            q_u_w = q_ratio * q_u_nom_w
+            q_exchanged_w = q_ratio * q_exchanged_nom_w
             # FixMe: Change the mass flow rate at inlet ! (max mdot dependent on temp level) (could also change temp?)
-            mdot_fluid_kg_per_s = q_u_w / (cp_fluid_j_per_kgk * delta_t_fluid_c)
+            mdot_fluid_kg_per_s = q_exchanged_w / (cp_fluid_j_per_kgk * delta_t_fluid_c)
             # delta_t_cold_c = _calculate_cold_temperature_difference(a, delta_t_hot)
             t_air_out_c = min_t_air_out_c
             t_mean_air_k = CELSIUS_TO_K + (t_air_in_c + t_air_out_c) / 2
-            mdot_air_kg_per_s = q_u_w / (self.cooling_fluid.get_heat_capacity(t_mean_air_k) * (t_air_out_c - t_air_in_c))
+            mdot_air_kg_per_s = q_exchanged_w / (self.cooling_fluid.get_heat_capacity(t_mean_air_k) * (t_air_out_c - t_air_in_c))
         else:
-            t_air_out_c, mdot_air_kg_per_s = compute_temp(q_ratio, q_u_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
+            t_air_out_c, mdot_air_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
                                                           delta_t_hot_nom_c, delta_t_cold_nom_c, cp_air_j_per_kgk)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
@@ -384,7 +404,7 @@ class DryCoolerController(BasicProsumerController):
         assert t_fluid_out_c <= t_fluid_in_c, f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
         # ToDo: Add a condition to check whether the mass flows are equal
-        if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+        if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
             # If the actual output temperature is the same as the promised one, the controller is correctly applied
             self.finalize(prosumer, result)
             self.applied = True

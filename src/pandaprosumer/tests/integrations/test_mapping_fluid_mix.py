@@ -3,7 +3,8 @@ import pytest
 from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.tests.integrations.base_controller import BaseControllerData
 
-from ..create_elements_controllers import *
+from pandaprosumer import *
+from pandaprosumer.tests.data_sources.define_period import define_and_get_period_and_data_source
 
 
 def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, **kwargs):

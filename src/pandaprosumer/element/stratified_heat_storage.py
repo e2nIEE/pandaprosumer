@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 from numpy import dtype
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
@@ -37,6 +37,9 @@ class StratifiedHeatStorageElementData:
         ('k_wall_w_per_mk', 'f8'),
         ('h_ext_w_per_m2k', 'f8'),
         ('t_ext_c', 'f8'),
+        ('max_remaining_capacity_kwh', 'f8'),
+        ('t_discharge_out_tol_c', 'f8'),
+        ('max_dt_s', 'f8'),
         ('height_charge_in_m', 'f8'),
         ('height_charge_out_m', 'f8'),
         ('height_discharge_out_m', 'f8'),

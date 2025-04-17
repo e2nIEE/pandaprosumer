@@ -16,8 +16,6 @@ class HeatPumpController(BasicProsumerController):
     """
     Controller for heat pumps.
 
-    # ToDo: Add power ramp up/down constrain
-
     :param prosumer: The prosumer object
     :param heat_pump_object: The heat pump object
     :param order: The order of the controller
@@ -43,6 +41,7 @@ class HeatPumpController(BasicProsumerController):
         self.cond_fluid = call_lib(cond_fluid) if cond_fluid else prosumer.fluid
         self.evap_fluid = call_lib(evap_fluid) if evap_fluid else prosumer.fluid
         # FixMe: Does it works when evap fluid is a gas (e.g. air) ?
+        # ToDo: Add power ramp up/down constrain
         self.t_previous_evap_out_c = np.nan
         self.t_previous_evap_in_c = np.nan
         self.mdot_previous_evap_kg_per_s = np.nan
@@ -77,7 +76,7 @@ class HeatPumpController(BasicProsumerController):
 
     def t_m_to_receive_for_t(self, prosumer, t_feed_c):
         """
-        For a given feed temperature in °C, calculate the required feed mass flow and the expected return temperature 
+        For a given feed temperature in °C, calculate the required feed mass flow and the expected return temperature
         if this feed temperature is provided.
 
         :param prosumer: The prosumer object
@@ -103,7 +102,6 @@ class HeatPumpController(BasicProsumerController):
                                                                                     pinch_c)
         if not np.isnan(self.t_previous_evap_out_c):
             return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
-
         return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
 
     def _calculate_heat_pump(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c):

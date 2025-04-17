@@ -5,11 +5,29 @@ Module containing the ElectricBoilerController class.
 import numpy as np
 from math import log
 import pandas as pd
+from numba import njit
 
 from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
+
+
+def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, efficiency_percent, max_p_kw):
+    # 1. Calculate power of condenser
+    q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
+
+    p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
+
+    # 8. Check parameters
+    if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
+        # If the consumed electrical power is too high, recalculate the output temperature
+        p_el_consumed_kw = max_p_kw
+        q_fluid_kw = max_p_kw * (efficiency_percent / 100)
+        # FixMe: Should update the output temperature or the mass flow rate ?
+        t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+
+    return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
 
 class ElectricBoilerController(BasicProsumerController):
@@ -49,20 +67,19 @@ class ElectricBoilerController(BasicProsumerController):
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
+        max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
 
-        # 1. Calculate power of condenser
+
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
         p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
 
-        # 8. Check parameters
-        max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-        if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:
-            # If the consumed electrical power is too high, recalculate the output temperature
-            p_el_consumed_kw = max_p_kw
-            q_fluid_kw = max_p_kw * (efficiency_percent / 100)
-            # FixMe: Should update the output temperature or the mass flow rate ?
-            t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+        q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw = _calculate_electric_boiler_temp(mdot_kg_per_s,
+                                                                                                       t_out_c,
+                                                                                                       t_in_c,
+                                                                                                       cp_fluid_kj_per_kgk,
+                                                                                                       efficiency_percent,
+                                                                                                       max_p_kw)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
@@ -83,7 +100,11 @@ class ElectricBoilerController(BasicProsumerController):
         assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
+            if nb_runs > 20:
+                raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
             q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
                                                                                                    mdot_required_kg_per_s,
                                                                                                    t_out_required_c,
@@ -92,7 +113,6 @@ class ElectricBoilerController(BasicProsumerController):
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_delivered_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
-
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
                 # If the electric boiler is not able to deliver the required mass flow,

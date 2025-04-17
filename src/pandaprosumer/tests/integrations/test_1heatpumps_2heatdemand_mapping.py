@@ -4,8 +4,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping
 
-from ..create_elements_controllers import *
-
+from pandaprosumer import *
 
 class Test1HeatPump2HeatDemandsMapping:
     """
@@ -40,14 +39,16 @@ class Test1HeatPump2HeatDemandsMapping:
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, 0)
-        heat_pump_index = init_hp_element(prosumer, **hp_params)
-        hp_controller_index = init_hp_controller(prosumer, period, [heat_pump_index], 1)
-        heat_demand_index_1 = init_hd_element(prosumer)
-        hd_controller_index_1 = init_hd_controller(prosumer, period, [heat_demand_index_1], 2)
-        heat_demand_index_2 = init_hd_element(prosumer)
-        hd_controller_index_2 = init_hd_controller(prosumer, period, [heat_demand_index_2], 3)
+        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
+                                                              period, data_source, 0, 0)
+        hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
+
+        hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
+        hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
+
+
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -166,14 +167,15 @@ class Test1HeatPump2HeatDemandsMapping:
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, 0)
-        heat_pump_index = init_hp_element(prosumer, **hp_params)
-        hp_controller_index = init_hp_controller(prosumer, period, [heat_pump_index], 1)
-        heat_demand_index_1 = init_hd_element(prosumer)
-        hd_controller_index_1 = init_hd_controller(prosumer, period, [heat_demand_index_1], 2)
-        heat_demand_index_2 = init_hd_element(prosumer)
-        hd_controller_index_2 = init_hd_controller(prosumer, period, [heat_demand_index_2], 3)
+        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
+                                                              period, data_source, 0, 0)
+        hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
+
+        hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
+        hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
+
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

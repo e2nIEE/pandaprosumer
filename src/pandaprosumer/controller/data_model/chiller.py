@@ -2,22 +2,18 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import List, Callable
 
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
 @dataclass
-class SenergyNetsChillerControllerData:
+class ChillerControllerData:
     """Define format of I/O of a chiller in SenergyNets"""
-
 
     element_index: List[int]
     period_index: int = None
     element_name: str = 'sn_chiller'
     input_columns: List[str] = field(default_factory=lambda: ["t_set_pt_c", "t_in_ev_c", "t_in_cond_c", "dt_cond_c", "q_load_kw", "n_is", "q_max_kw", "ctrl"])
-
-
-    # Get written into prosumer.time_series after simulation
 
     result_columns: List[str] = field(
         default_factory=lambda: [
@@ -33,3 +29,4 @@ class SenergyNetsChillerControllerData:
             "q_cond_kw",
         ]
     )
+

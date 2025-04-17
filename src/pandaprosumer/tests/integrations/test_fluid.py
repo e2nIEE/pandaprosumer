@@ -1,8 +1,7 @@
 import pytest
-import pandapipes
+from pandaprosumer.tests.data_sources.define_period import define_and_get_period_and_data_source
+from pandaprosumer import *
 
-from ..data_sources import FROM_CLAUDIA
-from ..create_elements_controllers import *
 
 
 class TestFluid:

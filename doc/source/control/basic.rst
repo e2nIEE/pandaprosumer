@@ -1,4 +1,4 @@
-﻿cd... _mapped_controller:
+﻿.. _mapped_controller:
 
 =====================
 Mapped Controller

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from pandapower.timeseries.data_sources.frame_data import DFData
 
+from pandaprosumer import create_controlled_const_profile
 from pandaprosumer.controller import ConstProfileController
 from pandaprosumer.controller.data_model.const_profile import ConstProfileControllerData
 from pandaprosumer.create import create_empty_prosumer_container, create_period
@@ -40,16 +41,7 @@ def _init_const_profile_controller():
     result_columns = ["Tin_cond", "Tout_cond", "Mass-flow-cond", "Tin,evap"]
     prosumer = create_empty_prosumer_container()
     period, data_source = _define_and_get_period_and_data_source(prosumer)
-    const_controller_data = ConstProfileControllerData(
-        input_columns=input_columns,
-        result_columns=result_columns,
-        period_index=period,
-    )
-    ConstProfileController(prosumer,
-                           const_object=const_controller_data,
-                           df_data=data_source,
-                           order=0,
-                           level=0)
+    create_controlled_const_profile(prosumer,input_columns,result_columns,period,data_source)
     return prosumer
 
 

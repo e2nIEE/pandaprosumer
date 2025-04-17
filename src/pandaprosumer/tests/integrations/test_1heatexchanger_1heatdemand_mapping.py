@@ -1,10 +1,8 @@
 import pytest
+from pandaprosumer import *
 from pandas.testing import assert_frame_equal, assert_series_equal
-
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping
-
-from ..create_elements_controllers import *
 
 
 class Test1HeatExchanger1HeatDemandMapping:
@@ -40,12 +38,12 @@ class Test1HeatExchanger1HeatDemandMapping:
                      't_2_out_nom_c': 63,
                      'mdot_2_nom_kg_per_s': 2}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, 0)
-        hx_index = init_hx_element(prosumer, **hx_params)
-        heat_demand_index = init_hd_element(prosumer)
-        hx_controller_index = init_hx_controller(prosumer, period, [hx_index], 1)
-        hd_controller_index = init_hd_controller(prosumer, period, [heat_demand_index], 2)
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
+                                                              period, data_source, 0)
+
+        hx_controller_index = create_controlled_heat_exchanger(prosumer, level=1, order=0, period=period,  **hx_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1, t_in_set_c=76.85, t_out_set_c=30,
+                                                            period=period)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

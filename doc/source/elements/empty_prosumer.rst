@@ -13,16 +13,3 @@ Period
 ====================
 
 .. autofunction:: pandaprosumer.create_period
-
-
-Input Parameters
-=========================
-
-
-Model
-=================
-
-
-
-Result Parameters
-=========================

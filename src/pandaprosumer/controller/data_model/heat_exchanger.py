@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
@@ -20,7 +20,7 @@ class HeatExchangerControllerData:
     input_columns : List[str]
         List of input column names.
 
-        **t_feedin_c** - The feed temperature from the heating network [°C]
+        **t_feed_in_c** - The feed temperature from the heating network [°C]
 
     result_columns : List[str]
         List of result column names.

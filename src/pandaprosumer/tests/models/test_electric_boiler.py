@@ -1,25 +1,15 @@
-import numpy as np
 import pytest
+from pandaprosumer import *
 
-from pandaprosumer.create import create_empty_prosumer_container, create_electric_boiler, create_period
-from pandaprosumer.controller import ElectricBoilerController, ElectricBoilerControllerData
-from pandaprosumer.run_time_series import run_timeseries
-from ..create_elements_controllers import *
+def _default_argument():
+    return {'max_p_kw': 100}
 
-
-def _create_electric_boiler_controller(prosumer, **kwargs):
-    period = create_period(prosumer, 1,
-                           name="foo",
-                           start="2020-01-01 00:00:00",
-                           end="2020-01-01 11:59:59",
-                           timezone="utc")
-
-    electric_boiler_index = init_elb_element(prosumer, **kwargs)
-    init_elb_controller(prosumer, period, [electric_boiler_index])
-    elb_controller = prosumer.controller.iloc[0].object
-    return elb_controller
-
-
+def _default_period(prosumer):
+    return create_period(prosumer, 1,
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59",
+                               timezone="utc")
 class TestElectricBoiler:
     """
     Tests the functionalities of a Electric Boiler element and controller
@@ -32,7 +22,7 @@ class TestElectricBoiler:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        init_elb_element(prosumer)
+        create_electric_boiler(prosumer,**_default_argument())
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
         expected_columns = ["name", "max_p_kw", "efficiency_percent", "in_service"]
@@ -52,7 +42,7 @@ class TestElectricBoiler:
         params = {'max_p_kw': 250,
                   'efficiency_percent': 75}
 
-        elb_idx = init_elb_element(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
+        elb_idx = create_electric_boiler(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
         assert elb_idx == 4
@@ -68,7 +58,10 @@ class TestElectricBoiler:
         Test the creation of a Electric Boiler controller in a prosumer container
         """
         prosumer = create_empty_prosumer_container()
-        _create_electric_boiler_controller(prosumer)
+        create_controlled_electric_boiler(prosumer,
+                                          order = 0,
+                                          period = _default_period(prosumer),
+                                          **_default_argument())
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
@@ -77,8 +70,13 @@ class TestElectricBoiler:
         """
         Test the input and result columns of the Electric Boiler controller"""
         prosumer = create_empty_prosumer_container()
-        elb_controller = _create_electric_boiler_controller(prosumer)
+        elb_controller_idx = create_controlled_electric_boiler(prosumer,
 
+                                                               order=0,
+                                                                period= _default_period(prosumer),
+                                                               **_default_argument())
+        print(elb_controller_idx)
+        elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         input_columns_expected = []
         result_columns_expected = ['q_kw', 'mdot_kg_per_s', 't_in_c', 't_out_c', 'p_kw']
 
@@ -91,8 +89,11 @@ class TestElectricBoiler:
         Expected results no heat to be delivered.
         """
         prosumer = create_empty_prosumer_container()
-        elb_controller = _create_electric_boiler_controller(prosumer)
-
+        elb_controller_idx = create_controlled_electric_boiler(prosumer,
+                                                               order = 0,
+                                                               period=_default_period(prosumer),
+                                                               **_default_argument())
+        elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         elb_controller.t_m_to_deliver = lambda x: (0, 0, [0])
 
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
@@ -106,10 +107,13 @@ class TestElectricBoiler:
         Test the Electric Boiler run control method with a demand.
         Expect the demand to be delivered.
         """
-        params = {'max_p_kw': 500}
+        params = {'max_p_kw': 500,
+                  'order' :0}
         prosumer = create_empty_prosumer_container()
-        elb_controller = _create_electric_boiler_controller(prosumer, **params)
-
+        elb_controller_idx = create_controlled_electric_boiler(prosumer,
+                                                               period=_default_period(prosumer),
+                                                               **params)
+        elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         elb_controller.t_m_to_deliver = lambda x: (80, 20, [1.5])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
@@ -125,10 +129,13 @@ class TestElectricBoiler:
         Expect the demand to be delivered with the maximum power.
         """
         params = {'max_p_kw': 500,
-                  'efficiency_percent': 50}
+                  'efficiency_percent': 50,
+                  'order': 0}
         prosumer = create_empty_prosumer_container()
-        elb_controller = _create_electric_boiler_controller(prosumer, **params)
-
+        elb_controller_idx = create_controlled_electric_boiler(prosumer,
+                                                               period=_default_period(prosumer),
+                                                               **params)
+        elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         elb_controller.t_m_to_deliver = lambda x: (80, 20, [4])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
@@ -146,10 +153,12 @@ class TestElectricBoiler:
         Dispatch according to the merit order.
         """
         params = {'max_p_kw': 500,
-                  'efficiency_percent': 50}
+                  'efficiency_percent': 50,
+                  'order': 0}
         prosumer = create_empty_prosumer_container()
-        elb_controller = _create_electric_boiler_controller(prosumer, **params)
-
+        elb_controller_idx = create_controlled_electric_boiler(prosumer, period=_default_period(prosumer),
+                                                               **params)
+        elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         elb_controller.t_m_to_deliver = lambda x: (80, 20, [3, 2, 4])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)

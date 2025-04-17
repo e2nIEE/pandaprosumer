@@ -131,7 +131,6 @@ class HeatDemandEnergySystemController(BasicProsumerController):
         :param prosumer: The prosumer object
         """
         super().control_step(prosumer)
-        print("HeatDemandEnergySystemController control_step")
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)

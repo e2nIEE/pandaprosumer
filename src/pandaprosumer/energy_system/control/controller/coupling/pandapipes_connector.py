@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
 
 from pandaprosumer.controller.base import BasicProsumerController
 
@@ -34,27 +35,38 @@ class PandapipesConnectorController(BasicProsumerController):
         """
         super().__init__(container, pandapipes_feed_connector_object, order=order, level=level,
                          in_service=in_service, index=index, **kwargs)
+        self.t_previous_return_out_c = np.nan
+        self.t_previous_feed_in_c = np.nan
+        self.mdot_previous_feed_kg_per_s = np.nan
+
 
     @property
     def _t_received_in_c(self):
-        if not np.isnan(self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]):
-            return self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
-        else:
-            return np.nan
+        return self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
 
     @property
     def _mdot_received_kg_per_s(self):
-        if not np.isnan(self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]):
-            return self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
-        else:
-            return np.nan
+        return self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
 
     def _t_m_to_receive_init(self, prosumer):
+        """
+        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s
+
+        :param prosumer: The prosumer object
+        :return: A Tuple (Feed temperature, return temperature and mass flow)
+        """
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         assert not np.isnan(t_in_required_c)
-        assert not np.isnan(mdot_tab_required_kg_per_s)
+        assert not np.isnan(mdot_tab_required_kg_per_s).any()
         assert not np.isnan(t_out_required_c)
-        return t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s
+        mdot_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
+
+        if not np.isnan(self.t_previous_return_out_c):
+            assert self.mdot_previous_feed_kg_per_s >= 0
+            assert self.t_previous_feed_in_c >= self.t_previous_return_out_c
+            return self.t_previous_feed_in_c, self.t_previous_return_out_c, self.mdot_previous_feed_kg_per_s
+
+        return t_out_required_c, t_in_required_c, mdot_required_kg_per_s
 
     def control_step(self, prosumer):
         """
@@ -65,11 +77,18 @@ class PandapipesConnectorController(BasicProsumerController):
         super().control_step(prosumer)
 
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+
         mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
+
         mdot_delivered_kg_per_s = mdot_required_kg_per_s
+
+        #FixMe : if self._mdot_received_kg_per_s is nan then mdot_bypass_kg_per_s/ t_return_out_c are not defined
+        mdot_bypass_kg_per_s = 0
+        t_return_out_c = t_in_required_c
 
         rerun = True
         while rerun:
+
             if not np.isnan(self._mdot_received_kg_per_s):
                 # If the inlet is fed with a fixed mass flow (not free air)
                 if mdot_delivered_kg_per_s >= self._mdot_received_kg_per_s:
@@ -121,6 +140,25 @@ class PandapipesConnectorController(BasicProsumerController):
         result = np.array([[mdot_delivered_kg_per_s, mdot_bypass_kg_per_s,
                             self._t_received_in_c, t_return_out_c, t_in_required_c]])
 
-        self.finalize(prosumer, result, result_fluid_mix)
+        if abs(self.t_keep_return_c - t_return_out_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
+            self.applied = False
+            self.t_previous_return_out_c = t_return_out_c
+            self.t_previous_feed_in_c = self._t_received_in_c
+            self.mdot_previous_feed_kg_per_s = mdot_delivered_kg_per_s + mdot_bypass_kg_per_s
+            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
 
-        self.applied = True
+        else:
+            self.t_previous_return_out_c = t_return_out_c
+            self.t_previous_feed_in_c = self._t_received_in_c
+            self.mdot_previous_feed_kg_per_s = mdot_delivered_kg_per_s + mdot_bypass_kg_per_s
+            self.finalize(prosumer, result, result_fluid_mix)
+            self.applied = True
+            # self.t_previous_evap_out_c = np.nan
+            # self.t_previous_evap_in_c = np.nan
+            # self.mdot_previous_evap_kg_per_s = np.nan
+
+        # self.t_previous_evap_out_c = t_return_out_c
+        # self.t_previous_evap_in_c = self._t_received_in_c
+        # self.mdot_previous_evap_kg_per_s = mdot_delivered_kg_per_s + mdot_bypass_kg_per_s
+        # assert self.t_previous_evap_in_c >= self.t_previous_evap_out_c

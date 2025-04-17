@@ -4,7 +4,7 @@ from pandas.testing import assert_frame_equal, assert_series_equal
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 
-from ..create_elements_controllers import *
+from pandaprosumer import *
 
 
 class Test1HeatPump1DryCoolerMapping:
@@ -46,12 +46,11 @@ class Test1HeatPump1DryCoolerMapping:
                      'adiabatic_mode': True,
                      'min_delta_t_air_c': 5}
 
-        cp_controller_index = init_const_profile_controller(prosumer, cp_input_columns, cp_result_columns,
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                             period, data_source, level=0, order=0)
-        heat_pump_index = create_heat_pump(prosumer, **hp_params)
-        hp_controller_index = init_hp_controller(prosumer, period, [heat_pump_index], level=1, order=0)
-        dry_cooler_index = create_dry_cooler(prosumer, **dc_params)
-        dc_controller_index = init_dc_controller(prosumer, period, [dry_cooler_index], level=1, order=1)
+
+        hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period = period, **hp_params)
+        dc_controller_index = create_controlled_dry_cooler(prosumer, level =1, order = 1, period = period,**dc_params)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

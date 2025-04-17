@@ -62,13 +62,13 @@ class BasicProsumerController(MappedController):
         (assuming that the return temperature is not changed!)
         Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
 
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
 
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
         # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
         # m = pd.Series(0, index=self.element_index)
+        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return np.array([])
@@ -95,13 +95,13 @@ class BasicProsumerController(MappedController):
         (assuming that the return temperature is not changed!)
         Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
 
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
-
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
         # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
         # m = pd.Series(0, index=self.element_index)
+        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return 0, 0, np.array([])
@@ -119,14 +119,17 @@ class BasicProsumerController(MappedController):
 
         # Calculate the mass flows to feed to the other responders to provide the same power
         delta_t_c = np.full(len(treturn_tab_c), tfeed_res_c) - treturn_tab_c
-        condition = abs(delta_t_c) > 1e-8
-        mdot_tab_kg_per_s *= np.where(condition, (tfeed_tab_c - treturn_tab_c) / delta_t_c, 0)
+        # Safely compute the flow rate change where the condition is met
+        valid_delta_t_c = np.where(delta_t_c != 0, delta_t_c, np.nan)  # Replace 0 with NaN for safety
+        mdot_tab_temp_kg_per_s = mdot_tab_kg_per_s * (tfeed_tab_c - treturn_tab_c) / valid_delta_t_c  # Compute safely
+        # Replace NaN with 0
+        mdot_tab_updated_kg_per_s = np.where(np.isnan(mdot_tab_temp_kg_per_s), 0, mdot_tab_temp_kg_per_s)
 
         # Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
-        mdot_kg_per_s = np.sum(mdot_tab_kg_per_s)
-        treturn_res_c = np.sum(mdot_tab_kg_per_s * treturn_tab_c) / mdot_kg_per_s if abs(mdot_kg_per_s) > 1e-8 else tfeed_res_c
+        mdot_kg_per_s = np.sum(mdot_tab_updated_kg_per_s)
+        treturn_res_c = np.sum(mdot_tab_updated_kg_per_s * treturn_tab_c) / mdot_kg_per_s if abs(mdot_kg_per_s) > 1e-8 else tfeed_res_c
 
-        return tfeed_res_c, treturn_res_c, mdot_tab_kg_per_s
+        return tfeed_res_c, treturn_res_c, mdot_tab_updated_kg_per_s
 
     def _t_m_to_receive_init(self, prosumer):
         """
@@ -159,7 +162,7 @@ class BasicProsumerController(MappedController):
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         tfeedin_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
 
-        if (mdot_required_kg_per_s - mdot_supplied_kg_per_s) < 1e-5:
+        if not np.isnan(mdot_supplied_kg_per_s) and (mdot_required_kg_per_s - mdot_supplied_kg_per_s) < 1e-5:
             # If already all mass flow is supplied, don't required more (even if the temperature is not good)
             mdot_required_kg_per_s = 0
         elif not (np.isnan(mdot_supplied_kg_per_s) or np.isnan(tfeedin_supplied_c)):

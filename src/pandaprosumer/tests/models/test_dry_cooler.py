@@ -1,24 +1,17 @@
-import numpy as np
 import pytest
+from pandaprosumer import *
 
-from pandaprosumer.create import create_empty_prosumer_container, create_dry_cooler, create_period
-from pandaprosumer.controller import DryCoolerController, DryCoolerControllerData
-from pandaprosumer.run_time_series import run_timeseries
-from ..create_elements_controllers import *
+def _default_argument():
+    return {'n_nom_rpm': 730,
+                   'p_fan_nom_kw': 9.38,
+                   'qair_nom_m3_per_h': 138200}
 
-
-def _create_dry_cooler_controller(prosumer, **kwargs):
-    period = create_period(prosumer, 1,
-                           name="foo",
-                           start="2020-01-01 00:00:00",
-                           end="2020-01-01 11:59:59",
-                           timezone="utc")
-
-    dry_cooler_index = init_dc_element(prosumer, **kwargs)
-    init_dc_controller(prosumer, period, [dry_cooler_index])
-    dc_controller = prosumer.controller.iloc[0].object
-    return dc_controller
-
+def _default_period(prosumer):
+    return create_period(prosumer, 1,
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59",
+                               timezone="utc")
 
 class TestDryCooler:
     """
@@ -32,7 +25,10 @@ class TestDryCooler:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        init_dc_element(prosumer)
+
+
+        create_dry_cooler(prosumer,**_default_argument())
+
         assert hasattr(prosumer, "dry_cooler")
         assert len(prosumer.dry_cooler) == 1
         expected_columns = ["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c",
@@ -65,7 +61,7 @@ class TestDryCooler:
                   'phi_adiabatic_sat_percent': 95,
                   'min_delta_t_air_c': 5}
 
-        dc_idx = init_dc_element(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
+        dc_idx = create_dry_cooler(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "dry_cooler")
         assert len(prosumer.dry_cooler) == 1
         assert dc_idx == 4
@@ -83,7 +79,8 @@ class TestDryCooler:
         Test the creation of a Dry Cooler controller in a prosumer container
         """
         prosumer = create_empty_prosumer_container()
-        _create_dry_cooler_controller(prosumer)
+
+        create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
@@ -93,7 +90,11 @@ class TestDryCooler:
         Test the input and result columns of the Dry Cooler controller
         """
         prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
+        print(dc_controller)
 
         input_columns_expected = ["mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_air_in_c", "phi_air_in_percent"]
         result_columns_expected = ['q_exchanged_kw', 'p_fans_kw', 'n_rpm', 'mdot_air_m3_per_h',
@@ -106,8 +107,11 @@ class TestDryCooler:
     def test_controller_run_control_no_demand(self):
         """
         Test the Dry Cooler controller run_control method with no demand (same temperature in and out)"""
+
         prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer)
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[2, 80, 80, 20, np.nan]])
         dc_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 80
@@ -123,7 +127,10 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method with a demand
         """
         prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[2, 80, 40, 20, np.nan]])
         dc_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 80
@@ -140,6 +147,8 @@ class TestDryCooler:
         """
         Test the Dry Cooler controller run_control method with nominal values
         """
+        prosumer = create_empty_prosumer_container()
+
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -148,8 +157,10 @@ class TestDryCooler:
                   't_air_out_nom_c': 25,
                   't_fluid_in_nom_c': 50,
                   't_fluid_out_nom_c': 38}
-        prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer, **params)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **params)
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
         mdot_water_kg_per_s = q_w / (4180 * (50 - 38))
@@ -170,6 +181,8 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method with nominal values in adiabatic mode
         with 100% relative humidity -> no air pre-cooling
         """
+        prosumer = create_empty_prosumer_container()
+
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -179,8 +192,9 @@ class TestDryCooler:
                   't_fluid_in_nom_c': 50,
                   't_fluid_out_nom_c': 38,
                   'adiabatic_mode': True}
-        prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer, **params)
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period=_default_period(prosumer), **params)
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
         mdot_water_kg_per_s = q_w / (4180 * (50 - 38))
@@ -201,6 +215,10 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method with nominal values in adiabatic mode
         with relative humidity < 100% -> air pre-cooling -> lower power consumption
         """
+
+        prosumer = create_empty_prosumer_container()
+
+
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -211,8 +229,9 @@ class TestDryCooler:
                   't_fluid_out_nom_c': 38,
                   'adiabatic_mode': True,
                   'phi_adiabatic_sat_percent': 100}
-        prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer, **params)
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer), **params)
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
         mdot_water_kg_per_s = q_w / (4180 * (50 - 38))
@@ -233,6 +252,9 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method with nominal values in adiabatic mode
         with relative humidity after air pre-cooling < 100% -> higher power consumption
         """
+
+        prosumer = create_empty_prosumer_container()
+
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -242,9 +264,11 @@ class TestDryCooler:
                   't_fluid_in_nom_c': 50,
                   't_fluid_out_nom_c': 38,
                   'adiabatic_mode': True,
-                  'phi_adiabatic_sat_percent': 95}
-        prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer, **params)
+                  'phi_adiabatic_sat_percent': 95
+                  }
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer), **params)
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
         mdot_water_kg_per_s = q_w / (4180 * (50 - 38))
@@ -265,6 +289,9 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method in adiabatic mode
         with demand way larger than nominal values -> reduced water mass flow rate
         """
+
+        prosumer = create_empty_prosumer_container()
+
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -276,8 +303,12 @@ class TestDryCooler:
                   'adiabatic_mode': True,
                   'phi_adiabatic_sat_percent': 100,
                   'min_delta_t_air_c': 5}
-        prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer, **params)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,
+                                                         period = _default_period(prosumer),
+                                                         **params)
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 2000 / 3600 * 1.177 * 1007 * (25 - 20)  # 10 times higher demand
         mdot_water_kg_per_s = q_w / (4180 * (50 - 38))
@@ -298,7 +329,10 @@ class TestDryCooler:
         Test the Dry Cooler controller run_control method with inputs different from the nominal values
         """
         prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[141 / 3.6, 53, 48, 10, np.nan]])
         dc_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 53
@@ -322,7 +356,10 @@ class TestDryCooler:
         Test the Dry Cooler controller t_m_to_receive method
         """
         prosumer = create_empty_prosumer_container()
-        dc_controller = _create_dry_cooler_controller(prosumer)
+
+
+        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_demand_kw = 104.58385
         mdot_demand_kg_per_s = .5

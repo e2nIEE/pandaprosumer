@@ -1,0 +1,9 @@
+{
+	"fuel_types": ["ng", "sng1", "sng2", "sng3", "sng4", "sng5", "sng6"], 
+	"lower_heating_value_kwh_per_kg": [14.2, 14.2, 14.2, 14.2, 14.2, 14.2, 14.2],
+	"carbon_fraction": [0.78, 0.78, 0.78, 0.78, 0.78, 0.78, 0.78],
+	"co2eq_kg_per_kwh": [0.232, 0.414, 0.111, 0.091, 0.112, 0.030, 0.027],
+	"description": ["", "SNG (biogas catalytic methanation with 38% renewable electricity mix)", "SNG (biogas catalytic methanation with 100% renewable electricity mix)", "SNG (catalytic methanation from green H2 and CO2 sourced from iron/steel processing)", "SNG (catalytic methanation from green H2 and CO2 sourced from direct air capture)", "SNG (catalytic methanation from green H2 and CO2 sourced from ethanol production)", "SNG (catalytic methanation from green H2 and CO2 sourced from ammonia production)"],
+	"reference": ["doi.org/10.1016/j.jclepro.2020.125020", "doi.org/10.1016/j.jclepro.2020.125020", "doi.org/10.1016/j.jclepro.2020.125020", "doi.org/10.1016/j.jcou.2024.102791", "doi.org/10.1016/j.jcou.2024.102791", "doi.org/10.1016/j.jcou.2024.102791", "doi.org/10.1016/j.jcou.2024.102791"],
+	"normal_conditions": "DIN_1343"
+}

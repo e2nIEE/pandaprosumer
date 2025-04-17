@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
 from numpy import dtype
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types

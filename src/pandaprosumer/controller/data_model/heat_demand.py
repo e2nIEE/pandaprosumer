@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
@@ -44,6 +44,7 @@ class HeatDemandControllerData:
     element_name: str = 'heat_demand'
     period_index: int = None
     input_columns: List[str] = field(default_factory=lambda: ["q_demand_kw", "mdot_demand_kg_per_s",
-                                                              "t_feed_demand_c", "t_return_demand_c"])
+                                                              "t_feed_demand_c", "t_return_demand_c",
+                                                              "q_received_kw"])
     result_columns: List[str] = field(default_factory=lambda: ["q_received_kw", "q_uncovered_kw",
                                                                "mdot_kg_per_s", "t_in_c", "t_out_c"])

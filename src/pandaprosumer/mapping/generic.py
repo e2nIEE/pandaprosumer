@@ -4,13 +4,13 @@ from .base import BaseMapping
 
 
 def _add_mapping(initiator_controller, responder_controller, initiator_column, responder_column):
-    init_col_idx = initiator_controller.result_columns.index(initiator_column)
+    init_col_idx = initiator_controller.result_columns.index(initiator_column)  # ToDo: add detailed error if IndexError
     resp_col_idx = responder_controller.input_columns.index(responder_column)
     responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(
         responder_controller.inputs[:, resp_col_idx], nan=0.0) + initiator_controller.step_results[:, init_col_idx]
 
 
-# ToDo: test subtract mapping and exception
+# ToDo: test subtract mapping and exception, do we need subtract (for el coupling)?
 def _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column):
     init_col_idx = initiator_controller.result_columns.index(initiator_column)
     resp_col_idx = responder_controller.input_columns.index(responder_column)

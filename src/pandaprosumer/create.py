@@ -6,6 +6,9 @@ from pandapipes import Fluid, create_fluid_from_lib
 
 from pandapower.create import _get_index_with_check, _set_entries, _add_to_entries_if_not_nan
 from pandaprosumer.element import *
+from pandapower.create import _get_index_with_check, _set_entries
+from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
+     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -43,17 +46,6 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water"):
                            "strings can be used." % fluid)
 
     return prosumer
-
-def define_period(prosumer, resolution_s, start=None, end=None, timezone=None, name=None, index=None):
-    add_new_element(prosumer, Period)
-
-    index = _get_index_with_check(prosumer, "period", index)
-
-    entries = dict(zip(["name", "start", "end", "resolution_s", "timezone"],
-                       [name, start, end, resolution_s, timezone]))
-
-    _set_entries(prosumer, "period", index, **entries)
-    return int(index)
 
 
 def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, name=None, index=None):
@@ -178,8 +170,6 @@ def create_heat_pump(prosumer,
 
 def create_heat_demand(prosumer,
                        scaling=1.0,
-                       t_in_set_c=np.nan,
-                       t_out_set_c=np.nan,
                        name=None,
                        index=None,
                        in_service=True,
@@ -215,8 +205,8 @@ def create_heat_demand(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_demand", index)
 
-    entries = dict(zip(["name", "t_in_set_c", "t_out_set_c", "scaling", "in_service"],
-                       [name, t_in_set_c, t_out_set_c, scaling, in_service]))
+    entries = dict(zip(["name", "scaling", "in_service"],
+                       [name, scaling, in_service]))
 
     _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
 
@@ -238,6 +228,9 @@ def create_stratified_heat_storage(prosumer,
                                    k_wall_w_per_mk=45,
                                    h_ext_w_per_m2k=12.5,
                                    t_ext_c=22.5,
+                                   max_remaining_capacity_kwh=1,
+                                   t_discharge_out_tol_c=1e-3,
+                                   max_dt_s=None,
                                    height_charge_in_m=None,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
@@ -279,6 +272,16 @@ def create_stratified_heat_storage(prosumer,
         (Convection between tank and air) [W/(m^2K)]
 
         **t_ext_c** (float, default 22.5) - The ambient temperature used for calculating heat losses [C]
+
+        **max_remaining_capacity_kwh** (float, default 1) - The difference between the maximum energy that can be  \
+        stored in the storage and the actual stored energy from which the storage will not require to \
+        be filled anymore [kWh]
+
+        **t_discharge_out_tol_c** (float, default 0.001) - The maximum allowed difference between the demand \
+        temperature and the temperature of the top layer in the storage to allow supplying the demand [C]
+
+        **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
+        Default to the period resolution. May cause divergence of the model if too high. [s]
 
         **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
 
@@ -324,11 +327,13 @@ def create_stratified_heat_storage(prosumer,
 
     entries = dict(zip(['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
                         'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
-                        'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c',  'height_charge_in_m',
+                        'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
+                        't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
                         'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
-                        k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, height_charge_in_m,
+                        k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
+                        t_discharge_out_tol_c, max_dt_s, height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
@@ -542,7 +547,132 @@ def create_electric_boiler(prosumer,
     return int(index)
 
 
-def define_senergy_nets_chiller(
+def create_gas_boiler(prosumer,
+                           max_q_kw,
+                           heating_value_kj_per_kg=50e3,
+                           efficiency_percent=100,
+                           name=None,
+                           index=None,
+                           in_service=True,
+                           **kwargs):
+    """
+        Creates an gas boiler element in prosumer["gas_boiler"]
+
+    INPUT:
+        **prosumer** - The prosumer within this gas boiler should be created
+
+        **max_q_kw** (float) - Maximal heat power of the boiler [kW]
+
+        **heating_value_kj_per_kg** (float, default 50e3) - Heating Value of the gas (amount of energy per kg of gas) [kJ/kg]
+
+    OPTIONAL:
+        **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
+
+        **name** (string, default None) - The name for this gas boiler
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created gas boiler
+
+    EXAMPLE:
+        create_gas_boiler(prosumer, "gas_boiler_1")
+    """
+    add_new_element(prosumer, GasBoilerElementData)
+
+    index = _get_index_with_check(prosumer, "gas_boiler", index)
+
+    entries = dict(zip(["name", "max_q_kw", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
+                       [name, max_q_kw, heating_value_kj_per_kg, efficiency_percent, in_service]))
+
+    _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_booster_heat_pump(
+    prosumer,
+    hp_type,
+    in_service=True,
+    name=None,
+    index=None,
+    **kwargs
+):
+    """
+    :param prosumer:
+    :param in_service:  (Default value = True)
+    :param name:  (Default value = None)
+    :param index:  (Default value = None)
+
+    """
+    add_new_element(prosumer, BoosterHeatPumpElementData)
+
+    index = _get_index_with_check(prosumer, "booster_heat_pump", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "hp_type",
+                "in_service",
+            ],
+            [
+                name,
+                hp_type,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "booster_heat_pump", index, **entries, **kwargs)
+    return int(index)
+
+def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None, index=None, **kwargs):
+    add_new_element(prosumer, IceChpElementData)
+
+    index = _get_index_with_check(prosumer, "ice_chp", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "size",
+                "fuel",
+                "altitude",
+                "in_service",
+            ],
+            [
+                name,
+                size,
+                fuel,
+                altitude,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "ice_chp", index, **entries, **kwargs)
+    return int(index)
+
+def create_heat_storage(prosumer,
+                        q_capacity_kwh=0.,
+                        in_service=True,
+                        index=None,
+                        name=None,
+                        **kwargs):
+
+    add_new_element(prosumer, HeatStorageElementData)
+
+    index = _get_index_with_check(prosumer, "heat_storage", index)
+
+    entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
+
+    _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
+    return int(index)
+
+def create_chiller(
         prosumer,
         cp_water=4.18,
         t_sh=5.0,  # °C of super heating in the evaporator
@@ -555,9 +685,10 @@ def define_senergy_nets_chiller(
         eng_eff=1.0,
         n_ref="R410A",
         in_service=True,
-        # name=None,
         index=None,
-):
+        name=None,
+        **kwargs):
+
     """Adds a new chiller to the list of prosumer elements and defines its datasheet values
 
     :param prosumer: Empty prosumer container
@@ -592,7 +723,7 @@ def define_senergy_nets_chiller(
 
     """
     add_new_element(
-        prosumer, SenergyNetsChillerElementData
+        prosumer, ChillerElementData
     )
 
     index = _get_index_with_check(prosumer, "sn_chiller", index)
@@ -600,6 +731,7 @@ def define_senergy_nets_chiller(
     entries = dict(
         zip(
             [
+                "name",
                 "cp_water",
                 "t_sh",
                 "t_sc",
@@ -609,10 +741,12 @@ def define_senergy_nets_chiller(
                 "w_evap_pump",
                 "w_cond_pump",
                 "eng_eff",
-                "n_ref"
+                "n_ref",
+                "in_service"
 
             ],
             [
+                name,
                 cp_water,
                 t_sh,
                 t_sc,
@@ -622,23 +756,12 @@ def define_senergy_nets_chiller(
                 w_evap_pump,
                 w_cond_pump,
                 eng_eff,
-                n_ref
+                n_ref,
+                in_service
 
             ],
         )
     )
 
-    _set_entries(prosumer, "sn_chiller", index, **entries)
-    return int(index)
-
-def define_const_profile(prosumer, input_columns, in_service=True, name=None, index=None):
-
-    add_new_element(prosumer, ConstProfileElementData)
-
-    index = _get_index_with_check(prosumer, "const_profile", index)
-
-    entries = dict(zip(["name", "in_service", *input_columns],
-                       [name, in_service, *[None]*len(input_columns)]))
-
-    _set_entries(prosumer, "const_profile", index, **entries)
+    _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)

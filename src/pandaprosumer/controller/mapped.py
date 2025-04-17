@@ -14,7 +14,7 @@ logger = pplog.getLogger(__name__)
 
 class MappedController(Controller):
     """
-    Base class for all prosumer controllers that are associated to an element (or several?) and can be mapped.
+    Base class for all prosumer controllers that are associated to an element and can be mapped.
 
     :param container: The prosumer/net/energy_system object
     :param basic_prosumer_object: The basic prosumer object
@@ -101,7 +101,6 @@ class MappedController(Controller):
         """
             Check if controller already was applied
         """
-        print(f"controller {self.name} is_converged: {self.applied}")
         return self.applied
     
     def level_reset(self, container):
@@ -110,7 +109,6 @@ class MappedController(Controller):
 
         :param container: The container object
         """
-        print(f"level reset controller {self.name}")
         self.applied = False
 
     def _get_input(self, input_name, container=None):
@@ -187,6 +185,17 @@ class MappedController(Controller):
         else:
             return list_responders
 
+    def _get_generic_mapped_responders(self, prosumer):
+        """
+        Returns a list of all the controllers for which this controller is the responder.
+
+        :param prosumer: The prosumer object
+        :return: List of mapped responders
+        """
+        return [prosumer.controller.loc[item.responder]["object"] for item in
+                prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+                [["object", "responder"]].itertuples()]
+
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
         Returns a list of all the controllers for which this controller is the responder.
@@ -224,14 +233,13 @@ class MappedController(Controller):
 
         :param container: The container object
         """
-        print(f"unapply initiators of controller {self.name}")
         # Recursive unapply all the controllers for which this controller is the responder at the same level
         # so they will be re-executed
         # FixMe: level can be an array, use 'in' instead
         for initiator in self._get_mapped_initiators(container):
             initiator_level = container.controller.loc[container.controller.object == initiator].level.values[0]
             self_level = container.controller.loc[container.controller.object == self].level.values[0]
-            if initiator_level == self_level:
+            if initiator_level == self_level and initiator.applied:
                 initiator.applied = False
                 for initiator_initiator in initiator._get_mapped_initiators(container):
                     initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
@@ -247,7 +255,6 @@ class MappedController(Controller):
 
         :param container: The container object
         """
-        print(f"unapply responders of controller {self.name}")
         # Recursive unapply all the controllers for which this controller is the initiator
         # so they will be re-executed
         for responder in self._get_mapped_responders(container):
@@ -282,7 +289,6 @@ class MappedController(Controller):
         :param time: The current time step
         """
         super().time_step(container, time)
-        print(f"time step controller {self.name}: {time}")
         self.time = time
         self.step_results = np.full([1, len(self.result_columns)], np.nan)
         self.applied = False
@@ -294,7 +300,6 @@ class MappedController(Controller):
         :param container: The container object
         """
         super().control_step(container)
-        print(f"control step controller {self.name}")
 
     def finalize_control(self, container):
         """
@@ -304,10 +309,12 @@ class MappedController(Controller):
         :param time: The current time step
         """
         super().finalize_control(container)
-        print(f"finalize control controller {self.name}")
         self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
         self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                           FluidMixMapping.MASS_FLOW_KEY: np.nan}
+        self.t_previous_return_out_c = np.nan
+        self.t_previous_feed_in_c = np.nan
+        self.mdot_previous_feed_kg_per_s = np.nan
 
     def time_series_initialization(self, container):
         """
@@ -316,7 +323,6 @@ class MappedController(Controller):
         :param container: The prosumer/net/energy_system object
         :return: List of initializations
         """
-        print(f"time series initialization controller {self.name}")
         return []
 
     def time_series_finalization(self, container):
@@ -326,30 +332,24 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of finalizations
         """
-        print(f"time series finalization controller {self.name}")
         if self.has_period:
             return self.res
         else:
             return []
         
     def repair_control(self, container):
-        print(f"repair control controller {self.name}")
         super().repair_control(container)
 
     def restore_init_state(self, container):
-        print(f"restore init state controller {self.name}")
         super().restore_init_state(container)
 
     def initialize_control(self, container):
-        print(f"initialize control controller {self.name}")
         super().initialize_control(container)
         
     def finalize_step(self, container, time):
-        print(f"finalize step controller {self.name}")
         super().finalize_step(container, time)
 
     def set_active(self, container, in_service):
-        print(f"set active controller {self.name}")
         super().set_active(container, in_service)
 
     def _merit_order_mass_flow(self, container, mdot_out_available_kg_per_s, mdot_required_tab_kg_per_s):
@@ -384,7 +384,6 @@ class MappedController(Controller):
         :param result: The results of the controller
         :param result_fluid_mix: The fluid mixture model (list of dictionaries)
         """
-        print(f"finalize controller {self.name}")
         if len(result):
             if np.isnan(result).any():  # Check that no result is empty
                 nan_indexes = np.where(np.isnan(result))[1]

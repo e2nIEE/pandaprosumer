@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List
-from pandaprosumer.element.component_toolbox import enforce_types
+from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
@@ -37,8 +37,7 @@ class StratifiedHeatStorageControllerData:
     element_name: str = 'stratified_heat_storage'
     period_index: int = None
     input_columns: List[str] = field(default_factory=lambda: [])
-    result_columns: List[str] = field(default_factory=lambda: ['q_received_kw', 'q_delivered_kw', 'q_charge_kw', 'q_discharge_kw', 'e_stored_kwh',
-                                                               'mdot_received_kg_per_s', 't_received_in_c', 't_received_out_c',
-                                                               'mdot_delivered_kg_per_s', 't_demand_in_c', 't_delivered_out_c',
-                                                               'mdot_charge_kg_per_s', 't_charge_out_c',
-                                                               'mdot_discharge_kg_per_s', 't_discharge_out_c'])
+    result_columns: List[str] = field(default_factory=lambda: ["mdot_discharge_kg_per_s",
+                                                               "t_discharge_c",
+                                                               "q_delivered_kw",
+                                                               "e_stored_kwh"])
