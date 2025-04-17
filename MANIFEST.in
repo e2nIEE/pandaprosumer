@@ -1,0 +1,4 @@
+graft src
+
+include LICENSE AUTHORS README.rst CHANGELOG.rst .github/**/*.yml
+recursive-include doc/source/pics *.png

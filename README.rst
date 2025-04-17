@@ -2,17 +2,12 @@
 About pandaprosumer
 ##########################
 
-.. image:: doc/source/pics/prosumer.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/prosumer.png
 	:width: 200em
 	:align: left
 
-.. |br| raw:: html
 
-    <br />
 
-|br|
-|br|
-|br|
 
 pandaprosumer is an open-source modeling tool, that enables modeling of sector-coupling prosumer components in energy systems.
 The framework comes with a library of different predefined sector-coupling components, but also enables users to create
@@ -24,19 +19,22 @@ It extends the libraries `pandapower <http://pandapower.org>`_ and `pandapipes <
 was created at Universität Kassel, Fraunhofer IEE and has received support from the European Institute for Energy Research in the frame of the "Senergy Nets" project, funded by the European Union.
 
 
-.. image:: doc/source/pics/e2n.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
 	:target: https://www.uni-kassel.de/
-	:width: 18em
+	:width: 200em
 	:align: center
 
 
-.. image:: doc/source/pics/iee.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/iee.png
 	:target: https://www.iee.fraunhofer.de/en.html
-	:width: 18em
+	:width: 200em
 	:align: left
 
-|br|
 
-.. image:: doc/source/pics/senergy.png
-	:width: 20em
+
+
+
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
+	:width: 200em
 	:align: right
+
