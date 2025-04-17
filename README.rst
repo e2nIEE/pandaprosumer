@@ -7,9 +7,7 @@ About pandaprosumer
 	:align: left
 
 
-|br|
-|br|
-|br|
+
 
 pandaprosumer is an open-source modeling tool, that enables modeling of sector-coupling prosumer components in energy systems.
 The framework comes with a library of different predefined sector-coupling components, but also enables users to create
@@ -32,7 +30,9 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
 	:width: 18em
 	:align: left
 
-|br|
+
+
+
 
 .. image:: doc/source/pics/senergy.png
 	:width: 20em
