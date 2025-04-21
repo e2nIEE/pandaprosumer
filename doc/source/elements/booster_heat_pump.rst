@@ -23,9 +23,14 @@ Controller
 ===============================
 
 .. figure:: ../elements/controller_pics/booster_heat_pump_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Booster Heat Pump Controller logic
     :align: center
+
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
@@ -68,7 +73,7 @@ Output Time Series
 Mapping
 -----------------------
 
-The Booster Heat Pump model uses Generic Mapping Scheme.
+The Booster Heat Pump model can be mapped using :ref:`GenericMapping <GenericMapping>`.
 
 Model
 =======

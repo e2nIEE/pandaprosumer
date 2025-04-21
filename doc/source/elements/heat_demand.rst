@@ -24,16 +24,20 @@ Controller
 =======================
 
 .. figure:: ../elements/controller_pics/heat_demand_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Heat Demand Controller logic
     :align: center
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
 -------------------------
 
 
-.. csv-table:: Input Static Data: Heat Demand Element
+.. csv-table:: 
    :header: "Parameter", "Description", "Unit"
 
    "name", "Unique name or identifier for the gas boiler element.", "N/A"

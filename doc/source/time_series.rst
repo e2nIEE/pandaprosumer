@@ -5,8 +5,9 @@ Time_series
 ===================================
 
 The time series module is designed for the **simulation of time-based operations**
-and is closely linked to the control module. This module is inspired by **pandapipes**, and extends its capabilities for handling prosumer
-systems and energy simulations.
+and is closely linked to the control module. This module is inspired by **pandapipes** and **pandapower**, and extends its capabilities for handling prosumer
+systems and energy simulations. `Pandapower controller documentation <https://pandapower.readthedocs.io/en/latest/control.html>`_
+
 
 In a time series simulation, **controllers** are used to update values of different elements in each time step within a loop.
 

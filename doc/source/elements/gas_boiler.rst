@@ -21,10 +21,14 @@ Create Controlled Function
 Controller
 ===============================
 
-.. figure:: ../elements/controller_pics/gas_boiler_controller.png
-    :width: 30em
+.. figure:: ../elements/controller_pics/gas_boiler.png
+    :width: 50em
     :alt: Gas Boiler Controller logic
     :align: center
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
@@ -32,7 +36,7 @@ Input Static Data
 
 These are the physical parameters required for the Gas Boiler element to enable the model calculation:
 
-.. csv-table:: Input Static Data: Gas Boiler Element
+.. csv-table:: 
    :header: "Parameter", "Description", "Unit"
 
    "name", "Unique name or identifier for the gas boiler element.", "N/A"
@@ -50,7 +54,7 @@ No input (GenericMapping) needed for this controller
 Output Time Series
 -----------------------------
 
-.. csv-table:: Output Time Series: Gas Boiler
+.. csv-table::
    :header: "Parameter", "Description", "Unit"
 
    "q_kw", "The provided heat power.", "kW"

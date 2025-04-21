@@ -2,7 +2,7 @@
 About pandaprosumer
 ##########################
 
-.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/prosumer.png
+.. image:: ./doc/source/pics/prosumer.png
 	:width: 200em
 	:align: left
 
@@ -18,23 +18,27 @@ inputs (e.g. a heat demand timeseries) and outputs (e.g. power load timeseries o
 It extends the libraries `pandapower <http://pandapower.org>`_ and `pandapipes <https:/pandapipes.org>`_ ,
 was created at Universität Kassel, Fraunhofer IEE and has received support from the European Institute for Energy Research in the frame of the "Senergy Nets" project, funded by the European Union.
 
+Getting started:
 
-.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
+- `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
+- `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
+
+
+.. image:: ./doc/source/pics/e2n.png
 	:target: https://www.uni-kassel.de/
-	:width: 200em
+	:width: 18em
 	:align: center
 
 
-.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/iee.png
+.. image:: ./doc/source/pics/iee.png
 	:target: https://www.iee.fraunhofer.de/en.html
-	:width: 200em
+	:width: 18em
 	:align: left
 
 
 
 
-
-.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
-	:width: 200em
+.. image:: ./doc/source/pics/senergy.png
+	:width: 20em
 	:align: right
 

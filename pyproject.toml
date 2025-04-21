@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pandaprosumer"
-version = "0.1.0"  # File format version '__format_version__' is tracked in __init__.py
+version = "0.1.1.post1"  # File format version '__format_version__' is tracked in __init__.py
 authors=[
     { name = "Pratikshya Mohanty", email = "pratikshya.mohanty@iee.fraunhofer.de" },
     { name = "Erik Prade", email = "erik.prade@iee.fraunhofer.de" }
@@ -47,7 +47,6 @@ dependencies = [
         "sphinx-pyproject",
         "CoolProp==6.7.0",
         "pyomo==6.6.1",
-        "pytest==8.3.3"
 ]
 keywords = [
     "prosumer", "analysis", "controller", "automation", "grid", "energy", "engineering",
