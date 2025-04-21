@@ -2,7 +2,7 @@
 About pandaprosumer
 ##########################
 
-.. image:: ./doc/source/pics/prosumer.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/prosumer.png
 	:width: 200em
 	:align: left
 
