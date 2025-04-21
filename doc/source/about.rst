@@ -27,6 +27,7 @@ Getting started:
 
 - `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
 - `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
+- `Interactive Tutorials <https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=%2Fdoc%2Ftree%2Ftutorials>`_
 
 
 .. image:: /pics/e2n.png
