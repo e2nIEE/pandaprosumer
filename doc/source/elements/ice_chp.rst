@@ -25,8 +25,9 @@ Controller
 .. figure:: ../elements/controller_pics/ice_chp_controller.png
     :width: 50em
     :alt: ice chp logic
-
     :align: center
+
+    ..
 
 .. raw:: html
 

@@ -24,8 +24,10 @@ Controller
 .. figure:: ../elements/controller_pics/heat_storage_controller.png
     :width: 50em
     :alt: heat storage logic
-
     :align: center
+
+    ..
+
 
 .. raw:: html
 

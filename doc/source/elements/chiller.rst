@@ -23,8 +23,9 @@ Controller
 .. figure:: ../elements/controller_pics/chiller.png
     :width: 50em
     :alt: chiller logic
-
     :align: center
+
+    ..
 
 .. raw:: html
 
