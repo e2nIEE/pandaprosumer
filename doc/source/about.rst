@@ -50,5 +50,6 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
     about/units
     about/references
     about/authors
+    about/changelog
     about/license
     about/known_issues

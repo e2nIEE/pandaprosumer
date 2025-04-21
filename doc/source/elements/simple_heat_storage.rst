@@ -21,7 +21,16 @@ Create Controlled Function
 Controller
 ========================
 
-Graphical representation here
+.. figure:: ../elements/controller_pics/heat_storage_controller.png
+    :width: 50em
+    :alt: heat storage logic
+
+    :align: center
+
+.. raw:: html
+
+   <br>
+
 
 
 Input Static Data
@@ -60,7 +69,7 @@ Output Time Series
 Mapping
 ----------
 
-The Simple Storage model uses Generic Mapping Scheme.
+The Simple Storage model model can be mapped using :ref:`GenericMapping <GenericMapping>`.
 
 
 

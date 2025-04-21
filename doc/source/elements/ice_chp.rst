@@ -23,10 +23,14 @@ Controller
 ===========
 
 .. figure:: ../elements/controller_pics/ice_chp_controller.png
-    :width: 30em
+    :width: 50em
     :alt: ice chp logic
+
     :align: center
 
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
@@ -75,7 +79,7 @@ Output Time Series
 Mapping
 ----------------
 
-The Internal Combustion Engine model uses Generic Mapping Scheme.
+The Internal Combustion Engine model can be mapped using :ref:`GenericMapping <GenericMapping>`.
 
 
 Model

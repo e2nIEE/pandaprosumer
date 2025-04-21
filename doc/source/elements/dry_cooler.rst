@@ -24,9 +24,14 @@ Controller
 ===============================
 
 .. figure:: ../elements/controller_pics/dry_cooler_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Dry Cooler Controller logic
     :align: center
+
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
