@@ -30,21 +30,18 @@ Getting started:
  :alt: binder
 
 
-.. image:: ./doc/source/pics/e2n.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
 	:target: https://www.uni-kassel.de/
-	:width: 18em
+	:width: 200em
 	:align: center
 
 
-.. image:: ./doc/source/pics/iee.png
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/iee.png
 	:target: https://www.iee.fraunhofer.de/en.html
-	:width: 18em
+	:width: 200em
 	:align: left
 
 
-
-
-.. image:: ./doc/source/pics/senergy.png
-	:width: 20em
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
+	:width: 200em
 	:align: right
-
