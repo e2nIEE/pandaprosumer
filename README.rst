@@ -22,6 +22,12 @@ Getting started:
 
 - `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
 - `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
+- `Interactive tutorials on Binder <https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=%2Fdoc%2Ftree%2Ftutorials>`_
+
+
+.. image:: https://mybinder.org/badge_logo.svg
+ :target: https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=https%3A%2F%2Fgithub.com%2Fe2nIEE%2Fpandaprosumer%2Ftree%2Fdevelop%2Ftutorials
+ :alt: binder
 
 
 .. image:: ./doc/source/pics/e2n.png
