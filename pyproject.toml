@@ -26,8 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     # Add the specific Python versions supported here, e.g.:
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12"
+    "Programming Language :: Python :: 3.11"
 ]
 dependencies = [
     "astral==3.2",
