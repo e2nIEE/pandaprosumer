@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pandaprosumer"
-version = "0.1.1"  # File format version '__format_version__' is tracked in __init__.py
+version = "0.1.2post1"  # File format version '__format_version__' is tracked in __init__.py
 authors=[
     { name = "Pratikshya Mohanty", email = "pratikshya.mohanty@iee.fraunhofer.de" },
     { name = "Erik Prade", email = "erik.prade@iee.fraunhofer.de" }
