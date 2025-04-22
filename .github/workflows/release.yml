@@ -100,4 +100,8 @@ jobs:
           python -m pip list
       - name: Test with pytest
         run: |
-          pytest --pyargs tests
+
+          cd tests  
+
+          pytest  
+
