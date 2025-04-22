@@ -23,7 +23,7 @@ Getting started:
 - `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
 - `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
 - `Interactive tutorials on Binder <https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=%2Fdoc%2Ftree%2Ftutorials>`_
-- `How to contribute <https://github.com/e2nIEE/pandaprosumer/blob/Contributing-rest/CONTRIBUTING.rst>`_
+- `How to contribute <https://github.com/e2nIEE/pandaprosumer/blob/main/CONTRIBUTING.rst>`_
 
 
 .. image:: https://mybinder.org/badge_logo.svg
