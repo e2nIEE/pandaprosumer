@@ -17,7 +17,7 @@ Internal Combustion Engine Combined Heat & Power
 Create Controlled Function
 ===========================
 
-.. autofunction:: pandaprosumer2.create_controlled_ice_chp
+.. autofunction:: pandaprosumer.create_controlled_ice_chp
 
 
 Controller
@@ -28,9 +28,12 @@ Controller
     :alt: ICE CHP controller.
     :align: center
 
+.. raw:: html
+
+   <br>
 
 Input Static Data
-=========================
+________________________
 
 .. list-table:: 
    :widths: 5 20 5
@@ -54,7 +57,7 @@ Input Static Data
 
 
 Input Time Series 
-======================
+----------------------------
 
 .. list-table:: 
    :widths: 5 15 5
@@ -72,7 +75,7 @@ Input Time Series
 
 
 Output Time Series
-======================
+---------------------------
 
 .. list-table:: 
    :widths: 5 30 5
@@ -120,7 +123,7 @@ Output Time Series
  
  
 Mapping
-===========
+---------------------
 
 The ICE CHP Controller can be mapped using the Generic Mapping Scheme.
 
@@ -157,6 +160,10 @@ The ICE CHP Controller can be mapped using the Generic Mapping Scheme.
 
 Model
 =================
+
+.. autoclass:: pandaprosumer.controller.models.IceChpController
+    :members:
+
 The ICE CHP module is map based. Its response is read from tabulated data contained 
 in a map associated with the chosen size of the ICE CHP. Maps for three sizes are provided: 
 
