@@ -1,5 +1,5 @@
 import pytest
-from pandaprosumer.tests.data_sources.define_period import define_and_get_period_and_data_source
+from tests.data_sources.define_period import define_and_get_period_and_data_source
 from pandaprosumer import *
 
 

@@ -3,7 +3,7 @@ import pandas as pd
 from pandapower.timeseries.data_sources.frame_data import DFData
 from pandaprosumer.create import create_period
 
-from pandaprosumer.tests.data_sources import FROM_CLAUDIA
+from tests.data_sources import FROM_CLAUDIA
 
 
 def define_and_get_period_and_data_source(prosumer, resol=3600, file=FROM_CLAUDIA):
