@@ -100,4 +100,4 @@ jobs:
           python -m pip list
       - name: Test with pytest
         run: |
-          pytest --pyargs pandaprosumer.tests
+          pytest tests
