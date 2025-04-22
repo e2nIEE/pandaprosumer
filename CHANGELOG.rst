@@ -10,3 +10,12 @@
 - [ADDED] added link to tutorials in README
 - [FIXED] missing images and formatting in documentation
 
+[0.1.2] - 2025-04-21
+-------------------------------
+- [FIXED] ice chp documentation
+- [FIXED] period handling in documentation
+- [ADDED] added CONTRIBUTING.rst
+- [FIXED] compatible python version in pyproject.toml
+
+
+
