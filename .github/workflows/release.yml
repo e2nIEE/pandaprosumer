@@ -98,6 +98,10 @@ jobs:
       - name: List all installed packages
         run: |
           python -m pip list
-      - name: Test with pytest
+      - name: Run tests
         run: |
-          pytest --pyargs tests
+
+          cd tests  # Change to the directory containing your tests
+
+          pytest  # Or your preferred test command
+
