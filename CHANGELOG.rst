@@ -1,4 +1,4 @@
-[0.1.2] - 2025-04-21
+[0.1.2] - 2025-04-22
 -------------------------------
 - [FIXED] ice chp documentation
 - [FIXED] period handling in documentation
