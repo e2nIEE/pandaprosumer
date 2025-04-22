@@ -2,7 +2,6 @@
 -------------------------------
 - [FIXED] ice chp documentation
 - [FIXED] period handling in documentation
-- [ADDED] added CONTRIBUTING.rst
 - [FIXED] compatible python version in pyproject.toml
 - [CHANGED] directory of tests folder - so standard installation does not install tests
 - [ADDED] Contributing.rst - contribution guidelines
