@@ -18,8 +18,10 @@ A Python library based on `pandapower <http://pandapower.org>`_ and `pandapipes 
    energy_system
    time_series
 
+
+******************
 Indices and tables
-==================
+******************
 
 * :ref:`genindex`
 * :ref:`modindex`

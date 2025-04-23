@@ -20,7 +20,17 @@ Create Controlled Function
 
 Controller
 ==============
-graphical representation here
+.. figure:: ../elements/controller_pics/chiller.png
+    :width: 50em
+    :alt: chiller logic
+    :align: center
+
+    ..
+
+.. raw:: html
+
+   <br>
+
 
 Input Static Data
 -------------------
@@ -82,7 +92,7 @@ Output Time Series
 Mapping
 ----------
 
-The Compression Chiller model uses Generic Mapping Scheme.
+The Compression Chiller model can be mapped using :ref:`GenericMapping <GenericMapping>`.
 
 
 Model

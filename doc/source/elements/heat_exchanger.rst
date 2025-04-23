@@ -23,15 +23,20 @@ Controller
 ==========================
 
 .. figure:: ../elements/controller_pics/heat_exchanger_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Heat Exchanger Controller logic
     :align: center
+
+.. raw:: html
+
+   <br>
+
 
 Input Static Data
 ------------------------
 These are the physical parameters required for the Heat Exchanger element to enable the model calculation:
 
-.. csv-table:: Input Static Data: Heat Exchanger Element
+.. csv-table:: 
    :header: "Parameter", "Description", "Unit"
 
    "name", "Unique name or identifier for the Heat Exchanger element.", "N/A"
@@ -55,6 +60,7 @@ Input Time Series
 
   "t_feed_in_c ", "The feed temperature from the heating network", "Degree Celsius"
 
+
 Output Time Series
 ---------------------------
 
@@ -67,6 +73,7 @@ Output Time Series
    "mdot_2_kg_per_s ", "The mass flow rate at the secondary side of the heat exchanger", "kW"
    "t_2_in_c ", "The return input temperature at the secondary side of the heat exchanger ", "Degree Celsius"
    "t_2_out_c ", "The feed output temperature at the secondary side of the heat exchanger", "Degree Celsius"
+
 
 Mapping
 ----------------

@@ -18,13 +18,3 @@ The controller can write the values to the any input of a controller in the same
 
 .. autoclass:: pandaprosumer.controller.const_profile.ConstProfileController
     :members:
-
-Period Handling
-================
-
-A period needs to be defined to use the `ConstProfileController`.
-
-If no period is explicitly set for the controller, it will try to detect a `period` column in the DataFrame provided by the DataSource.
-If this column exists, a default period will automatically be created and used.
-
-If neither a period is defined nor a `period` column is present in the DataFrame, an error will be raised.
