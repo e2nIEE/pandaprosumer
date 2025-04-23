@@ -20,17 +20,21 @@ Controller
 ===============================
 
 .. figure:: ../elements/controller_pics/electric_boiler_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Electric Boiler Controller logic
     :align: center
 
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
 ----------------------------
 These are the physical parameters required for the Electric Boiler element to enable the model calculation:
 
-.. csv-table:: Input Static Data: Electric Boiler Element
+.. csv-table::
    :header: "Parameter", "Description", "Unit"
 
    "name", "Unique name or identifier for the electric boiler element.", "N/A"
@@ -67,6 +71,7 @@ The Electric Boiler Controller can be mapped using :ref:`FluidMixMapping <FluidM
 
   - ``mdot_kg_per_s``
   - ``t_out_c``
+
 
 Model
 =======================

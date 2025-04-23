@@ -18,6 +18,18 @@ inputs (e.g. a heat demand timeseries) and outputs (e.g. power load timeseries o
 It extends the libraries `pandapower <http://pandapower.org>`_ and `pandapipes <https:/pandapipes.org>`_ ,
 was created at Universität Kassel, Fraunhofer IEE and has received support from the European Institute for Energy Research in the frame of the "Senergy Nets" project, funded by the European Union.
 
+Getting started:
+
+- `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
+- `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
+- `Interactive tutorials on Binder <https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=%2Fdoc%2Ftree%2Ftutorials>`_
+- `How to contribute <https://github.com/e2nIEE/pandaprosumer/blob/main/CONTRIBUTING.rst>`_
+
+
+.. image:: https://mybinder.org/badge_logo.svg
+ :target: https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=https%3A%2F%2Fgithub.com%2Fe2nIEE%2Fpandaprosumer%2Ftree%2Fdevelop%2Ftutorials
+ :alt: binder
+
 
 .. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
 	:target: https://www.uni-kassel.de/
@@ -31,10 +43,6 @@ was created at Universität Kassel, Fraunhofer IEE and has received support from
 	:align: left
 
 
-
-
-
 .. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
 	:width: 200em
 	:align: right
-

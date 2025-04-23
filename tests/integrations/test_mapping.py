@@ -1,9 +1,9 @@
 import pytest
 
 from pandaprosumer.mapping import GenericMapping
-from pandaprosumer.tests.integrations.base_controller import BaseControllerData
+from tests.integrations.base_controller import BaseControllerData
 from pandaprosumer import *
-from pandaprosumer.tests.data_sources.define_period import define_and_get_period_and_data_source
+from tests.data_sources.define_period import define_and_get_period_and_data_source
 
 def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, **kwargs):
     dummy_controller_data = BaseControllerData(

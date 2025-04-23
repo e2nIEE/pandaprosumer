@@ -23,9 +23,14 @@ Controller
 ===========================
 
 .. figure:: ../elements/controller_pics/stratified_heat_storage_controller.png
-    :width: 30em
+    :width: 50em
     :alt: Stratified Heat Storage Controller logic
     :align: center
+
+
+.. raw:: html
+
+   <br>
 
 
 Input Static Data
@@ -95,7 +100,7 @@ Model
 =================
 
 
-.. autoclass:: pandaprosumer.controller.models.stratified_heat_storage.StratifiedHeatStorageController
+.. autoclass:: pandaprosumer.controller.models.StratifiedHeatStorageController
     :members:
 
 
@@ -233,10 +238,12 @@ For the last layer N at the top of the storage tank:
 .. math::
     :nowrap:
 
-    \begin{align*}
-        \rho C_p A \Delta z \frac{d T_N}{d t} &= U_N S_N\left(T_{amb}-T_N\right) + \frac{4}{3} \frac{k^* A} {\Delta z}\left(T_{N-1}-T_N\right)           + \dot{m}_c C_p\left(T_{\text{charge}}-T_N\right) + \dot{m}_d C_p\left(T_{N-1}-T_N\right)
-    \end{align*}
-
+    \begin{align}
+        \rho C_p A \Delta z \frac{d T_N}{d t} &= U_N S_N\left(T_{amb}-T_N\right) \\
+        &\quad + \frac{4}{3} \frac{k^* A} {\Delta z}\left(T_{N-1}-T_N\right) \\
+        &\quad + \dot{m}_c C_p\left(T_{\text{charge}}-T_N\right) \\
+        &\quad + \dot{m}_d C_p\left(T_{N-1}-T_N\right)
+    \end{align}
 ..
     The stratified thermal energy storage model developed by EIFER is based on the model provided by Untrau et al.
     available in literature :cite:`Untrau2023`. The model developed considers a water based thermal energy storage in
@@ -300,6 +307,7 @@ In our implementation, the function ``phi(r)`` computes the limiter value based 
 The superbee limiter is then given by:
 
 .. math::
+          :nowrap:
     \phi(r) = \max\Big(0,\, \max\big(\min(1,\,2r),\, \min(2,\,r)\big)\Big)
 
 This careful balance allows the TVD scheme to be both robust and accurate in capturing

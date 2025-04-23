@@ -18,6 +18,19 @@ Create Controlled Function
 
 .. autofunction:: pandaprosumer.create_controlled_heat_pump
 
+Controller
+===========
+
+.. figure:: ../elements/controller_pics/heat_pump_controller.png
+    :width: 50em
+    :alt: Heat Pump Controller logic
+    :align: center
+
+
+.. raw:: html
+
+   <br>
+
 
 Input Static Data
 --------------------
@@ -36,16 +49,6 @@ Input Static Data
     "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
     "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
     "in_service", "True for in_service or False for out of service", "boolean"
-
-
-Controller
-===========
-
-.. figure:: ../elements/controller_pics/heat_pump_controller.png
-    :width: 50em
-    :alt: Heat Pump Controller logic
-    :align: center
-
 
 
 Input Time Series

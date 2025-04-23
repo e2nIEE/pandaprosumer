@@ -778,6 +778,39 @@ def create_controlled_heat_storage(prosumer,
                                    init_soc=0.,
                                    period=0,
                                    **kwargs):
+
+    """
+    Creates a heat storage element in the prosumer and a heat storage controller.
+
+    INPUT:
+        **prosumer** - The prosumer within which this heat storage should be created.
+
+        **q_capacity_kwh** (float) - The thermal energy capacity of the heat storage [kWh].
+
+    OPTIONAL:
+        **name** (string, default None) - The name for this heat storage controller.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **level** (int, default 0) - The level of the controller.
+
+        **order** (int, default 0) - The order of the controller.
+
+        **init_soc** (float, default 0.) - The initial state of charge of the heat storage.
+
+        **period** (int, default 0) - Index of the period, default is 0.
+
+        **kwargs** - Additional keyword arguments.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created heat storage controller.
+
+    EXAMPLE:
+        create_controlled_heat_storage(prosumer, q_capacity_kwh=10, name="heat_storage_1")
+    """
+
     heat_storage_index = create_heat_storage(
         prosumer,
         **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'init_soc', 'kwargs'}},
