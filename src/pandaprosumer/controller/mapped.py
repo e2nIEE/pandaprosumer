@@ -3,6 +3,7 @@ Module containing the MappedController class.
 """
 
 import numpy as np
+import pandaprosumer.create
 import pandas as pd
 import logging as pplog
 
@@ -71,7 +72,51 @@ class MappedController(Controller):
             self.result_columns = self.obj.result_columns
             self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
             self.step_results = np.full([self._nb_elements, len(self.result_columns)], np.nan)
+
             if hasattr(self.obj, "period_index") and self.obj.period_index is not None:
+                if not hasattr(container, "period"):
+                    ds = container.controller.object.at[0].df_data
+                    if ds is None or ds.df is None:
+                        raise ValueError(
+                            "No period specified and the first controller doesn't have a data source. Please provide a period.")
+
+                    # Try to detect a datetime column to use as time index
+                    datetime_cols = [col for col in ds.df.columns if
+                                     pd.api.types.is_datetime64_any_dtype(ds.df[col])]
+                    if not datetime_cols:
+                        raise ValueError("No datetime column found in the data source to infer the period.")
+
+                    time_col = datetime_cols[0]
+                    time_series = ds.df[time_col].sort_values()
+
+                    start = time_series.iloc[0]
+                    end = time_series.iloc[-1]
+
+                    try:
+                        inferred_freq = pd.infer_freq(time_series.astype("datetime64[ns]"))
+                    except Exception as e:
+                        inferred_freq = None
+
+                    if inferred_freq is None:
+                        # Fallback: compute difference between first two timestamps
+                        if len(time_series) < 2:
+                            raise ValueError("Not enough timestamps to infer frequency.")
+                        step = time_series.iloc[1] - time_series.iloc[0]
+                    else:
+                        step = pd.Timedelta(inferred_freq)
+                    resolution_s = int(step.total_seconds())
+                    dur = pd.date_range(start, end, freq='%ss' % 3600, tz='utc')
+                    container.controller.object.at[0].df_data.df.index = dur
+                    # Create the period in the container
+                    pandaprosumer.create.create_period(
+                        container,
+                        resolution_s=resolution_s,
+                        start=str(start),
+                        end=str(end),
+                        timezone='utc',
+                        name='default'
+                    )
+
                 self.has_period = True
                 self.period_index = self.obj.period_index
                 self.start = container.period.at[self.obj.period_index, 'start']
