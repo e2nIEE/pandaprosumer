@@ -1,5 +1,5 @@
 import pytest
-
+import re
 from pandaprosumer.mapping import GenericMapping
 from tests.integrations.base_controller import BaseControllerData
 
@@ -128,7 +128,7 @@ class TestMapping:
         """
         Check that the output of a controller can be successfully mapped to the input of another controller
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -156,7 +156,7 @@ class TestMapping:
         Default 'application_operation' of a Generic Mapping is 'add'
         Which means that mapping 2 outputs to the same input will result in summing the outputs
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller1_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -198,7 +198,7 @@ class TestMapping:
         """
         Check that the output of a controller can be successfully mapped to the input of 2 downstream controllers
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -244,7 +244,7 @@ class TestMapping:
             OR: dummy_controller_mid should not forward the demand from dummy_controller_dmd to dummy_controller_prod
             but require only its own heat demand if any
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         # Create some controllers and mapping
@@ -301,3 +301,37 @@ class TestMapping:
 
         assert dummy_controller_dmd.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] == pytest.approx(3)
         assert dummy_controller_dmd.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] == pytest.approx(120)
+
+    def test_check_mappings_orders(self):
+        prosumer = create_empty_prosumer_container()
+        period, data_source = define_and_get_period_and_data_source(prosumer)
+
+        # Create some controllers and mapping
+        dummy_controller_prod_index = _init_dummy_controller(prosumer, [], [],order = 0,level=1)
+        dummy_controller_mid_index = _init_dummy_controller(prosumer, [], [],order = 1,level=1)
+        dummy_controller_dmd_index = _init_dummy_controller(prosumer, [], [],order = 2,level=1)
+
+        dummy_controller_prod = prosumer.controller.loc[dummy_controller_prod_index, 'object']
+        dummy_controller_mid = prosumer.controller.loc[dummy_controller_mid_index, 'object']
+        dummy_controller_dmd = prosumer.controller.loc[dummy_controller_dmd_index, 'object']
+
+        dummy_controller_dmd.t_m_to_deliver = lambda container: (120, 30, np.array([3]))
+
+        FluidMixMapping(container=prosumer,
+                        initiator_id=dummy_controller_prod_index,
+                        responder_id=dummy_controller_dmd_index,
+                        order=0)
+
+        FluidMixMapping(container=prosumer,
+                        initiator_id=dummy_controller_prod_index,
+                        responder_id=dummy_controller_mid_index,
+                        order=0)
+        tfeed_c, tret_c, m_tab_kg_per_s = dummy_controller_prod.t_m_to_deliver(prosumer)
+
+        mass_flow_with_temp = []
+        for m in m_tab_kg_per_s:
+            mass_flow_with_temp.append({FluidMixMapping.MASS_FLOW_KEY: m, FluidMixMapping.TEMPERATURE_KEY: tfeed_c})
+
+        with pytest.raises(ValueError, match=re.escape(
+                    "Mapping order error: For initiator 'None', the mapping orders [0, 0] are not consecutive integers starting at 0 (expected: [0, 1]).")):
+            dummy_controller_prod.finalize(prosumer, np.array([[]]), mass_flow_with_temp)
