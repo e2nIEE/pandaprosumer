@@ -110,14 +110,14 @@ def calculate_hot_temperature_difference(a, delta_t_cold):
     :param delta_t_cold: The temperature difference between the air cold (in) and water cold (out) temperatures
     :return: The temperature difference between the air hot (out) and water hot (in) temperatures
     """
-    dichotomy_fun = lambda x: a * x - np.log(1 + x)
+    dichotomy_fun = lambda x: a * x - np.log(1 + x) if (1 + x) > 0 else float('inf')
     if a > 1:
         # dichotomy_fun is strictly decreasing on [x_max, x_min], -1 < x < 0
         x_max = -1
         x_min = (1 - a) / (a - 0.001)
     else:
         # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0
-        x_min = (1 - a) / a
+        x_min = max((1 - a) / (a - 0.001), -0.999)
         x_max = 3 * x_min
     x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max)
     # x_mean = optimize.newton(dichotomy_fun, (x_min + x_max) / 2)
@@ -282,6 +282,8 @@ class DryCoolerController(BasicProsumerController):
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
         min_t_air_out_c = t_air_in_c + min_delta_t_air_c
         max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
+        if max_x<=-1:
+            max_x = -0.999
         min_a = np.log(1 + max_x) / max_x
 
         if min_delta_t_air_c and a_cold < min_a:
@@ -401,7 +403,7 @@ class DryCoolerController(BasicProsumerController):
                             mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
                             mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
 
-        assert t_fluid_out_c <= t_fluid_in_c, f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
         # ToDo: Add a condition to check whether the mass flows are equal
         if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
