@@ -37,6 +37,8 @@ class pandaprosumerContainer(ADict):
         r += "\n   - %s (%s entries)" % ('time_series', len(self['time_series']))
         r += "\nFollowing mappings are generated:"
         r += "\n   - %s (%s entries)" % ('mapping', len(self['mapping']))
+        r += "\nFollowing Rules are generated:"
+        r += "\n   - %s (%s entries)" % ('Rules', len(self['Rules']))
         return r
 
 
@@ -52,5 +54,16 @@ def get_default_prosumer_container_structure():
         "mapping": [('object', dtype(object)),
                     ('initiator', dtype(object)),
                     ('responder', dtype(object)),
-                    ('order', dtype(object))]}
+                    ('order', dtype(object))],
+        "Rules": [("object", dtype(object)),
+                  ("controlled_columns", dtype(object)),
+                  ("operator", dtype(object)),
+                  ("threshold_value", dtype(float)),
+                  ("controller_index", dtype(object)),
+                  ("attribute", dtype(object)),
+                  ("new_value", dtype(object)),
+                  ("value_if_false", dtype(object)),
+                  ("logical_operator", dtype(object)),
+                  ("linked_rules", dtype(list))]
+    }
     return default_structure
