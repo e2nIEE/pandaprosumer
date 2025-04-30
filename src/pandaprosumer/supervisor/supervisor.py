@@ -10,6 +10,7 @@ from typing import List
 
 from .combining_rule import CombiningRules
 from .rule import *
+import numpy as np
 
 
 try:
@@ -55,6 +56,9 @@ class Supervisor(MappedController):
 
         self.container = prosumer
 
+    def is_supervisor(self):
+        return True
+
     def add_rule(self, rule: Rule):
         """
         Adds a rule-based action to the supervisor.
@@ -89,3 +93,12 @@ class Supervisor(MappedController):
                     rule.execute_opposite(prosumer,self)
 
         self.applied = True
+        self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
+
+    def finalize_control(self, container):
+        """
+        Finalizes the step for the controller.
+
+        :param container: The container object
+        :param time: The current time step
+        """

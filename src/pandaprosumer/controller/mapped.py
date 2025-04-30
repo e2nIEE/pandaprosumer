@@ -103,6 +103,9 @@ class MappedController(Controller):
             Check if controller already was applied
         """
         return self.applied
+
+    def is_supervisor(self):
+        return False
     
     def level_reset(self, container):
         """
@@ -193,9 +196,14 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        return [prosumer.controller.loc[item.responder]["object"] for item in
-                prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                [["object", "responder"]].itertuples()]
+        responders = [prosumer.controller.loc[item.responder]["object"] for item in
+                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+                      [["object", "responder"]].itertuples()]
+        responders_res = []
+        for responder in responders:
+            if not responder.is_supervisor():
+                responders_res.append(responder)
+        return responders_res
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
