@@ -358,146 +358,149 @@ class HeatExchangerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        super().control_step(prosumer)
-        if not self._are_initiators_converged(prosumer):
-            # If some of the initiators are not converged, do not run the control step
-            self._unapply_initiators(prosumer)
-            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
-            return
+        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
+            super().control_step(prosumer)
+            if not self._are_initiators_converged(prosumer):
+                # If some of the initiators are not converged, do not run the control step
+                self._unapply_initiators(prosumer)
+                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
+                return
 
-        t_out_2_required_c, t_in_2_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-        mdot_2_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
+            t_out_2_required_c, t_in_2_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+            mdot_2_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
 
-        t_1_in_c = self._t_feed_in_c
+            t_1_in_c = self._t_feed_in_c
 
-        assert not np.isnan(t_1_in_c), f"Heat Exchanger {self.name} t_1_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_out_2_required_c), f"Heat Exchanger {self.name} t_out_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_in_2_required_c), f"Heat Exchanger {self.name} t_in_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(t_1_in_c), f"Heat Exchanger {self.name} t_1_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(t_out_2_required_c), f"Heat Exchanger {self.name} t_out_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(t_in_2_required_c), f"Heat Exchanger {self.name} t_in_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
-        if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
-            # If the secondary mass flow is too low, no heat is exchanged
-            t_1_out_c = t_1_in_c
-            mdot_1_kg_per_s = 0
-            mdot_2_kg_per_s = mdot_2_required_kg_per_s
-            t_2_in_c = t_in_2_required_c
-            t_2_out_c = t_out_2_required_c
-            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
-                                                                   mdot_tab_required_kg_per_s)
-        else:
-            # FixMe: What to do in these cases ?
-            assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
-            assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
+                # If the secondary mass flow is too low, no heat is exchanged
+                t_1_out_c = t_1_in_c
+                mdot_1_kg_per_s = 0
+                mdot_2_kg_per_s = mdot_2_required_kg_per_s
+                t_2_in_c = t_in_2_required_c
+                t_2_out_c = t_out_2_required_c
+                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
+                                                                       mdot_tab_required_kg_per_s)
+            else:
+                # FixMe: What to do in these cases ?
+                assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
+                assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
-            rerun = True
-            nb_runs = 0
-            while rerun:
-                nb_runs += 1
-                if nb_runs > 20:
-                    raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
-                (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
-                 mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
-                                                                                       t_out_2_required_c,
-                                                                                       t_in_2_required_c,
-                                                                                       mdot_2_required_kg_per_s,
-                                                                                       t_1_in_c)
+                rerun = True
+                nb_runs = 0
+                while rerun:
+                    nb_runs += 1
+                    if nb_runs > 20:
+                        raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+                    (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
+                     mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
+                                                                                           t_out_2_required_c,
+                                                                                           t_in_2_required_c,
+                                                                                           mdot_2_required_kg_per_s,
+                                                                                           t_1_in_c)
 
-                # ToDo: Manage the case where m_1_kg_per_s_in < mdot_1_kg_per_s
-                # If the input mass flow is smaller than the one required by the Heat Exchanger,
-                # The primary return temperature is assumed equal to the secondary cold input
-                # if m_1_kg_per_s_in < mdot_1_kg_per_s:
-                #     t_1_out_c = t_cold_2
-                #     mdot_1_kg_per_s = m_1_kg_per_s_in
+                    # ToDo: Manage the case where m_1_kg_per_s_in < mdot_1_kg_per_s
+                    # If the input mass flow is smaller than the one required by the Heat Exchanger,
+                    # The primary return temperature is assumed equal to the secondary cold input
+                    # if m_1_kg_per_s_in < mdot_1_kg_per_s:
+                    #     t_1_out_c = t_cold_2
+                    #     mdot_1_kg_per_s = m_1_kg_per_s_in
 
-                if not np.isnan(self._mdot_1_provided_kg_per_s):
-                    # If the primary is fed with a fixed mass flow (not free air)
-                    if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
-                        # If the primary mass flow is higher than the one required by the Heat Exchanger,
-                        # recalculate the secondary mass flow to reduce the heat demand to reduce the primary mass flow
-                        # delta_t_2_c = t_2_out_c - t_2_in_c
-                        # delta_t_1_c = t_1_in_c - t_1_out_c
-                        # cp_1_j_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2)
-                        # cp_2_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_out_c + t_2_in_c) / 2)
-                        # q_exchanged_w = self._mdot_feed_in_kg_per_s * cp_1_j_per_kg_k * delta_t_1_c
-                        # mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kg_k * delta_t_2_c)
+                    if not np.isnan(self._mdot_1_provided_kg_per_s):
+                        # If the primary is fed with a fixed mass flow (not free air)
+                        if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
+                            # If the primary mass flow is higher than the one required by the Heat Exchanger,
+                            # recalculate the secondary mass flow to reduce the heat demand to reduce the primary mass flow
+                            # delta_t_2_c = t_2_out_c - t_2_in_c
+                            # delta_t_1_c = t_1_in_c - t_1_out_c
+                            # cp_1_j_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2)
+                            # cp_2_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_out_c + t_2_in_c) / 2)
+                            # q_exchanged_w = self._mdot_feed_in_kg_per_s * cp_1_j_per_kg_k * delta_t_1_c
+                            # mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kg_k * delta_t_2_c)
 
-                        # FixMe: The recalculation of the secondary mass flow lead to a higher mass flow, is it ok ?
+                            # FixMe: The recalculation of the secondary mass flow lead to a higher mass flow, is it ok ?
 
-                        (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
-                         mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger_reverse(prosumer,
-                                                                                                       t_1_in_c,
-                                                                                                       t_1_out_c,
-                                                                                                       self._mdot_1_provided_kg_per_s,
-                                                                                                       t_2_in_c)
+                            (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
+                             mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger_reverse(prosumer,
+                                                                                                           t_1_in_c,
+                                                                                                           t_1_out_c,
+                                                                                                           self._mdot_1_provided_kg_per_s,
+                                                                                                           t_2_in_c)
 
-                        # ToDo: Check that mdot_1_kg_per_s==self._mdot_1_provided_kg_per_s
-                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01
-                    elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
-                        # If the primary mass flow is lower than the one required by the Heat Exchanger,
-                        # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
-                        # Recalculate the primary output temperature
-                        mdot_bypass_kg_per_s = self._mdot_1_provided_kg_per_s - mdot_1_kg_per_s
-                        t_bypass_c = t_1_in_c
-                        t_1_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_1_out_c * mdot_1_kg_per_s) / self._mdot_1_provided_kg_per_s
-                        mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
+                            # ToDo: Check that mdot_1_kg_per_s==self._mdot_1_provided_kg_per_s
+                            assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01
+                        elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
+                            # If the primary mass flow is lower than the one required by the Heat Exchanger,
+                            # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
+                            # Recalculate the primary output temperature
+                            mdot_bypass_kg_per_s = self._mdot_1_provided_kg_per_s - mdot_1_kg_per_s
+                            t_bypass_c = t_1_in_c
+                            t_1_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_1_out_c * mdot_1_kg_per_s) / self._mdot_1_provided_kg_per_s
+                            mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
 
-                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s, mdot_tab_required_kg_per_s)
+                    result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s, mdot_tab_required_kg_per_s)
 
-                rerun = False
-                if len(self._get_mapped_responders(prosumer)) > 1 and mdot_2_kg_per_s < mdot_2_required_kg_per_s:
-                    # If the heat Pump is not able to deliver the required mass flow,
-                    # recalculate the condenser input temperature, considering that all the downstream elements will be
-                    # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
-                    t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                    if abs(mdot_2_kg_per_s) > 1e-8:
-                        t_2_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_2_kg_per_s
-                    else:
-                        t_2_in_new_c = t_in_2_required_c
-                    if abs(t_2_in_new_c - t_in_2_required_c) > 1:
-                        # If this recalculation changes the condenser input temperature, rerun the calculation
-                        # with the new temperature
-                        t_in_2_required_c = t_2_in_new_c
-                        rerun = True
+                    rerun = False
+                    if len(self._get_mapped_responders(prosumer)) > 1 and mdot_2_kg_per_s < mdot_2_required_kg_per_s:
+                        # If the heat Pump is not able to deliver the required mass flow,
+                        # recalculate the condenser input temperature, considering that all the downstream elements will be
+                        # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
+                        t_return_tab_c = self.get_treturn_tab_c(prosumer)
+                        if abs(mdot_2_kg_per_s) > 1e-8:
+                            t_2_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_2_kg_per_s
+                        else:
+                            t_2_in_new_c = t_in_2_required_c
+                        if abs(t_2_in_new_c - t_in_2_required_c) > 1:
+                            # If this recalculation changes the condenser input temperature, rerun the calculation
+                            # with the new temperature
+                            t_in_2_required_c = t_2_in_new_c
+                            rerun = True
 
-        if mdot_2_kg_per_s > mdot_2_required_kg_per_s:
-            # If the actual output mass flow is higher than the one required, redistribute the extra mass flow
-            # to the other downstream elements,
-            # so the through the secondary side mass flow is the same as the total distributed mass flow
-            for i in range(len(result_mdot_tab_kg_per_s)):
-                result_mdot_tab_kg_per_s[i] = result_mdot_tab_kg_per_s[i] + (mdot_2_kg_per_s - mdot_2_required_kg_per_s) / len(result_mdot_tab_kg_per_s)
+            if mdot_2_kg_per_s > mdot_2_required_kg_per_s:
+                # If the actual output mass flow is higher than the one required, redistribute the extra mass flow
+                # to the other downstream elements,
+                # so the through the secondary side mass flow is the same as the total distributed mass flow
+                for i in range(len(result_mdot_tab_kg_per_s)):
+                    result_mdot_tab_kg_per_s[i] = result_mdot_tab_kg_per_s[i] + (mdot_2_kg_per_s - mdot_2_required_kg_per_s) / len(result_mdot_tab_kg_per_s)
 
-            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3
+                assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3
 
-        result = np.array([[mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]])
+            result = np.array([[mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]])
 
-        result_fluid_mix = []
-        for mdot_kg_per_s in result_mdot_tab_kg_per_s:
-            result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_2_out_c,
-                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+            result_fluid_mix = []
+            for mdot_kg_per_s in result_mdot_tab_kg_per_s:
+                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_2_out_c,
+                                         FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
-        assert t_2_out_c >= 0, f"Heat Exchanger {self.name} t_2_out_c is negative ({t_2_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_2_in_c >= 0, f"Heat Exchanger {self.name} t_2_in_c is negative ({t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_out_c >= 0, f"Heat Exchanger {self.name} t_1_out_c is negative ({t_1_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_in_c >= 0, f"Heat Exchanger {self.name} t_1_in_c is negative ({t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_2_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_2_kg_per_s is negative ({mdot_2_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_1_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_1_kg_per_s is negative ({mdot_1_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name} t_1_out_c > t_1_in_c ({t_1_out_c} > {t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_2_out_c >= t_2_in_c, f"Heat Exchanger {self.name} t_2_out_c < t_2_in_c ({t_2_out_c} < {t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_2_out_c >= 0, f"Heat Exchanger {self.name} t_2_out_c is negative ({t_2_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_2_in_c >= 0, f"Heat Exchanger {self.name} t_2_in_c is negative ({t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_1_out_c >= 0, f"Heat Exchanger {self.name} t_1_out_c is negative ({t_1_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_1_in_c >= 0, f"Heat Exchanger {self.name} t_1_in_c is negative ({t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert mdot_2_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_2_kg_per_s is negative ({mdot_2_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert mdot_1_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_1_kg_per_s is negative ({mdot_1_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name} t_1_out_c > t_1_in_c ({t_1_out_c} > {t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_2_out_c >= t_2_in_c, f"Heat Exchanger {self.name} t_2_out_c < t_2_in_c ({t_2_out_c} < {t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
-        if np.isnan(self.t_keep_return_c) or mdot_1_kg_per_s == 0 or abs(t_1_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-            # If the actual output temperature is the same as the promised one, the storage is correctly applied
-            self.finalize(prosumer, result, result_fluid_mix)
-            self.applied = True
-            self.t_previous_1_out_c = np.nan
-            self.t_previous_1_in_c = np.nan
-            self.mdot_previous_1_kg_per_s = np.nan
-        else:
-            # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
-            # FixMe: Should not do that if the initiators is not on the same level
-            self._unapply_initiators(prosumer)
-            self.t_previous_1_out_c = t_1_out_c
-            self.t_previous_1_in_c = t_1_in_c
-            self.mdot_previous_1_kg_per_s = mdot_1_kg_per_s
-            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
+            if np.isnan(self.t_keep_return_c) or mdot_1_kg_per_s == 0 or abs(t_1_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+                # If the actual output temperature is the same as the promised one, the storage is correctly applied
+                self.finalize(prosumer, result, result_fluid_mix)
+                self.applied = True
+                self.t_previous_1_out_c = np.nan
+                self.t_previous_1_in_c = np.nan
+                self.mdot_previous_1_kg_per_s = np.nan
+            else:
+                # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
+                # FixMe: Should not do that if the initiators is not on the same level
+                self._unapply_initiators(prosumer)
+                self.t_previous_1_out_c = t_1_out_c
+                self.t_previous_1_in_c = t_1_in_c
+                self.mdot_previous_1_kg_per_s = mdot_1_kg_per_s
+                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
+
+        else: self.applied = True  # self.in_service = False

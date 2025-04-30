@@ -99,53 +99,56 @@ class BoosterHeatPumpController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        super().control_step(prosumer)
-        demand_kw = self.q_requested_kw(prosumer)
-        p_el_kw = self._p_received_kw
-        q_kw = self._q_received_kw
-        t_source_k = self._t_source
-        t_sink_k = self._t_sink
-        hp_type = self._get_element_param(prosumer, "hp_type")
-        mode = self._mode
+        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
+            super().control_step(prosumer)
+            demand_kw = self.q_requested_kw(prosumer)
+            p_el_kw = self._p_received_kw
+            q_kw = self._q_received_kw
+            t_source_k = self._t_source
+            t_sink_k = self._t_sink
+            hp_type = self._get_element_param(prosumer, "hp_type")
+            mode = self._mode
 
-        t_source_k = t_source_k - 273.0
-        t_sink_k = t_sink_k - 273.0
+            t_source_k = t_source_k - 273.0
+            t_sink_k = t_sink_k - 273.0
 
-        if hp_type == "water-water-sdewes":
-            t_min_source_k = 60.0
-            t_max_source_k = 99.1
-            cop_coeff = [11.05, -0.15]
-        else:
-            raise ValueError(f"Unknown heat pump type: {hp_type}")
-
-
-        if mode == 3: # Mode 1: total heat is source heat plus heat generated (boosting)
-            if hp_type == 'water-water-sdewes':
-                if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
-                    cop = 0
-                    p_el_kw = 0
-                    q_kw = 0
-                    q_remain_kw = demand_kw
-                    logging.warning(f"Heat pump is not operating due to the heat source "
-                                    f"temperature being out of range: {float(t_source_k)} celsius")
-                else:
-                    q_max_kw = 647.6 + 15.76 * t_source_k
-                    q_remain_kw, q_kw, cop, p_el_kw = self.third_mode_calc(demand_kw, q_max_kw, t_source_k, t_sink_k, cop_coeff)
-
+            if hp_type == "water-water-sdewes":
+                t_min_source_k = 60.0
+                t_max_source_k = 99.1
+                cop_coeff = [11.05, -0.15]
             else:
-                raise ValueError(f"Wrong type: {mode}")
-        else:
-            raise ValueError(f"Wrong mode: {mode}")
+                raise ValueError(f"Unknown heat pump type: {hp_type}")
 
-        result = np.array([pd.Series(cop),
-                  pd.Series(q_kw),
-                  pd.Series(q_remain_kw),
-                  pd.Series(p_el_kw)
-                  ])
 
-        self.finalize(prosumer, result.T)
+            if mode == 3: # Mode 1: total heat is source heat plus heat generated (boosting)
+                if hp_type == 'water-water-sdewes':
+                    if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
+                        cop = 0
+                        p_el_kw = 0
+                        q_kw = 0
+                        q_remain_kw = demand_kw
+                        logging.warning(f"Heat pump is not operating due to the heat source "
+                                        f"temperature being out of range: {float(t_source_k)} celsius")
+                    else:
+                        q_max_kw = 647.6 + 15.76 * t_source_k
+                        q_remain_kw, q_kw, cop, p_el_kw = self.third_mode_calc(demand_kw, q_max_kw, t_source_k, t_sink_k, cop_coeff)
 
-        self.applied = True
+                else:
+                    raise ValueError(f"Wrong type: {mode}")
+            else:
+                raise ValueError(f"Wrong mode: {mode}")
+
+            result = np.array([pd.Series(cop),
+                      pd.Series(q_kw),
+                      pd.Series(q_remain_kw),
+                      pd.Series(p_el_kw)
+                      ])
+
+            self.finalize(prosumer, result.T)
+
+            self.applied = True
+
+        else: self.applied = True  # self.in_service = False
 
     def first_mode_calc(self, demand_kw, q_kw, q_max_kw, p_el_kw, t_source_k, a):
         """

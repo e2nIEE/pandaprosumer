@@ -47,6 +47,7 @@ class MappedController(Controller):
         self.has_elements = hasattr(self.obj, "element_index") or np.iterable(self.obj) and hasattr(self.obj[0], "element_index")
         self._nb_elements = len(self.obj) if self.has_elements and np.iterable(self.obj) else 1
         self.has_period = False
+        self.in_service = in_service
 
         if np.iterable(self.obj):
             self.input_columns = [name for obj in self.obj for name in obj.input_columns]  # [obj.input_columns for obj in self.obj]

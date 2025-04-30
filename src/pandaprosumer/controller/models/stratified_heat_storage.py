@@ -533,116 +533,118 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        super().control_step(prosumer)
-        if not self._are_initiators_converged(prosumer):
-            # If some of the initiators are not converged, do not run the control step
-            self._unapply_initiators(prosumer)
-            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
-            return
+        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
+            super().control_step(prosumer)
+            if not self._are_initiators_converged(prosumer):
+                # If some of the initiators are not converged, do not run the control step
+                self._unapply_initiators(prosumer)
+                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
+                return
 
-        # The discharge temperature is the one on top of the storage
-        # Note that the time step should not be too long compared to the volume of this top layer and the mass flow
-        t_discharge_out_c = self._layer_temps_c[-1]
+            # The discharge temperature is the one on top of the storage
+            # Note that the time step should not be too long compared to the volume of this top layer and the mass flow
+            t_discharge_out_c = self._layer_temps_c[-1]
 
-        # When discharging, the temperature of the fluid that will be added at the bottom of the storage is the
-        # temperature returned by the downstream elements.
-        # Simple average of the temperatures but will have to be weighted by the mass flows in the future
-        t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
-        mdot_demand_kg_per_s = sum(mdot_demand_tab_kg_per_s)
+            # When discharging, the temperature of the fluid that will be added at the bottom of the storage is the
+            # temperature returned by the downstream elements.
+            # Simple average of the temperatures but will have to be weighted by the mass flows in the future
+            t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
+            mdot_demand_kg_per_s = sum(mdot_demand_tab_kg_per_s)
 
-        assert mdot_demand_kg_per_s >= 0, f"SHS {self.name} mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_out_c >= t_demand_in_c, f"SHS {self.name} t_demand_out_c < t_demand_in_c is negative ({t_demand_out_c} < {t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_in_c >= 0, f"SHS {self.name} t_demand_in_c is negative ({t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert mdot_demand_kg_per_s >= 0, f"SHS {self.name} mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_demand_out_c >= t_demand_in_c, f"SHS {self.name} t_demand_out_c < t_demand_in_c is negative ({t_demand_out_c} < {t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_demand_in_c >= 0, f"SHS {self.name} t_demand_in_c is negative ({t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
-        layer_temp_init_c = self._layer_temps_c.copy()
+            layer_temp_init_c = self._layer_temps_c.copy()
 
-        rerun = True
-        while rerun:
-            self._layer_temps_c = layer_temp_init_c.copy()
+            rerun = True
+            while rerun:
+                self._layer_temps_c = layer_temp_init_c.copy()
 
-            (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
-             mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
-             mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
-             mdot_charge_kg_per_s, t_charge_out_c,
-             mdot_discharge_kg_per_s, t_discharge_out_c) = self._calculate_heat_storage(prosumer,
-                                                                                        mdot_demand_kg_per_s,
-                                                                                        self._t_received_in_c,
-                                                                                        t_demand_out_c,
-                                                                                        t_demand_in_c,
-                                                                                        t_discharge_out_c,
-                                                                                        self._mdot_received_kg_per_s,
-                                                                                        self._t_charge_out)
+                (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
+                 mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
+                 mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
+                 mdot_charge_kg_per_s, t_charge_out_c,
+                 mdot_discharge_kg_per_s, t_discharge_out_c) = self._calculate_heat_storage(prosumer,
+                                                                                            mdot_demand_kg_per_s,
+                                                                                            self._t_received_in_c,
+                                                                                            t_demand_out_c,
+                                                                                            t_demand_in_c,
+                                                                                            t_discharge_out_c,
+                                                                                            self._mdot_received_kg_per_s,
+                                                                                            self._t_charge_out)
 
-            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
-                                                                   mdot_delivered_kg_per_s,
-                                                                   mdot_demand_tab_kg_per_s)
+                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
+                                                                       mdot_delivered_kg_per_s,
+                                                                       mdot_demand_tab_kg_per_s)
 
-            rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
-                # If the heat Pump is not able to deliver the required mass flow,
-                # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_return_demand_new_c = t_demand_in_c
-                if abs(t_return_demand_new_c - t_demand_in_c) > 1:
-                    # If this recalculation changes the condenser input temperature, rerun the calculation
-                    # with the new temperature
-                    t_demand_in_c = t_return_demand_new_c
-                    rerun = True
+                rerun = False
+                if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
+                    # If the heat Pump is not able to deliver the required mass flow,
+                    # recalculate the condenser input temperature, considering that all the downstream elements will be
+                    # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
+                    t_return_tab_c = self.get_treturn_tab_c(prosumer)
+                    if abs(mdot_delivered_kg_per_s) > 1e-8:
+                        t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
+                    else:
+                        t_return_demand_new_c = t_demand_in_c
+                    if abs(t_return_demand_new_c - t_demand_in_c) > 1:
+                        # If this recalculation changes the condenser input temperature, rerun the calculation
+                        # with the new temperature
+                        t_demand_in_c = t_return_demand_new_c
+                        rerun = True
 
-        # result = np.array([[mdot_discharge_kg_per_s,
-        #                     t_discharge_out_c,
-        #                     q_delivered_kw,
-        #                     e_stored_kwh]])
+            # result = np.array([[mdot_discharge_kg_per_s,
+            #                     t_discharge_out_c,
+            #                     q_delivered_kw,
+            #                     e_stored_kwh]])
 
-        cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
-        q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
-        cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
-        q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
+            cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
+            q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
+            cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
+            q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
 
-        result = np.array([[mdot_discharge_kg_per_s,
-                            t_discharge_out_c,
-                            q_discharge_kw,
-                            e_stored_kwh]])
+            result = np.array([[mdot_discharge_kg_per_s,
+                                t_discharge_out_c,
+                                q_discharge_kw,
+                                e_stored_kwh]])
 
-        result_fluid_mix = []
-        for mdot_kg_per_s in result_mdot_tab_kg_per_s:
-            result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_delivered_out_c,
-                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+            result_fluid_mix = []
+            for mdot_kg_per_s in result_mdot_tab_kg_per_s:
+                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_delivered_out_c,
+                                         FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
-        # Used for debugging
-        if self.plot:
-            self._layer_temps_tab_c += [self._layer_temps_c]  # Store all the layers temps history for analysis
-            self.t_charge_tab_c += [t_received_in_c]
-            self.t_discharge_tab_c += [t_demand_in_c]
-            self.mdot_charge_tab_kg_per_s += [mdot_charge_kg_per_s]
-            self.mdot_discharge_tab_kg_per_s += [mdot_discharge_kg_per_s]
+            # Used for debugging
+            if self.plot:
+                self._layer_temps_tab_c += [self._layer_temps_c]  # Store all the layers temps history for analysis
+                self.t_charge_tab_c += [t_received_in_c]
+                self.t_discharge_tab_c += [t_demand_in_c]
+                self.mdot_charge_tab_kg_per_s += [mdot_charge_kg_per_s]
+                self.mdot_discharge_tab_kg_per_s += [mdot_discharge_kg_per_s]
 
-        #assert q_received_kw >= 0, f"SHS {self.name} q_received_kw is negative ({q_received_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_delivered_kw >= 0, f"SHS {self.name} q_delivered_kw is negative ({q_delivered_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_charge_kw >= 0, f"SHS {self.name} q_charge_kw is negative ({q_charge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_discharge_kw >= 0, f"SHS {self.name} q_discharge_kw is negative ({q_discharge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        # assert e_stored_kwh >= 0, f"SHS {self.name} e_stored_kwh is negative ({e_stored_kwh}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert mdot_received_kg_per_s >= 0, f"SHS {self.name} mdot_received_kg_per_s is negative ({mdot_received_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert mdot_delivered_kg_per_s >= 0, f"SHS {self.name} mdot_delivered_kg_per_s is negative ({mdot_delivered_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert q_received_kw >= 0, f"SHS {self.name} q_received_kw is negative ({q_received_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert q_delivered_kw >= 0, f"SHS {self.name} q_delivered_kw is negative ({q_delivered_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert q_charge_kw >= 0, f"SHS {self.name} q_charge_kw is negative ({q_charge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert q_discharge_kw >= 0, f"SHS {self.name} q_discharge_kw is negative ({q_discharge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            # assert e_stored_kwh >= 0, f"SHS {self.name} e_stored_kwh is negative ({e_stored_kwh}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert mdot_received_kg_per_s >= 0, f"SHS {self.name} mdot_received_kg_per_s is negative ({mdot_received_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+            #assert mdot_delivered_kg_per_s >= 0, f"SHS {self.name} mdot_delivered_kg_per_s is negative ({mdot_delivered_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
-        if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-            # If the actual output temperature is the same as the promised one, the storage is correctly applied
-            self.finalize(prosumer, result, result_fluid_mix)
-            self.applied = True
-            self.t_previous_out_charge_c = np.nan
-            self.t_previous_in_charge_c = np.nan
-            self.mdot_previous_in_kg_per_s = np.nan
-        else:
-            # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
-            self._layer_temps_c = layer_temp_init_c
-            self._unapply_initiators(prosumer)
-            self.t_previous_out_charge_c = t_received_out_c
-            self.t_previous_in_charge_c = t_received_in_c
-            self.mdot_previous_in_kg_per_s = mdot_delivered_kg_per_s
-            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
+            if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+                # If the actual output temperature is the same as the promised one, the storage is correctly applied
+                self.finalize(prosumer, result, result_fluid_mix)
+                self.applied = True
+                self.t_previous_out_charge_c = np.nan
+                self.t_previous_in_charge_c = np.nan
+                self.mdot_previous_in_kg_per_s = np.nan
+            else:
+                # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
+                self._layer_temps_c = layer_temp_init_c
+                self._unapply_initiators(prosumer)
+                self.t_previous_out_charge_c = t_received_out_c
+                self.t_previous_in_charge_c = t_received_in_c
+                self.mdot_previous_in_kg_per_s = mdot_delivered_kg_per_s
+                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
+        else: self.applied = True  # self.in_service = False
