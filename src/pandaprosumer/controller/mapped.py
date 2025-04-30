@@ -437,16 +437,14 @@ class MappedController(Controller):
             ValueError: If there is more than one level among controllers.
         """
         levels = []
-        model = ["dry_cooler_controller","electric_boiler_controller","gas_boiler_controller",
-                 "heat_demand_controller",'heat_exchanger_controller','heat_pump_controller',
-                 'stratified_heat_storage_controller']
+        # model = [ConstProfileController]
         for _, ctrl_row in container.controller.iterrows():
             ctrl = ctrl_row.object
-            if ctrl.name in model:
+            if not ctrl.name_class() == 'const_profile_control':
                 levels.append(ctrl.level)
         if levels and not all(l == levels[0] for l in levels):
             raise ValueError(
-                f"Level error: Not all controllers have the same level (excluding ConstProfile). "
+                f"Level error: Not all controllers have the same level. "
                 f"Found levels: {set(levels)}."
             )
 

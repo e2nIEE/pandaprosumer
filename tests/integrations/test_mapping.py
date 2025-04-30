@@ -292,8 +292,8 @@ class TestMapping:
         prosumer = create_empty_prosumer_container()
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
-        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0,name = 'heat_pump_controller')
-        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=1, order=0,name = 'heat_pump_controller')
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0,name = 'test2')
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=1, order=0,name = 'test1')
 
         initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
         responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
@@ -313,7 +313,7 @@ class TestMapping:
                                         order=1)
 
         with pytest.raises(ValueError, match=re.escape(
-                "Level error: Not all controllers have the same level (excluding ConstProfile). Found levels: {0, 1}.")):
+                "Level error: Not all controllers have the same level. Found levels: {0, 1}.")):
             initiator_controller.initialize_control(prosumer)
 
 # ToDO: Test merit order (both ways)
