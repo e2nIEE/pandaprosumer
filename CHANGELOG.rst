@@ -4,6 +4,7 @@
 - [ADDED] `check_controllers_orders` function: validates that initiator controllers execute before responder controllers, based on level and order attributes.
 - [ADDED] `check_mappings_orders` function: checks that controller mapping orders are continuous and start from zero.
 - [ADDED] `check_order` argument to the prosumer constructor: allows enabling or disabling all order validation mechanisms.
+- [UPDATED] Tests and tutorials to comply with new order checking mechanisms (minor fixes for compatibility).
 - [FIXED] Incorrect reference to "pandapipes" in `CONTRIBUTING.rst` now correctly mentions "pandaprosumer".
 - [CHANGED] Unit correction in `dry_cooler.rst` documentation.
 
