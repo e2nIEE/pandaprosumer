@@ -1,3 +1,10 @@
+[0.1.2] - 2025-05-02
+-------------------------------
+- [ADDED] `check_levels` function: ensures that all controllers in a prosumer have the same execution level (with exceptions for ConstProfile and pandapower/pandapipes).
+- [ADDED] `check_controllers_orders` function: validates that initiator controllers execute before responder controllers, based on level and order attributes.
+- [ADDED] `check_mappings_orders` function: checks that controller mapping orders are continuous and start from zero.
+- [ADDED] `check_order` argument to the prosumer constructor: allows enabling or disabling all order validation mechanisms.
+
 [0.1.2] - 2025-04-22
 -------------------------------
 - [FIXED] ice chp documentation
