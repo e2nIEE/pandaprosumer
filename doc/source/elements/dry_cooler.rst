@@ -64,7 +64,7 @@ Input Time Series
     "t_in_c", "Water input required temperature", "Degree Celsius"
     "t_out_c", "Water output expected temperature", "Degree Celsius"
     "t_air_in_c", "Input dry bulb temperature of the ambient air", "Degree Celsius"
-    "phi_air_in_percent", "Input relative humidity of the ambient air.", "Degree Celsius"
+    "phi_air_in_percent", "Input relative humidity of the ambient air.", "N/A"
 
 
 
