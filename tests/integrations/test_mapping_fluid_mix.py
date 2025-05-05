@@ -1,8 +1,6 @@
 import pytest
 import re
-from pandaprosumer.mapping import GenericMapping
 from tests.integrations.base_controller import BaseControllerData
-
 from pandaprosumer import *
 from tests.data_sources.define_period import define_and_get_period_and_data_source
 
