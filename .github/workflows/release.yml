@@ -77,6 +77,8 @@ jobs:
         python-version: ['3.10', '3.11']
         os:  [ ubuntu-latest, windows-latest ]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
@@ -100,4 +102,5 @@ jobs:
           python -m pip list
       - name: Test with pytest
         run: |
-          pytest --pyargs tests
+          pytest tests/
+
