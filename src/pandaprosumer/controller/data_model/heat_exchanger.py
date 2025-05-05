@@ -42,5 +42,6 @@ class HeatExchangerControllerData:
     period_index: int = None
     input_columns: List[str] = field(default_factory=lambda: ["t_feed_in_c"])
     result_columns: List[str] = field(
-        default_factory=lambda: ["mdot_1_kg_per_s", "t_1_in_c", "t_1_out_c",
+        default_factory=lambda: ["q_exchanged_kw",
+                                 "mdot_1_kg_per_s", "t_1_in_c", "t_1_out_c",
                                  "mdot_2_kg_per_s", "t_2_in_c", "t_2_out_c"])

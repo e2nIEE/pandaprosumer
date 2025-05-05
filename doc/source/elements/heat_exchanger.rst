@@ -67,6 +67,7 @@ Output Time Series
 .. csv-table:: Output Time Series: Heat Exchanger
    :header: "Parameter", "Description", "Unit"
 
+   "q_exchanged_kw ", "Exchanged heat power", "kW"
    "mdot_1_kg_per_s ", "The mass flow rate at the primary side of the heat exchanger", "kg/s"
    "t_1_in_c ", "The feed input temperature at the primary side of the heat exchanger", "Degree Celsius"
    "t_1_out_c ", "The return output temperature at the primary side of the heat exchanger", "Degree Celsius"
