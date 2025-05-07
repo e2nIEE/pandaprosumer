@@ -34,8 +34,7 @@ class ConstProfileController(MappedController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         return "const_profile_control"
 
     def __init__(self, prosumer, const_object, df_data: DFData, order=-1, level=-1, in_service=True, index=None,

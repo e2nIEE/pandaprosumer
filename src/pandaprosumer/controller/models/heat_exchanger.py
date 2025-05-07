@@ -151,9 +151,8 @@ class HeatExchangerController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "heat_exchanger"
+    def name_class(self):
+        return "heat_exchanger_controller"
 
     def __init__(self, prosumer, stratified_heat_storage_object, order, level,
                  in_service=True, index=None, name=None, **kwargs):

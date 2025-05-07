@@ -1,9 +1,12 @@
-[0.1.3] - 2025-05-05
+[0.1.3] - 2025-05-02
 -------------------------------
-- [ADDED] `ConstProfileController` now supports automatic period detection from the DataFrame via a `period` column if no period is explicitly set.
-- [CHANGED] Improved period handling logic to reduce user configuration burden and improve flexibility.
-- [UPDATED] Tests and tutorials to reflect the new behavior in period detection and ensure compatibility with updated controller logic.
-
+- [ADDED] `check_levels` function: ensures that all controllers in a prosumer have the same execution level (with exceptions for ConstProfile and pandapower/pandapipes).
+- [ADDED] `check_controllers_orders` function: validates that initiator controllers execute before responder controllers, based on level and order attributes.
+- [ADDED] `check_mappings_orders` function: checks that controller mapping orders are continuous and start from zero.
+- [ADDED] `check_order` argument to the prosumer constructor: allows enabling or disabling all order validation mechanisms.
+- [UPDATED] Tests and tutorials to comply with new order checking mechanisms (minor fixes for compatibility).
+- [FIXED] Incorrect reference to "pandapipes" in `CONTRIBUTING.rst` now correctly mentions "pandaprosumer".
+- [CHANGED] Unit correction in `dry_cooler.rst` documentation.
 
 [0.1.2] - 2025-04-22
 -------------------------------
