@@ -46,8 +46,14 @@ class GenericMapping(BaseMapping):
         self.application_operation = application_operation
         self.weights = weights
         self.responder_net = container
+        self.initiator = initiator_id
+        self.responder = responder_id
 
     def __str__(self):
+        return "ElementWiseMapping"
+
+    @property
+    def name(self):
         return "ElementWiseMapping"
 
     def _validate(self):
@@ -56,6 +62,9 @@ class GenericMapping(BaseMapping):
         """
         super()._validate()
 
+    def _check_order(self):
+        return hasattr(self.responder_net, "check_order") and self.responder_net.check_order
+
     def map(self, initiator_controller, responder_controller):
         """
         Applies the element-wise mapping between the initiator and responder controllers.
@@ -63,6 +72,7 @@ class GenericMapping(BaseMapping):
         :param initiator_controller: The initiating controller
         :param responder_controller: The responding controller
         """
+        if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
         if self.application_operation == 'add':
             # if initiator_controller.has_elements and initiator_controller._nb_elements >= 2:
             if isinstance(self.initiator_column, list):

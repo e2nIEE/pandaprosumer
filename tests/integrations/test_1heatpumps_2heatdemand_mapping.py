@@ -1,7 +1,6 @@
 import pytest
 from pandas.testing import assert_frame_equal, assert_series_equal
-
-from pandaprosumer.run_time_series import run_timeseries
+import re
 from pandaprosumer.mapping import GenericMapping
 
 from pandaprosumer import *
@@ -270,3 +269,90 @@ class Test1HeatPump2HeatDemandsMapping:
         assert_series_equal(hp_mdot_cond_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False, check_dtype=False)
         t_return_c = (mdot_demand1_kg_per_s * data.demand_1_t_out_c + mdot_demand2_kg_per_s * data.demand_2_t_out_c) / mdot_demand_kg_per_s
         assert_series_equal(hp_t_cond_in_c, t_return_c, rtol=.0001, check_names=False, check_dtype=False)
+
+    def test_mapping_check_order_fail(self):
+        prosumer = create_empty_prosumer_container(check_order=True)
+        data = pd.DataFrame({"Tin_evap": [25.] * 5,
+                             "demand_1": [100.] * 5,
+                             "demand_1_t_in_c": [70.] * 5,
+                             "demand_1_t_out_c": [20.] * 5,
+                             "demand_2": [100.] * 5,
+                             "demand_2_t_in_c": [70., 90., 60., 70., 70.],
+                             "demand_2_t_out_c": [20., 20., 20., 30., 10.]})
+
+        start = '2020-01-01 00:00:00'
+        resol = 3600
+        end = pd.Timestamp(start) + len(data["Tin_evap"]) * pd.Timedelta(f"00:00:{resol}") - pd.Timedelta("00:00:01")
+        dur = pd.date_range(start, end, freq='%ss' % resol, tz='utc')
+        period = create_period(prosumer,
+                               resol,
+                               start,
+                               end,
+                               'utc',
+                               'default')
+
+        data.index = dur
+        data_source = DFData(data)
+
+        cp_input_columns = ["Tin_evap", "demand_1", "demand_2", "demand_1_t_in_c", "demand_1_t_out_c",
+                            "demand_2_t_in_c", "demand_2_t_out_c"]
+        cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
+                             "t_feed_demand2_c", "t_return_demand2_c"]
+        hp_params = {'carnot_efficiency': .5,
+                     'pinch_c': 0,
+                     'delta_t_evap_c': 5,
+                     'max_p_comp_kw': 100,
+                     'name':'heat pump'}
+
+        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+
+        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
+                                                              period, data_source, 0, 0)
+        hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
+
+        hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
+        hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
+
+        GenericMapping(container=prosumer,
+                       initiator_id=cp_controller_index,
+                       initiator_column="t_evap_in_c",
+                       responder_id=hp_controller_index,
+                       responder_column="t_evap_in_c",
+                       order=0)
+
+        for order, init_col, resp_col in zip([1, 2, 3], ["qdemand1_kw", "t_feed_demand1_c", "t_return_demand1_c"],
+                                             ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
+            GenericMapping(container=prosumer,
+                           initiator_id=cp_controller_index,
+                           initiator_column=init_col,
+                           responder_id=hd_controller_index_1,
+                           responder_column=resp_col,
+                           order=order)
+
+        for order, init_col, resp_col in zip([4, 5, 6], ["qdemand2_kw", "t_feed_demand2_c", "t_return_demand2_c"],
+                                             ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
+            GenericMapping(container=prosumer,
+                           initiator_id=cp_controller_index,
+                           initiator_column=init_col,
+                           responder_id=hd_controller_index_2,
+                           responder_column=resp_col,
+                           order=order)
+
+        FluidMixMapping(container=prosumer,
+                        initiator_id=hp_controller_index,
+                        responder_id=hd_controller_index_1,
+                        order=0)
+
+        FluidMixMapping(container=prosumer,
+                        initiator_id=hp_controller_index,
+                        responder_id=hd_controller_index_2,
+                        order=0)
+
+        # Invalid setup: this second FluidMixMapping uses the same order (0) as the previous one.
+        # Each mapping from the same initiator ("heat pump") must have a unique, consecutive order (e.g., 0, 1).
+        # The order defines priority: if the heat pump cannot supply both demands,
+        # the mapping with the lower order (here, demand 1 with order=0) is prioritized.
+
+        with pytest.raises(ValueError, match=re.escape(
+                "Mapping order error: For initiator 'heat pump', the mapping orders [0, 0] are not consecutive integers starting at 0 (expected: [0, 1]).")):
+            run_timeseries(prosumer, period, True)

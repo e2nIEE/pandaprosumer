@@ -13,9 +13,8 @@ class HeatStorageController(BasicProsumerController):
     Controller for heat storage systems.
     """
 
-    @classmethod
-    def name(cls):
-        return "heat_storage"
+    def name_class(self):
+        return "heat_storage_controller"
 
     def __init__(self, prosumer, heat_storage_object, order, level, init_soc=0., in_service=True, index=None, **kwargs):
         """

@@ -29,6 +29,10 @@ class FluidMixEnergySystemMapping(FluidMixMapping):
     def __str__(self):
         return "FluidMixEnergySystemMapping"
 
+    @property
+    def name(self):
+        return "FluidMixEnergySystemMapping"
+
     def _validate(self):
         """
         Validates the generic mapping.

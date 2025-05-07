@@ -48,3 +48,18 @@ class BaseMapping(JSONSerializableClass):
         :param responder_controller: The responding controller
         """
         logger.info("Applying mapping")
+
+    def check_controllers_orders(self, initiator_ctrl, responder_ctrl):
+        """
+        Check that the initiator controller is scheduled to run
+        before the responder controller by comparing their order attributes.
+        Raises:
+            ValueError: If any mapping violates the initiator-before-responder rule.
+        """
+
+        if (initiator_ctrl.level > responder_ctrl.level) or (
+                (initiator_ctrl.level == responder_ctrl.level) and (initiator_ctrl.order >= responder_ctrl.order)):
+            raise ValueError(
+                f"Controller order error: Initiator '{initiator_ctrl.name}' (order: {initiator_ctrl.order}) "
+                f"must be executed before responder '{responder_ctrl.name}' (order: {responder_ctrl.order})."
+            )
