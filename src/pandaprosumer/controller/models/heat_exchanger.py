@@ -9,7 +9,7 @@ from pandapipes import call_lib
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.mapping import FluidMixMapping
-from pandaprosumer.controller.heat_exchanger_utils import compute_temp
+from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
 logger = logging.getLogger()
 

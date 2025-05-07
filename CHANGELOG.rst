@@ -1,3 +1,8 @@
+[0.1.2] - 2025-05-05
+-------------------------------
+- [FIXED] Runtime Warning due to negative value inside np.log
+- [CHANGED] merged duplicate code from dry cooler and heat exchanger
+
 [0.1.2] - 2025-04-22
 -------------------------------
 - [FIXED] ice chp documentation
