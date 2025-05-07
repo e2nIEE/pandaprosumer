@@ -52,5 +52,6 @@ def get_default_prosumer_container_structure():
         "mapping": [('object', dtype(object)),
                     ('initiator', dtype(object)),
                     ('responder', dtype(object)),
-                    ('order', dtype(object))]}
+                    ('order', dtype(object))],
+        "check_order": "bool"}
     return default_structure

@@ -6,10 +6,9 @@ from pandaprosumer.controller.base import BasicProsumerController
 class ChillerController(BasicProsumerController):
     """Definition of the Class for the Controller"""
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         """Name of the chiller"""
-        return "sn_chiller"
+        return "sn_chiller_controller"
 
     def __init__(self, prosumer, sn_chiller_object, order, level, data_source=None, in_service=True, index=None,
                  name=None, **kwargs):
