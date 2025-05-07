@@ -148,3 +148,66 @@ Key Differences
 +---------------------+---------------------------------------------+
 
 These two types of order **do not influence each other directly**, but together they allow for precise control over the flow and transformation of data within and across controllers.
+
+
+
+-------------------------------
+Order Checking in PandaProsumer
+-------------------------------
+
+
+To ensure consistency in the execution of controllers and data mappings within a prosumer, PandaProsumer implements **order checking mechanisms**. These mechanisms prevent inconsistencies in controller execution levels and ensure proper mapping sequences between controllers.
+
+Level Checking
+----------------------------
+The **level checking** process ensures that all controllers within a prosumer operate at the same level, with the following exceptions:
+
+- Controllers of type **ConstProfile** are allowed to be executed first and are not required to have the same level as other controllers.
+- Controllers from **pandapower** or **pandapipes** networks are excluded from this level check.
+
+**Implementation Details**:
+- All controllers (excluding the exceptions above) must share the same `level` attribute.
+- If different levels are found, an error is raised to prevent unintended execution sequences.
+
+This mechanism ensures that **controllers within a prosumer execute in a synchronized manner**, avoiding errors due to level mismatches.
+
+Controller Execution Order Validation
+------------------------------------------
+The **controller order checking** mechanism ensures that:
+- The **initiator controller** executes **before** the **responder controller**.
+- The execution order respects both the `level` and `order` attributes of controllers.
+
+**Validation Rules**:
+1. If the **initiator controller has a higher level** than the responder, an error is raised.
+2. If both controllers share the **same level**, the **initiator's order must be lower than the responder's order**.
+3. If the execution order is incorrect, an error is raised.
+
+Mapping Order Checking
+-----------------------------
+The **mapping order checking** mechanism ensures that the mappings between controllers are correctly structured.
+Each initiator must be properly mapped to its responder(s), and the mapping order must be **continuous and start at zero**.
+
+**Key Checks**:
+- Each **initiator controller** should have a defined list of responder mappings.
+- The order values of mappings must be consecutive integers starting from `0`.
+- If gaps or inconsistencies in the mapping order are detected, an error is raised.
+
+This process ensures that **data flows correctly between controllers**, avoiding situations where mappings
+are applied in an undefined or incorrect order.
+
+check_order Argument
+-----------------------------
+PandaProsumer provides a `check_order` argument when creating a prosumer.
+This argument allows users to enable or disable order checking based on their needs.
+
+- **check_order = True** (default):
+  - Enforces level checking among controllers.
+  - Ensures mapping orders are correctly structured.
+- **check_order = False**:
+  - Skips all order validation steps.
+  - Can be useful in flexible configurations where strict order enforcement is not required.
+
+By providing this option, **users can balance between strict order enforcement and flexible execution**, depending on their specific use case.
+
+---
+These order-checking mechanisms play a crucial role in maintaining the consistency and accuracy of controller operations and mappings within PandaProsumer networks.

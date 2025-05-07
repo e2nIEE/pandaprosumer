@@ -25,9 +25,8 @@ class HeatPumpController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "heat_pump"
+    def name_class(self):
+        return "heat_pump_controller"
 
     def __init__(self, prosumer, heat_pump_object, order, level, in_service=True, index=None, name=None, **kwargs):
         """

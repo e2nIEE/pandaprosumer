@@ -25,9 +25,8 @@ class GasBoilerController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "gas_boiler"
+    def name_class(self):
+        return "gas_boiler_controller"
 
     def __init__(self, prosumer, gas_boiler_object, order, level, in_service=True, index=None,
                  name=None, **kwargs):
