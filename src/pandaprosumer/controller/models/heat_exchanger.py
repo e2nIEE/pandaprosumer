@@ -311,15 +311,18 @@ class HeatExchangerController(BasicProsumerController):
 
     def calculate_heat_exchanger_reverse(self, prosumer, t_1_in_c, t_1_out_c, mdot_1_kg_per_s, t_2_in_c):
         """
-        Air Cooled Heat Exchanger calculation method based on LMTD method from nominal conditions
+        Heat Exchanger calculation method based on LMTD method from nominal conditions.
+        Reverse calculation that limit the primary side mass flow.
 
         :param prosumer: The prosumer object
         :param t_1_in_c: The input temperature of the fluid in °C
         :param t_1_out_c: The output temperature of the fluid in °C
         :param mdot_1_kg_per_s: Mass flow rate of the fluid in kg/s
-        :param t_2_in_c: The input temperature of the air in °C
-        :return: The output mass flow rate of the air in kg/s, the input and output temperature of the air in °C,
-            the output mass flow rate of the fluid in kg/s, the input and output temperature of the fluid in °C
+        :param t_2_in_c: The input temperature of the secondary side in °C
+        :return: The output mass flow rate of the secondary side in kg/s,
+            the input and output temperature of the secondary side in °C,
+            the output mass flow rate of the primary side in kg/s,
+            the input and output temperature of the primary side in °C
         """
         t_1_hot_nom_c = self._get_element_param(prosumer, 't_1_in_nom_c')
         t_1_cold_nom_c = self._get_element_param(prosumer, 't_1_out_nom_c')
@@ -329,19 +332,19 @@ class HeatExchangerController(BasicProsumerController):
 
         delta_t_fluid_c = t_1_in_c - t_1_out_c
         cp_fluid_j_per_kgk = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2)
-        cp_air_j_per_kgk = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + t_2_in_c)
+        cp_2_j_per_kgk = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + t_2_in_c)
         q_exchanged_w = cp_fluid_j_per_kgk * mdot_1_kg_per_s * delta_t_fluid_c
 
-        delta_t_air_n = t_2_hot_nom_c - t_2_cold_nom_c
-        cp_air_nom_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_hot_nom_c + t_2_cold_nom_c) / 2)
-        q_exchanged_nom_w = cp_air_nom_j_per_kg_k * mdot_2_nom_kg_per_s * delta_t_air_n
+        delta_t_2_n = t_2_hot_nom_c - t_2_cold_nom_c
+        cp_2_nom_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_hot_nom_c + t_2_cold_nom_c) / 2)
+        q_exchanged_nom_w = cp_2_nom_j_per_kg_k * mdot_2_nom_kg_per_s * delta_t_2_n
         q_ratio = q_exchanged_w / q_exchanged_nom_w
 
         delta_t_hot_nom_c = t_1_hot_nom_c - t_2_hot_nom_c
         delta_t_cold_nom_c = t_1_cold_nom_c - t_2_cold_nom_c
 
         t_2_out_c, mdot_2_kg_per_s = compute_temp_reverse(q_ratio, q_exchanged_w, t_2_in_c, t_1_in_c, t_1_out_c,
-                                                          delta_t_hot_nom_c, delta_t_cold_nom_c, cp_air_j_per_kgk)
+                                                          delta_t_hot_nom_c, delta_t_cold_nom_c, cp_2_j_per_kgk)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
         if mdot_2_kg_per_s < 1e-6:
@@ -468,7 +471,9 @@ class HeatExchangerController(BasicProsumerController):
 
             assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3
 
-        result = np.array([[mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]])
+        cp_1_kj_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2) / 1000
+        q_exchanged_kw = mdot_1_kg_per_s * cp_1_kj_per_kg_k * (t_1_in_c - t_1_out_c)
+        result = np.array([[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]])
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:

@@ -67,6 +67,7 @@ class Test1HeatExchanger1HeatDemandMapping:
         run_timeseries(prosumer, period, True)
 
         hx_data = {
+            'q_exchanged_kw': [49.840478, 198.94348, 772.4698, 0.],
             'mdot_1_kg_per_s': [.245960, .774713, 36.718481, 0.],
             't_1_in_c': [80., 95., 95., 95.],
             't_1_out_c': [31.56451, 33.67385, 90., 95.],
