@@ -1,7 +1,7 @@
 Get in Touch!
 ===============
 
-You have found a bug in pandapipes or have a suggestion for a new functionality? Then get in touch with us by opening up an issue on the pandapipes issue board to discuss possible new developments with the community and the maintainers.
+You have found a bug in pandaprosumer or have a suggestion for a new functionality? Then get in touch with us by opening up an issue on the pandaprosumer issue board to discuss possible new developments with the community and the maintainers.
 
 
 Setup your git repository
@@ -12,7 +12,7 @@ Setup your git repository
 If you want to contribute for the first time, you can set up your environment like this:
 
 #. If you have not done it yet: install git and create a github account
-#. Create a fork of the official pandapipes repository by clicking on "Fork" on the official pandaprosumer repository (see https://help.github.com/articles/fork-a-repo/)  
+#. Create a fork of the official pandapipes repository by clicking on "Fork" on the official pandapipes repository (see https://help.github.com/articles/fork-a-repo/)  
 #. Clone the forked repository to your local machine: ::
 
     git clone https://github.com/YOUR-USERNAME/pandaprosumer.git
@@ -20,14 +20,14 @@ If you want to contribute for the first time, you can set up your environment li
 #. Copy the following configuration at the bottom of to the pandaprosumer/.git/config file (the .git folder is hidden, so you might have to enable showing hidden folders) and insert your github username: ::
 
     [remote "origin"]
-        url = https://github.com/e2nIEE/pandapipes.git
+        url = https://github.com/e2nIEE/pandaprosumer.git
         fetch = +refs/heads/*:refs/remotes/pp/*
-        pushurl = https://github.com/YOUR-USERNAME/pandapipes.git
+        pushurl = https://github.com/YOUR-USERNAME/pandaprosumer.git
     [remote "pp"]
-        url = https://github.com/e2nIEE/pandapipes.git
+        url = https://github.com/e2nIEE/pandaprosumer.git
         fetch = +refs/heads/*:refs/remotes/pp/*
     [remote "pp_fork"]
-        url = https://github.com/YOUR-USERNAME/pandapipes.git
+        url = https://github.com/YOUR-USERNAME/pandaprosumer.git
         fetch = +refs/heads/*:refs/remotes/pp_fork/*
     [branch "develop"]
         remote = origin
@@ -53,7 +53,7 @@ If this is to implicit for you, you can always explicitely use the remotes "pp" 
 Contribute
 =====================================
 
-All contributions to the pandapipes repository are made through pull requests to the develop branch. You can either submit a pull request from the develop branch of your fork or create a special feature branch that you keep the changes on. A feature branch is the way to go if you have multiple issues that you are working on in parallel and want to submit with seperate pull requests. If you only have small, one-time changes to submit, you can also use the develop branch to submit your pull request.
+All contributions to the pandaprosumer repository are made through pull requests to the develop branch. You can either submit a pull request from the develop branch of your fork or create a special feature branch that you keep the changes on. A feature branch is the way to go if you have multiple issues that you are working on in parallel and want to submit with seperate pull requests. If you only have small, one-time changes to submit, you can also use the develop branch to submit your pull request.
 
 **Note**: *The following guide assumes the remotes are set up as described above. If you have a different setup, you will have to adapt the commands accordingly.*
 
@@ -149,15 +149,11 @@ pandaprosumer uses pytest for automatic software testing.
 Making sure you don't break anything
 ---------------------------------------
 
-If you make changes to pandapipes that you plan to submit, first make sure that all tests are still passing. You can do this locally with: ::
-
-    from pandaprosumer.test.run_tests import run_tests
-    run_tests()
 
 
 Adding Tests for new functionality
 -----------------------------------
 
-If you have added new functionality, you should also add a new function that tests this functionality. pytest automatically detects all functions in the pandapipes/test folder that start with 'test' and are located in a file that also starts with 'test' as relevant test cases.
+If you have added new functionality, you should also add a new function that tests this functionality. pytest automatically detects all functions in the pandaprosumer/test folder that start with 'test' and are located in a file that also starts with 'test' as relevant test cases.
 
 Tests with pytest can be quite complex. For how to handle e.g. pytest fixtures, xfailing tests etc. refer to the documentation of pytest.
