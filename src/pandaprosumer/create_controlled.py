@@ -120,7 +120,7 @@ def create_controlled_heat_pump(prosumer,
                                    heat_pump_controller_data,
                                    order=order,
                                    level=level,
-                                   name='heat_pump_controller')
+                                   name=name)
     return heat_pump.index
 
 
@@ -181,7 +181,7 @@ def create_controlled_heat_demand(prosumer,
                                                   heat_demand_controller_data,
                                                   order=order,
                                                   level=level,
-                                                  name='heat_demand_controller')
+                                                  name=name)
     return heat_demand_controller.index
 
 
@@ -306,7 +306,7 @@ def create_controlled_stratified_heat_storage(prosumer,
                                                                          init_layer_temps_c=init_layer_temps_c,
                                                                          plot=plot,
                                                                          bypass=bypass,
-                                                                         name='stratified_heat_storage_controller')
+                                                                         name=name)
     return stratified_heat_storage_controller.index
 
 
@@ -392,7 +392,7 @@ def create_controlled_heat_exchanger(prosumer,
                                                         heat_exchanger_controller_data,
                                                         order=order,
                                                         level=level,
-                                                        name='heat_exchanger_controller')
+                                                        name=name)
     return heat_exchanger_controller.index
 
 
@@ -451,7 +451,7 @@ def create_controlled_electric_boiler(prosumer,
                                                           electric_boiler_controller_data,
                                                           order=order,
                                                           level=level,
-                                                          name='electric_boiler_controller')
+                                                          name=name)
     return electric_boiler_controller.index
 
 
@@ -514,7 +514,7 @@ def create_controlled_gas_boiler(prosumer,
                                                 gas_boiler_controller_data,
                                                 order=order,
                                                 level=level,
-                                                name='gas_boiler_controller')
+                                                name=name)
     return gas_boiler_controller.index
 
 
@@ -603,7 +603,7 @@ def create_controlled_dry_cooler(prosumer,
                                                 dry_cooler_controller_data,
                                                 order=order,
                                                 level=level,
-                                                name='dry_cooler_controller')
+                                                name=name)
     return dry_cooler_controller.index
 
 
@@ -645,7 +645,7 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
                                    bhp_controller_data,
                                    order=order,
                                    level=level,
-                                   name='heat_pump_controller')
+                                   name=name)
 
     return bhp.index
 
@@ -661,7 +661,7 @@ def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, ind
                                    bhp_controller_data,
                                    order=order,
                                    level=level,
-                                   name='heat_pump_controller')
+                                   name=name)
 
     return bhp.index
 
@@ -718,7 +718,7 @@ def create_controlled_ice_chp(prosumer,
                                ice_chp_controller_data,
                                order=order,
                                level=level,
-                               name='ice_chp_controller')
+                               name=name)
     return ice_chp.index
 
 
@@ -781,7 +781,7 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_c
                                            chiller_controller_data,
                                            order=order,
                                            level=level,
-                                           name='sn_chiller')
+                                           name=name)
     return chiller_controller.index
 
 
@@ -845,6 +845,6 @@ def create_controlled_heat_storage(prosumer,
         order=order,
         level=level,
         init_soc=init_soc,
-        name='heat_storage_controller'
+        name=name
     )
     return hs.index

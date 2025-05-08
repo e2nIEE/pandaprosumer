@@ -3,7 +3,7 @@ from pandaprosumer import *
 from tests.data_sources.define_period import define_and_get_period_and_data_source
 
 def create_prosumer_prod(hp_level):
-    prosumer = create_empty_prosumer_container(name='prosumer_prod')
+    prosumer = create_empty_prosumer_container(name='prosumer_prod',check_order=False)
     period, data_source = define_and_get_period_and_data_source(prosumer)
 
     cp_input_columns = ["Tin,evap"]
@@ -30,7 +30,7 @@ def create_prosumer_prod(hp_level):
 
 
 def create_prosumer_dmd_hx(level):
-    prosumer = create_empty_prosumer_container()
+    prosumer = create_empty_prosumer_container(check_order=False)
     period, data_source = define_and_get_period_and_data_source(prosumer)
 
     cp_input_columns = ["demand_1"]  # demand_4 is 10 times lower than demand_1, doesn't work with demand_1 ?

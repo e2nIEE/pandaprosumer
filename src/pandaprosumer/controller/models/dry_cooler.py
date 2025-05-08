@@ -199,8 +199,8 @@ class DryCoolerController(BasicProsumerController):
     """
 
     @classmethod
-    def name(cls):
-        return "dry_cooler"
+    def name_class(self):
+        return "dry_cooler_controller"
 
     def __init__(self, prosumer, dry_cooler_object, order=-1, level=-1, in_service=True, index=None,
                  name=None, **kwargs):
