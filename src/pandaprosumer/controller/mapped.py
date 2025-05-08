@@ -449,7 +449,7 @@ class MappedController(Controller):
         # model = [ConstProfileController]
         for _, ctrl_row in container.controller.iterrows():
             ctrl = ctrl_row.object
-            if not ctrl.name_class() == 'const_profile_control':
+            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor:
                 levels.append(ctrl.level)
         if levels and not all(l == levels[0] for l in levels):
             raise ValueError(

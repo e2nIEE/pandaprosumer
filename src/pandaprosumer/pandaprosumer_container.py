@@ -64,6 +64,6 @@ def get_default_prosumer_container_structure():
                   ("new_value", dtype(object)),
                   ("value_if_false", dtype(object)),
                   ("logical_operator", dtype(object)),
-                  ("linked_rules", dtype(list))]
-    }
+                  ("linked_rules", dtype(list))],
+        "check_order": "bool"}
     return default_structure

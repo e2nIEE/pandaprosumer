@@ -17,7 +17,7 @@ from pandaprosumer.time_series.time_series import TimeSeries
 logger = logging.getLogger()
 
 
-def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water"):
+def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water",check_order = True):
     """
     This function initializes the prosumer datastructure
 
@@ -36,6 +36,7 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water"):
     prosumer['controller'] = pd.DataFrame(np.zeros(0, dtype=prosumer['controller']), index=[])
     prosumer['mapping'] = pd.DataFrame(np.zeros(0, dtype=prosumer['mapping']), index=[])
     prosumer['Rules'] = pd.DataFrame(np.zeros(0, dtype=prosumer['Rules']), index=[])
+    prosumer['check_order'] = check_order
 
     if fluid is not None:
         if isinstance(fluid, Fluid):

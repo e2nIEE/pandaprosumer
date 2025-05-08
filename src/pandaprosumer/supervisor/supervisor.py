@@ -41,7 +41,7 @@ class Supervisor(MappedController):
     """
 
     @classmethod
-    def name(cls):
+    def name_class(cls):
         return "supervisor"
 
     def __init__(self, prosumer, supervisor_object, order=-1, level=-1, in_service=True, index=None,
