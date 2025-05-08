@@ -41,7 +41,7 @@ def _init_const_profile_controller():
     result_columns = ["Tin_cond", "Tout_cond", "Mass-flow-cond", "Tin,evap"]
     prosumer = create_empty_prosumer_container()
     period, data_source = _define_and_get_period_and_data_source(prosumer)
-    create_controlled_const_profile(prosumer,input_columns,result_columns,period,data_source)
+    create_controlled_const_profile(prosumer,input_columns,result_columns,data_source,period)
     return prosumer
 
 
