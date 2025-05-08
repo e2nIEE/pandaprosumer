@@ -238,9 +238,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "stratified_heat_storage"
+    def name_class(self):
+        return "stratified_heat_storage_controller"
 
     def __init__(self, prosumer, stratified_heat_storage_object, order, level, init_layer_temps_c=None, plot=False,
                  bypass=True, in_service=True, index=None, name=None, **kwargs):

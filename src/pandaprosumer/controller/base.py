@@ -30,8 +30,7 @@ class BasicProsumerController(MappedController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         return "basic_controller"
 
     def __init__(self, container, basic_prosumer_object, order=0, level=0, in_service=True, index=None,

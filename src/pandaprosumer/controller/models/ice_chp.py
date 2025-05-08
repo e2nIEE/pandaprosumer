@@ -12,8 +12,7 @@ logger = logging.getLogger("ice_chp_logger")
 
 class IceChpController(BasicProsumerController):
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         return "ice_chp_control"        
     
     

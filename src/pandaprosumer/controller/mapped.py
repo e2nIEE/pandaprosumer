@@ -42,6 +42,21 @@ class MappedController(Controller):
                          drop_same_existing_ctrl, True, overwrite,
                          matching_params, **kwargs)
 
+        if getattr(container, "check_order", False):
+            if isinstance(order, list):
+                if len(order) == 1:
+                    order = order[0]
+                else:
+                    raise ValueError("order must be an integer, or the check should be set to False.")
+            self.order = int(order)
+
+            if isinstance(level, list):
+                if len(level) == 1:
+                    level = level[0]
+                else:
+                    raise ValueError("order must be an integer, or the check should be set to False.")
+            self.level = int(level)
+
         self.matching_params = dict() if matching_params is None else matching_params
         self.obj = basic_prosumer_object
         self.has_elements = hasattr(self.obj, "element_index") or np.iterable(self.obj) and hasattr(self.obj[0], "element_index")
@@ -344,6 +359,7 @@ class MappedController(Controller):
         super().restore_init_state(container)
 
     def initialize_control(self, container):
+        if getattr(container, "check_order", False): self.check_levels(container)
         super().initialize_control(container)
         
     def finalize_step(self, container, time):
@@ -402,6 +418,7 @@ class MappedController(Controller):
         # Execute all the mappings for which this controller is the initiator
         for row in self._get_mappings(container):
             if row.object.responder_net == container:
+                if container.check_order: self.check_mappings_orders(container)
                 row.object.map(self, container.controller.loc[row.responder].object)
             else:
                 row.object.map(self, row.responder)
@@ -410,3 +427,44 @@ class MappedController(Controller):
         # self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
         # self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
         #                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
+
+    def check_levels(self, container):
+        """
+        Check that all controllers in the prosumer have the same level, except for controllers of type
+        ConstProfile (which are allowed to be executed first).
+
+        Raises:
+            ValueError: If there is more than one level among controllers.
+        """
+        levels = []
+        # model = [ConstProfileController]
+        for _, ctrl_row in container.controller.iterrows():
+            ctrl = ctrl_row.object
+            if not ctrl.name_class() == 'const_profile_control':
+                levels.append(ctrl.level)
+        if levels and not all(l == levels[0] for l in levels):
+            raise ValueError(
+                f"Level error: Not all controllers have the same level. "
+                f"Found levels: {set(levels)}."
+            )
+
+
+    def check_mappings_orders(self,container):
+            """
+            For each initiator in FluidMixMappings, check that the mapping orders are unique and form
+            a consecutive sequence of integers starting from 0.
+
+            Raises:
+                ValueError: If the order numbers for any initiator are not consecutive.
+            """
+            filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
+            grouped = filtered_mapping.groupby("initiator")
+            for initiator, group in grouped:
+                initiator_name = container.controller.iloc[initiator].object.name
+                sorted_orders = sorted(group["order"].tolist())
+                expected_orders = list(range(len(sorted_orders)))
+                if sorted_orders != expected_orders:
+                    raise ValueError(
+                        f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
+                        f"are not consecutive integers starting at 0 (expected: {expected_orders})."
+                    )

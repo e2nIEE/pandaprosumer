@@ -35,8 +35,14 @@ class FluidMixMapping(BaseMapping):
         self.weights = weights
         self.responder_net = container
         self.order = order
+        self.initiator = initiator_id
+        self.responder = responder_id
 
     def __str__(self):
+        return "FluidMixMapping"
+
+    @property
+    def name(self):
         return "FluidMixMapping"
 
     def _validate(self):
@@ -44,6 +50,9 @@ class FluidMixMapping(BaseMapping):
         Validates the generic mapping.
         """
         super()._validate()
+
+    def _check_order(self):
+        return hasattr(self.responder_net, "check_order") and self.responder_net.check_order
 
     def map(self, initiator_controller, responder_controller):
         """
@@ -53,6 +62,8 @@ class FluidMixMapping(BaseMapping):
         :param responder_controller: The responding controller
         """
         # FixMe: Will break if the order are not 0, 1, 2, ...
+        if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
+
         initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[self.order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]
         initiator_mass_flow = initiator_mapped_results[self.MASS_FLOW_KEY]

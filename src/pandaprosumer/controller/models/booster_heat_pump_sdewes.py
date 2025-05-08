@@ -17,9 +17,8 @@ class BoosterHeatPumpController(BasicProsumerController):
     Controller for heat pumps.
     """
 
-    @classmethod
-    def name(cls):
-        return "booster_heat_pump"
+    def name_class(self):
+        return "booster_heat_pump_controller"
 
     def __init__(self, prosumer, heat_pump_object, order, level, in_service=True, index=None, **kwargs):
         """
