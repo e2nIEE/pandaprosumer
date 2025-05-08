@@ -28,7 +28,7 @@ class HeatPumpController(BasicProsumerController):
     def name_class(self):
         return "heat_pump_controller"
 
-    def __init__(self, prosumer, heat_pump_object, order, level, in_service=True, index=None, name=None, **kwargs):
+    def __init__(self, prosumer, heat_pump_object, order, level, in_service=True, index=None, name=None,mode = 'heating', **kwargs):
         """
         Initializes the HeatPumpController.
         """
@@ -44,6 +44,7 @@ class HeatPumpController(BasicProsumerController):
         self.t_previous_evap_out_c = np.nan
         self.t_previous_evap_in_c = np.nan
         self.mdot_previous_evap_kg_per_s = np.nan
+        self.mode = mode #'heating' or 'cooling'
 
     @property
     def _t_evap_in_c(self):
@@ -103,21 +104,116 @@ class HeatPumpController(BasicProsumerController):
             return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
         return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
 
-    def _calculate_heat_pump(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c):
+    def _calculate_heat_pump(self,
+                             prosumer,
+                             mdot_src_kg_per_s,
+                             t_src_out_c,
+                             t_src_in_c,
+                             t_load_in_c,
+                             pinch_c):
         """
         Main method for Heat Pump physical calculation during one time step
         FixMe: Use cop_hp or cop_lz ? (Need electric consumption data)
         FixMe: Check how the out of range cases should be manage (need data ?)
         """
-        cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+
         carnot_efficiency = self._get_element_param(prosumer, 'carnot_efficiency')
 
-        # 1. Calculate power of condenser
-        q_cond_kw = mdot_cond_kg_per_s * cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c)
+        if self.mode == 'cooling':
+            evap_fluid_c = self.cond_fluid
+            cond_fluid_c = self.evap_fluid
+            mdot_evap_kg_per_s = mdot_src_kg_per_s
+            t_evap_in_c = t_src_in_c
+            t_evap_out_c = t_src_out_c
+            t_cond_in_c = t_load_in_c
+            t_cond_out_c = t_load_in_c + self._get_element_param(prosumer, 'delta_t_evap_c')
 
-        # 2. Calculate temp_out_evap in °C
-        t_evap_out_c = t_evap_in_c - self._get_element_param(prosumer, 'delta_t_evap_c')
-        cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
+            cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(
+                CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+            cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(
+                CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
+
+            q_evap_kw = mdot_evap_kg_per_s * (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+
+            # 3. Calculate carnot cop
+            # FixMe: Why using the condenser output temperature ?
+            cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+
+            # 4. Calculate cop of heat pump
+            cop_hp = carnot_efficiency * cop_carnot
+            # 3bis. Calculate Lorenz cop
+            if t_cond_out_c == t_cond_in_c:
+                mean_th_c = t_cond_out_c
+            else:
+                mean_th_c = (t_cond_out_c - t_cond_in_c) / log(
+                    (float(t_cond_out_c) + CELSIUS_TO_K) / (float(t_cond_in_c) + CELSIUS_TO_K))
+            if t_evap_in_c == t_evap_out_c:
+                mean_th_c = t_evap_in_c
+            else:
+                mean_tc_c = (t_evap_in_c - t_evap_out_c) / log(
+                    (t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+            cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
+
+            # 4bis. Calculate cop of heat pump with lorenz
+            cop_hp_lz = carnot_efficiency * cop_lorenz
+
+            # 5. Calculate the compressor power power_comp
+            p_comp_kw = q_evap_kw / cop_hp
+            p_comp_lz_kw = q_evap_kw / cop_hp_lz
+
+            # 6. Calculate power of condensator Q_cond
+            q_cond_kw = q_evap_kw + p_comp_kw
+
+            mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * abs(t_cond_out_c - t_cond_in_c))
+
+        else:
+            evap_fluid_c = self.evap_fluid
+            cond_fluid_c = self.cond_fluid
+            # mdot_evap_kg_per_s = self._get_element_param(prosumer, 'mdot_evap_required_kg_per_s')
+            t_evap_in_c = t_load_in_c
+            t_evap_out_c = t_load_in_c - self._get_element_param(prosumer, 'delta_t_evap_c')
+            mdot_cond_kg_per_s = mdot_src_kg_per_s
+            t_cond_in_c = t_src_in_c
+            t_cond_out_c = t_src_out_c
+
+            cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+            cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
+
+            q_cond_kw = mdot_cond_kg_per_s * cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c)
+            # 3. Calculate carnot cop
+            # FixMe: Why using the condenser output temperature ?
+            cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+
+            # 4. Calculate cop of heat pump
+            cop_hp = carnot_efficiency * cop_carnot
+            # 3bis. Calculate Lorenz cop
+            print((float(t_cond_out_c) + CELSIUS_TO_K, (float(t_cond_in_c) + CELSIUS_TO_K),t_cond_out_c,t_cond_in_c, CELSIUS_TO_K))
+            if t_cond_out_c == t_cond_in_c:
+                mean_th_c = t_cond_out_c
+            else:
+                mean_th_c = (t_cond_out_c - t_cond_in_c) / log(
+                    (float(t_cond_out_c) + CELSIUS_TO_K) / (float(t_cond_in_c) + CELSIUS_TO_K))
+            if t_evap_in_c == t_evap_out_c:
+                mean_th_c = t_evap_in_c
+            else:
+                mean_tc_c = (t_evap_in_c - t_evap_out_c) / log(
+                    (t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+            cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
+
+            # 4bis. Calculate cop of heat pump with lorenz
+            cop_hp_lz = carnot_efficiency * cop_lorenz
+
+            # 5. Calculate the compressor power power_comp
+            p_comp_kw = q_cond_kw / cop_hp
+            p_comp_lz_kw = q_cond_kw / cop_hp_lz
+
+            # 6. Calculate power of evaporator Q_evap
+            q_evap_kw = q_cond_kw - p_comp_kw
+
+            # 7. Calculate mass flow of evaporator m_evap
+            mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+
+        # 1. Calculate power of condenser
 
         if t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c:
             # If there is no demand on the condenser, the Heat Pump is not running
@@ -125,30 +221,9 @@ class HeatPumpController(BasicProsumerController):
                     mdot_cond_kg_per_s, t_cond_in_c, t_cond_in_c,
                     0, t_evap_in_c, t_evap_in_c)
 
-        # 3. Calculate carnot cop
-        # FixMe: Why using the condenser output temperature ?
-        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
 
-        # 3bis. Calculate Lorenz cop
-        mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
-        mean_tc_c = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
-        cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
 
-        # 4. Calculate cop of heat pump
-        cop_hp = carnot_efficiency * cop_carnot
 
-        # 4bis. Calculate cop of heat pump with lorenz
-        cop_hp_lz = carnot_efficiency * cop_lorenz
-
-        # 5. Calculate the compressor power power_comp
-        p_comp_kw = q_cond_kw / cop_hp
-        p_comp_lz_kw = q_cond_kw / cop_hp_lz
-
-        # 6. Calculate power of evaporator Q_evap
-        q_evap_kw = q_cond_kw - p_comp_kw
-
-        # 7. Calculate mass flow of evaporator m_evap
-        mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
 
         # 8. Check parameters
         max_cop = self._get_element_param(prosumer, 'max_cop')
