@@ -20,7 +20,7 @@ class HeatPumpControllerData:
     input_columns : List[str]
         List of input column names.
         
-        **t_evap_in_c** - The feed temperature from the heating network [°C]
+        **t_return_in_c** - The feed temperature from the heating network [°C]
         
     result_columns : List[str]
         List of result column names.
@@ -49,7 +49,7 @@ class HeatPumpControllerData:
     element_name: str = 'heat_pump'
     period_index: int = None
     input_columns: List[str] = field(
-        default_factory=lambda: ["t_evap_in_c"])
+        default_factory=lambda: ["t_return_in_c"])
     result_columns: List[str] = field(
         default_factory=lambda: ['q_cond_kw', 'p_comp_kw', 'q_evap_kw', 'cop',
                                  'mdot_cond_kg_per_s', 't_cond_in_c', 't_cond_out_c',

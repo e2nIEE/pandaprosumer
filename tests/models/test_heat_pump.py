@@ -93,7 +93,7 @@ class TestHeatPump:
         hp_controller_idx = create_controlled_heat_pump(prosumer,order = 0, period = _default_period(prosumer),**_default_argument())
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
-        input_columns_expected = ["t_evap_in_c"]
+        input_columns_expected = ["t_return_in_c"]
         result_columns_expected = ['q_cond_kw', 'p_comp_kw', 'q_evap_kw', 'cop',
                                    'mdot_cond_kg_per_s', 't_cond_in_c', 't_cond_out_c',
                                    'mdot_evap_kg_per_s', 't_evap_in_c', 't_evap_out_c']
@@ -105,11 +105,6 @@ class TestHeatPump:
         assert hp_controller.input_mass_flow_with_temp == {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                            FluidMixMapping.MASS_FLOW_KEY: np.nan}
 
-
-
-
-
-
     def test_controller_get_input(self):
         """
         Test the method to get the input values of a Heat Pump controller
@@ -117,16 +112,16 @@ class TestHeatPump:
         """
         prosumer = create_empty_prosumer_container()
         hp_params = {'carnot_efficiency': .5,
-                     't_evap_in_c': 1.5}
+                     't_return_in_c': 1.5}
         hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
                                                         **hp_params)
 
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
-        assert np.isnan(hp_controller._get_input('t_evap_in_c'))
-        assert hp_controller._get_input('t_evap_in_c', prosumer) == pytest.approx(1.5)
+        assert np.isnan(hp_controller._get_input('t_return_in_c'))
+        assert hp_controller._get_input('t_return_in_c', prosumer) == pytest.approx(1.5)
         hp_controller.inputs = np.array([[20]])
-        assert hp_controller._get_input('t_evap_in_c', prosumer) == pytest.approx(20)
+        assert hp_controller._get_input('t_return_in_c', prosumer) == pytest.approx(20)
 
         with pytest.raises(KeyError):
             hp_controller._get_input('t_evap_out_c', prosumer)
@@ -145,7 +140,7 @@ class TestHeatPump:
         hp_controller.inputs = np.array([[20]])
         assert hp_controller._get_element_param(prosumer, 'carnot_efficiency') == pytest.approx(.5)
         assert hp_controller._get_element_param(prosumer, 'evap_fluid') == 'water'
-        assert hp_controller._get_element_param(prosumer, 't_evap_in_c') is None
+        assert hp_controller._get_element_param(prosumer, 't_return_in_c') is None
         assert hp_controller._get_element_param(prosumer, 't_evap_out_c') is None
 
     def test_controller_run_control_no_demand(self):
@@ -380,3 +375,16 @@ class TestHeatPump:
         assert hp_controller.step_results == pytest.approx(np.array([expected]))
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.7722965, .001)}]
+
+    def test_heat_pump_heating(self):
+        prosumer=create_empty_prosumer_container()
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),mode = 'cooling',
+                                                        **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        hp_controller.inputs = np.array([[20]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 4.39167745 - .5
+        hp_controller.t_m_to_deliver = lambda x: (80, 30, [2])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+        print(hp_controller.step_results)
