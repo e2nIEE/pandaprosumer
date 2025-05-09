@@ -28,6 +28,7 @@ def create_controlled_heat_pump(prosumer,
                                 delta_t_evap_c=15.,
                                 carnot_efficiency=0.5,
                                 pinch_c=None,
+                                mode = 'heating',
                                 delta_t_hot_default_c=5,
                                 max_p_comp_kw=np.nan,
                                 min_p_comp_kw=np.nan,
@@ -91,7 +92,7 @@ def create_controlled_heat_pump(prosumer,
 
     heat_pump_index = create_heat_pump(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level","mode", "kwargs"}},
         **kwargs
     )
     heat_pump_controller_data = HeatPumpControllerData(
@@ -101,6 +102,7 @@ def create_controlled_heat_pump(prosumer,
     )
     heat_pump = HeatPumpController(prosumer,
                                    heat_pump_controller_data,
+                                   mode = mode,
                                    order=order,
                                    level=level,
                                    name=name)

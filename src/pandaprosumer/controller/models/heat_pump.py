@@ -47,11 +47,11 @@ class HeatPumpController(BasicProsumerController):
         self.mode = mode #'heating' or 'cooling'
 
     @property
-    def _t_return_in_c(self):
+    def _t_load_in_c(self):
         if not np.isnan(self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]):
             return self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         else:
-            return self._get_input("t_return_in_c")
+            return self._get_input("t_load_in_c")
 
     @property
     def _mdot_supply_in_kg_per_s(self):
@@ -72,7 +72,11 @@ class HeatPumpController(BasicProsumerController):
             return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
         else:
             delta_t_hot_default_c = self._get_element_param(prosumer, 'delta_t_hot_default_c')
-            return self.t_m_to_receive_for_t(prosumer, t_feed_demand_c - delta_t_hot_default_c)
+            if self.mode == 'heating':
+
+                return self.t_m_to_receive_for_t(prosumer, t_feed_demand_c - delta_t_hot_default_c)
+            elif self.mode == 'cooling':
+                return self.t_m_to_receive_for_t(prosumer, t_feed_demand_c + delta_t_hot_default_c)
 
     def t_m_to_receive_for_t(self, prosumer, t_feed_c):
         """
@@ -249,7 +253,7 @@ class HeatPumpController(BasicProsumerController):
         assert not np.isnan(mdot_src_required_kg_per_s), f"Heat Pump {self.name} mdot_cond_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_src_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_src_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(self._t_return_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(self._t_load_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert t_src_out_required_c >= t_src_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_src_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_src_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
@@ -264,7 +268,7 @@ class HeatPumpController(BasicProsumerController):
                                                                                             mdot_src_required_kg_per_s,
                                                                                             t_src_out_required_c,
                                                                                             t_src_in_required_c,
-                                                                                            self._t_return_in_c,
+                                                                                            self._t_load_in_c,
                                                                                             pinch_c)
                 if not np.isnan(self._mdot_supply_in_kg_per_s):
                     # If the evaporator is fed with a fixed mass flow (not free air)
@@ -275,7 +279,7 @@ class HeatPumpController(BasicProsumerController):
                          mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                          mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
                                                                                                             self._mdot_supply_in_kg_per_s,
-                                                                                                            self._t_return_in_c,
+                                                                                                            self._t_load_in_c,
                                                                                                             t_evap_out_c,
                                                                                                             t_cond_in_c,
                                                                                                             t_cond_out_c)
@@ -289,16 +293,18 @@ class HeatPumpController(BasicProsumerController):
                         mdot_evap_kg_per_s = self._mdot_supply_in_kg_per_s
 
             elif self.mode == 'cooling':
+                print(mdot_src_required_kg_per_s)
                 (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                  mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                  mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
                                                                                                     mdot_src_required_kg_per_s,
-                                                                                                    t_src_in_required_c,
                                                                                                     t_src_out_required_c,
-                                                                                                    self._t_return_in_c,
+                                                                                                    t_src_in_required_c,
+                                                                                                    self._t_load_in_c,
                                                                                                     )
                 if not np.isnan(self._mdot_supply_in_kg_per_s):
                     # If the evaporator is fed with a fixed mass flow (not free air)
+                    print(mdot_cond_kg_per_s,self._mdot_supply_in_kg_per_s)
                     if mdot_cond_kg_per_s > self._mdot_supply_in_kg_per_s :
                         # If the evaporator mass flow is higher than the one required by the Heat Pump,
                         # recalculate the secondary mass flow to reduce the heat demand to reduce the evaporator mass flow
@@ -306,7 +312,7 @@ class HeatPumpController(BasicProsumerController):
                          mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                          mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
                                                                                                             self._mdot_supply_in_kg_per_s,
-                                                                                                            self._t_return_in_c,
+                                                                                                            self._t_load_in_c,
                                                                                                             t_cond_out_c,
                                                                                                             t_evap_in_c,
                                                                                                             pinch_c,
@@ -326,7 +332,7 @@ class HeatPumpController(BasicProsumerController):
                                                                    mdot_tab_required_kg_per_s)
 
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_cond_required_kg_per_s:
+            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_src_required_kg_per_s:
                 # FixMe: Can't test this case in a single model test without mapping (no responders)
                 # If the heat Pump is not able to deliver the required mass flow,
                 # recalculate the condenser input temperature, considering that all the downstream elements will be
