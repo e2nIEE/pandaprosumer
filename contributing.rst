@@ -12,7 +12,7 @@ Setup your git repository
 If you want to contribute for the first time, you can set up your environment like this:
 
 #. If you have not done it yet: install git and create a github account
-#. Create a fork of the official pandaprosumer repository by clicking on "Fork" on the official pandaprosumer repository (see https://help.github.com/articles/fork-a-repo/)
+#. Create a fork of the official pandapipes repository by clicking on "Fork" on the official pandapipes repository (see https://help.github.com/articles/fork-a-repo/)  
 #. Clone the forked repository to your local machine: ::
 
     git clone https://github.com/YOUR-USERNAME/pandaprosumer.git
@@ -32,11 +32,11 @@ If you want to contribute for the first time, you can set up your environment li
     [branch "develop"]
         remote = origin
         merge = refs/heads/develop
-
-The develop branch is now configured to automatically track the official pandaprosumer develop branch. So if you are on the develop branch and use: ::
+        
+The develop branch is now configured to automatically track the official pandapipes develop branch. So if you are on the develop branch and use: ::
 
     git pull
-
+    
 your local repository will be updated with the newest changes in the official pandaprosumer repository.
 
 Since you cannot push directly to the official pandaprosumer repository, if you are on develop and do: ::
@@ -64,7 +64,7 @@ Contribute from your develop branch
 
     git checkout develop
 
-#. Update your local copy to the most recent version of the pandaprosumer develop branch: ::
+#. Update your local copy to the most recent version of the pandpipes develop branch: ::
 
     git pull
 
@@ -74,7 +74,7 @@ Contribute from your develop branch
 
     git add --all
     git commit -m"commit message"
-
+   
    If there is an open issue that the commit belongs to, reference the issue in the commit message, for example for issue 3: ::
 
     git commit -m"commit message #3"
@@ -82,18 +82,18 @@ Contribute from your develop branch
 #. Push your changes to your fork: ::
 
     git push
-
+    
 #. Put in a Pull request to the main repository: https://help.github.com/articles/creating-a-pull-request-from-a-fork/
 
 #. For each Pull request, some checks will start automatically. It is required that the travis-ci
-   check passes (i. e. all pandaprosumer tests pass) to enable merging into the develop branch.
+   check passes (i. e. all pandapipes tests pass) to enable merging into the develop branch.
 
 #. If you want to amend the pull request (for example because tests are failing, or because the community/maintainers have asked for modifications), simply push more commits to the branch: ::
 
     git add --all
     git commit -m"I have updated the pull request after discussions #3"
     git push
-
+    
    The pull request will be automatically updated.
 
 Contribute from a feature branch
@@ -103,35 +103,35 @@ Contribute from a feature branch
 
     git checkout develop
 
-#. Update your local copy to the most recent version of the pandaprosumer develop branch: ::
+#. Update your local copy to the most recent version of the pandpipes develop branch: ::
 
     git pull
 
 #. Create a new feature branch: ::
 
     git checkout -b my_branch
-
+    
 #. Make changes in the code
 
 #. Add and commit your change: ::
 
     git add --all
     git commit -m"commit message"
-
+   
    If there is an open issue that the commit belongs to, reference the issue in the commit message, for example for issue 3: ::
 
     git commit -m"commit message #3"
-
+    
 #. Push your changes to your fork: ::
 
     git push -u pp_fork my_branch
-
-   this pushes the new branch to your fork and also sets up the remote tracking.
-
+    
+   this pushes the new branch to your fork and also sets up the remote tracking. 
+   
 #. Put in a Pull request to the official repository (see https://help.github.com/articles/creating-a-pull-request-from-a-fork/).
 
 #. For each Pull request, some checks will start automatically. It is required that the travis-ci
-   check passes (i. e. all pandaprosumer tests pass) to enable merging into the develop branch.
+   check passes (i. e. all pandapipes tests pass) to enable merging into the develop branch.
 
 #. If you want to amend the pull request (for example because tests are failing, or because the community/maintainers have asked for modifications), simply push more commits to the branch. Since the remote tracking branch has been set up, this is as easy as: ::
 
@@ -149,10 +149,6 @@ pandaprosumer uses pytest for automatic software testing.
 Making sure you don't break anything
 ---------------------------------------
 
-If you make changes to pandaprosumer that you plan to submit, first make sure that all tests are still passing. You can do this locally with: ::
-
-    from pandaprosumer.test.run_tests import run_tests
-    run_tests()
 
 
 Adding Tests for new functionality

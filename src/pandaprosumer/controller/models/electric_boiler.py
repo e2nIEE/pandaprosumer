@@ -88,56 +88,59 @@ class ElectricBoilerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        super().control_step(prosumer)
+        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
+            super().control_step(prosumer)
 
-        t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-        mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
+            t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+            mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
 
-        assert not np.isnan(t_out_required_c), f"Electric Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_in_required_c), f"Electric Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_required_kg_per_s).any(), f"Electric Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(t_out_required_c), f"Electric Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(t_in_required_c), f"Electric Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert not np.isnan(mdot_required_kg_per_s).any(), f"Electric Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+            assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
-        rerun = True
-        nb_runs = 0
-        while rerun:
-            nb_runs += 1
-            if nb_runs > 20:
-                raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
-                                                                                                   mdot_required_kg_per_s,
-                                                                                                   t_out_required_c,
-                                                                                                   t_in_required_c)
+            rerun = True
+            nb_runs = 0
+            while rerun:
+                nb_runs += 1
+                if nb_runs > 20:
+                    raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
+                                                                                                       mdot_required_kg_per_s,
+                                                                                                       t_out_required_c,
+                                                                                                       t_in_required_c)
 
-            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
-                                                                   mdot_delivered_kg_per_s,
-                                                                   mdot_tab_required_kg_per_s)
-            rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
-                # If the electric boiler is not able to deliver the required mass flow,
-                # recalculate the input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Boiler is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_in_new_c = t_in_required_c
-                if abs(t_in_new_c - t_in_required_c) > 1:
-                    # If this recalculation changes the input temperature, rerun the calculation
-                    # with the new temperature
-                    t_in_required_c = t_in_new_c
-                    rerun = True
+                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
+                                                                       mdot_delivered_kg_per_s,
+                                                                       mdot_tab_required_kg_per_s)
+                rerun = False
+                if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
+                    # If the electric boiler is not able to deliver the required mass flow,
+                    # recalculate the input temperature, considering that all the downstream elements will be
+                    # still return the same temperature, even if the mass flow delivered to them by the Boiler is lower
+                    t_return_tab_c = self.get_treturn_tab_c(prosumer)
+                    if abs(mdot_delivered_kg_per_s) > 1e-8:
+                        t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
+                    else:
+                        t_in_new_c = t_in_required_c
+                    if abs(t_in_new_c - t_in_required_c) > 1:
+                        # If this recalculation changes the input temperature, rerun the calculation
+                        # with the new temperature
+                        t_in_required_c = t_in_new_c
+                        rerun = True
 
-        assert q_kw >= 0, f"Electric Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert p_kw >= 0, f"Electric Boiler {self.name} p_kw is negative ({p_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert q_kw >= 0, f"Electric Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert p_kw >= 0, f"Electric Boiler {self.name} p_kw is negative ({p_kw}) for timestep {self.time} in prosumer {prosumer.name}"
 
-        result_fluid_mix = []
-        for mdot_kg_per_s in result_mdot_tab_kg_per_s:
-            result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,
-                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+            result_fluid_mix = []
+            for mdot_kg_per_s in result_mdot_tab_kg_per_s:
+                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,
+                                         FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
-        result = np.array([[q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw]])
+            result = np.array([[q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw]])
 
-        self.finalize(prosumer, result, result_fluid_mix)
+            self.finalize(prosumer, result, result_fluid_mix)
 
-        self.applied = True
+            self.applied = True
+
+        else: self.applied = True  # self.in_service = False
