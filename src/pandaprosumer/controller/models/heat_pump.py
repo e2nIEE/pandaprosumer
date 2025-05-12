@@ -45,6 +45,8 @@ class HeatPumpController(BasicProsumerController):
         self.t_previous_evap_in_c = np.nan
         self.mdot_previous_evap_kg_per_s = np.nan
         self.mode = mode #'heating' or 'cooling'
+        assert self.mode == 'heating' or self.mode == 'cooling', 'mode should be heating or cooling'
+
 
     @property
     def _t_load_in_c(self):
@@ -304,19 +306,23 @@ class HeatPumpController(BasicProsumerController):
                                                                                                     )
                 if not np.isnan(self._mdot_supply_in_kg_per_s):
                     # If the evaporator is fed with a fixed mass flow (not free air)
-                    print(mdot_cond_kg_per_s,self._mdot_supply_in_kg_per_s)
+                    print(t_evap_in_c,t_cond_out_c)
                     if mdot_cond_kg_per_s > self._mdot_supply_in_kg_per_s :
                         # If the evaporator mass flow is higher than the one required by the Heat Pump,
                         # recalculate the secondary mass flow to reduce the heat demand to reduce the evaporator mass flow
-                        (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
-                         mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-                         mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                                            self._mdot_supply_in_kg_per_s,
-                                                                                                            self._t_load_in_c,
-                                                                                                            t_cond_out_c,
-                                                                                                            t_evap_in_c,
-                                                                                                            pinch_c,
-                                                                                                            t_evap_out_c)
+                        mdot_cond_kg_per_s = self._mdot_supply_in_kg_per_s
+                        t_cond_in_c = self._t_load_in_c
+
+                        cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+                        carnot_efficiency = self._get_element_param(prosumer, 'carnot_efficiency')
+                        q_cond_kw = mdot_cond_kg_per_s * cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c)
+                        cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
+                        cop_hp = carnot_efficiency * (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+                        p_comp_kw = q_cond_kw / cop_hp
+                        q_evap_kw = q_cond_kw - p_comp_kw
+                        mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+                        print(cop_hp)
+
                     elif mdot_cond_kg_per_s < self._mdot_supply_in_kg_per_s:
                         # If the evaporator mass flow is lower than the one required by the Heat Pump,
                         # model a bypass on the evaporator side where the extra mass flow doesn't exchange heat.

@@ -384,7 +384,7 @@ class TestHeatPump:
         hp_controller.inputs = np.array([[20]])
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 4.39167745 - .5
-        hp_controller.t_m_to_deliver = lambda x: (80, 30, [2])
+        hp_controller.t_m_to_deliver = lambda x: (25, 15, [2])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hp_controller.control_step(prosumer)
         print(hp_controller.step_results)
