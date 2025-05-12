@@ -57,7 +57,7 @@ def mapping_controller(prosumer,supervisor,cp,hp_index,gb_index,hd_index):
                    initiator_id=cp,
                    initiator_column="t_evap_in_c",
                    responder_id=hp_index,
-                   responder_column="t_evap_in_c",
+                   responder_column="t_load_in_c",
                    order=1)
 
 
@@ -224,7 +224,7 @@ class TestSupervisor:
                        initiator_id=cp,
                        initiator_column="t_evap_in_c",
                        responder_id=hp_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         GenericMapping(container=prosumer,
@@ -344,7 +344,7 @@ class TestSupervisor:
                        initiator_id=cp,
                        initiator_column="t_evap_in_c",
                        responder_id=hp_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         GenericMapping(container=prosumer,
@@ -426,7 +426,7 @@ class TestSupervisor:
                        initiator_id=cp_controller_index,
                        initiator_column="t_evap_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         GenericMapping(container=prosumer,

@@ -376,7 +376,7 @@ class TestHeatPump:
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.7722965, .001)}]
 
-    def test_heat_pump_heating(self):
+    def test_heat_pump_cooling(self):
         prosumer=create_empty_prosumer_container()
         hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),mode = 'cooling',
                                                         **_default_argument())

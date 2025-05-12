@@ -137,7 +137,6 @@ class Rule:
                     return
                 if hasattr(df.iloc[element_index], self.attr):
                     current_value = df.at[element_index, self.attr]
-
                     # Ensure that max_ attributes are not exceeded
                     if self.attr.startswith("max_") or self.attr.startswith("min_"):
                         if (self.controller not in supervisor.assert_rule) or (

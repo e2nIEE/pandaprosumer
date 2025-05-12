@@ -96,6 +96,7 @@ def create_heat_pump(prosumer,
                      evap_fluid=None,
                      name=None,
                      index=None,
+                     heating= True,
                      in_service=True,
                      **kwargs):
     """
@@ -156,9 +157,9 @@ def create_heat_pump(prosumer,
 
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
-             'min_p_comp_kw', 'max_t_cond_out_c', 'max_cop', 'cond_fluid', 'evap_fluid', 'in_service'],
+             'min_p_comp_kw', 'max_t_cond_out_c', 'max_cop', 'cond_fluid', 'evap_fluid', 'heating','in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
-             min_p_comp_kw, max_t_cond_out_c, max_cop, cond_fluid, evap_fluid, in_service])
+             min_p_comp_kw, max_t_cond_out_c, max_cop, cond_fluid, evap_fluid, heating, in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
