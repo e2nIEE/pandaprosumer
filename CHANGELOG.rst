@@ -4,8 +4,7 @@
 - [ADDED] `SupervisorData` class: handles input structure for the supervisor controller.
 - [ADDED] `Rule` class: defines single-condition logic to modify prosumer attributes.
 - [ADDED] `CombiningRules` class: supports logical combination (AND/OR) of multiple `Rule` instances.
-- [ADDED] Example usage for Supervisor and CombiningRules in documentation.
-- [DOCS] Added detailed API documentation and usage examples for the supervisor module.
+- [DOCS] Added detailed documentation and usage examples for the supervisor.
 
 [0.1.2] - 2025-05-02
 -------------------------------
