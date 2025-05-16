@@ -1,4 +1,13 @@
-[0.1.3] - 2025-05-02
+[0.1.2] - 2025-05-16
+-------------------------------
+- [ADDED] `Supervisor` controller: allows dynamic attribute control based on input conditions and logical rules.
+- [ADDED] `SupervisorData` class: handles input structure for the supervisor controller.
+- [ADDED] `Rule` class: defines single-condition logic to modify prosumer attributes.
+- [ADDED] `CombiningRules` class: supports logical combination (AND/OR) of multiple `Rule` instances.
+- [ADDED] Example usage for Supervisor and CombiningRules in documentation.
+- [DOCS] Added detailed API documentation and usage examples for the supervisor module.
+
+[0.1.2] - 2025-05-02
 -------------------------------
 - [ADDED] `check_levels` function: ensures that all controllers in a prosumer have the same execution level (with exceptions for ConstProfile and pandapower/pandapipes).
 - [ADDED] `check_controllers_orders` function: validates that initiator controllers execute before responder controllers, based on level and order attributes.
