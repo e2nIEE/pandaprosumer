@@ -46,13 +46,19 @@ def create_pandapipes_net_loop(ow_time_steps, mdot_dmd_kg_per_s, t_feed_prod_k, 
                                                _pandaprosumer_min_t_pump_feed_k=20 + 273.15,
                                                _pandaprosumer_max_mdot_pump_kg_per_s=100)
 
-    pandapipes.create_heat_consumer(net, from_junction=j3, to_junction=j4,
-                                    qext_w=100e3, controlled_mdot_kg_per_s=mdot_dmd_kg_per_s[0],
+    pandapipes.create_heat_consumer(net,
+                                    from_junction=j3,
+                                    to_junction=j4,
+                                    qext_w=100e3,
+                                    controlled_mdot_kg_per_s=mdot_dmd_kg_per_s[0],
                                     _pandaprosumer_max_mdot_dmd_kg_per_s=10000,
                                     _pandaprosumer_min_mdot_dmd_kg_per_s=0.05,
                                     _pandaprosumer_min_t_dmd_return_k=10 + 273.15)
 
-    pandapipes.create_flow_control(net, from_junction=j3, to_junction=j4, controlled_mdot_kg_per_s=0.1,
+    pandapipes.create_flow_control(net,
+                                   from_junction=j3,
+                                   to_junction=j4,
+                                   controlled_mdot_kg_per_s=0.1,
                                    role="demander_bypass")
 
     return net

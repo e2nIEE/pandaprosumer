@@ -3,6 +3,8 @@ import pytest
 from pandaprosumer import HeatDemandControllerData
 from pandaprosumer.create import (create_empty_prosumer_container, create_period,
 create_ice_chp, create_booster_heat_pump, create_heat_storage, create_heat_demand)
+from pandaprosumer.create_controlled import create_controlled_supervisor
+from pandaprosumer.supervisor import *
 import pandas as pd
 import numpy as np
 from pandas.testing import assert_frame_equal
@@ -234,3 +236,189 @@ class TestChpBhpStorageDemandMapping:
 
         assert ((1.0 >= soc) & (soc >= 0.0)).all()
 
+
+    def test_supervisor_soc(self):
+        chp_size = 350
+        chp_name = 'example_chp'
+        altitude = 0
+
+        q_capacity_kwh = 5000
+
+        start = '2020-01-01 00:00:00'
+        end = '2020-01-01 00:59:00'
+        time_resolution = 15 * 60
+
+        demand_data = pd.DataFrame({'cycle': [2, 2, 2, 2],
+                                    't_source_k': [278, 295, 295, 400],
+                                    'demand': [100, 500, 500, 500],
+                                    'mode': [1, 1, 1, 1],
+                                    't_intake_k': [273, 273, 273, 273],
+                                    'storage_input': [0, 0, 0, 0]
+                                    })
+
+        dur = pd.date_range(start, end, freq="15min", tz='utc')
+        demand_data.index = dur
+        demand_input = DFData(demand_data)
+
+        prosumer = create_empty_prosumer_container()
+
+        period = create_period(prosumer, time_resolution, start, end, 'utc', 'default')
+
+        chp_index = create_ice_chp(prosumer, chp_size, 'ng', altitude, name=chp_name)
+        heat_storage_index = create_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, name='hst_controller')
+        create_heat_demand(prosumer, scaling=1.0, name='heat_demand_controller')
+
+        const_controller_data = ConstProfileControllerData(
+            input_columns=['cycle', 't_source_k', 'demand', 'mode', 't_intake_k','storage_input'],
+            result_columns=["cycle_cp", 't_source_cp', "demand_cp", 'mode_cp', 't_intake_cp','storage_cp'],
+            period_index=period
+        )
+        ice_chp_controller_data = IceChpControllerData(
+            element_name='ice_chp',  # PM: copy of this here
+            element_index=[chp_index],
+            period_index=period
+        )
+
+        heat_demand_controller_data = HeatDemandControllerData(
+            element_name='heat_demand',
+            element_index=[0],
+            period_index=period
+        )
+        heat_storage_controller_data = HeatStorageControllerData(
+            element_name='heat_storage',
+            element_index=[heat_storage_index],
+            period_index=period
+        )
+
+        ConstProfileController(prosumer,
+                               const_object=const_controller_data,
+                               df_data=demand_input,
+                               order=0,
+                               level=0,
+                               name='cp_ctrl')
+        IceChpController(prosumer,
+                         ice_chp_controller_data,
+                         order=1,
+                         level=2,
+                         name='chp_ctrl')
+
+        HeatStorageController(prosumer,
+                              heat_storage_controller_data,
+                              order=2,
+                              level=2,
+                              init_soc=1,
+                              name='hs_ctrl')
+        HeatDemandController(prosumer,
+                             heat_demand_controller_data,
+                             order=3,
+                             level=2,
+                             name='kassel_ctrl')
+
+        supervisor_index = create_controlled_supervisor(prosumer, input_columns=['soc'],
+                                                        period=period, level=1, order=0)
+        supervisor = prosumer.controller.iloc[supervisor_index].object
+
+        rule1 = Rule('soc', operator_str='<', threshold_value=0.99, controller=1, attr='order',
+                     new_value=2)
+        supervisor.add_rule(rule1)
+        rule2 = Rule('soc', operator_str='<', threshold_value=0.99, controller=2, attr='order',
+                     new_value=1)
+        supervisor.add_rule(rule2)
+
+        GenericMapping(
+            prosumer,
+            initiator_id=0,
+            initiator_column="cycle_cp",
+            responder_id=1,
+            responder_column="cycle",
+            order=0
+        )
+        GenericMapping(
+            prosumer,
+            initiator_id=0,
+            initiator_column="t_intake_cp",
+            responder_id=1,
+            responder_column="t_intake_k",
+            order=0
+        )
+        GenericMapping(
+            prosumer,
+            initiator_id=0,
+            initiator_column="storage_cp",
+            responder_id=2,
+            responder_column="q_received_kw",
+            order=2
+        )
+
+        GenericMapping(
+            prosumer,
+            initiator_id=0,
+            initiator_column="demand_cp",
+            responder_id=3,
+            responder_column="q_demand_kw",
+            order=0
+        )
+        GenericMapping(
+            prosumer,
+            initiator_id=1,
+            initiator_column="p_th_out_kw",
+            responder_id="",
+            responder_column="q_received_kw",
+            order=0
+        )
+
+        GenericMapping(
+            prosumer,
+            initiator_id=2,
+            initiator_column="q_delivered_kw",
+            responder_id=3,
+            responder_column="q_received_kw",
+            order=0
+        )
+
+        GenericMapping(
+            prosumer,
+            initiator_id=2,
+            initiator_column="soc",
+            responder_id=4,
+            responder_column="soc",
+            order=0
+        )
+
+        run_timeseries(prosumer, period)
+
+        chp_data_res = {
+            "p_el_mw": [103.0, 100.325, 95.865, 91.405],
+            "p_th_mw": [160.12, 157.87, 154.10, 150.34],
+            "m_in_kg_s": [6.22, 6.11, 5.93, 5.76],
+            "fuel_cons_kg": [5594.73, 5499.44, 5340.55, 5181.67],
+            "CO2_emiss_mg": [3844.37, 3791.23, 3702.62, 3614.01],
+            "NOx_emiss_mg": [384.44, 379.12, 370.26, 361.40],
+            "SOx_emiss_mg": [306.66, 298.68, 285.39, 272.10],
+            "THC_emiss_mg": [756.66, 748.68, 735.39, 722.10],
+            "PM2.5_emiss_mg": [1284.44, 1279.12, 1270.26, 1261.40],
+            "PM10_emiss_mg": [1922.19, 1895.61, 1851.31, 1807.00]
+        }
+
+        chp_expected = pd.DataFrame(chp_data_res, index=dur)
+
+        bhp_data_res = {
+            "cop_floor": [3.97, 5.21, 5.21, 0.0],
+            "cop_radiator": [3.59, 5.26, 5.26, 0.0],
+            "p_el_floor": [1.73, 2.00, 2.00, 0.0],
+            "p_el_radiator": [1.91, 1.98, 1.98, 0.0],
+            "q_remain": [44.65, 39.74, 37.51, 45.70],
+            "q_floor": [6.85, 10.42, 10.42, 0.0],
+            "q_radiator": [6.85, 10.42, 10.42, 0.0]
+        }
+
+        bhp_expected = pd.DataFrame(bhp_data_res, index=dur)
+
+        storage_data_res = {
+            "soc": [0.02675, 0.07135, 0.11595, 0.10845],
+            "q_delivered_kw": [1.5, 1.5, 1.5, 1.5]
+        }
+
+        print(prosumer.time_series.loc[0].data_source.df)
+        print(prosumer.time_series.loc[1].data_source.df)
+        print(prosumer.time_series.loc[2].data_source.df)

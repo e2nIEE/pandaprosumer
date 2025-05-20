@@ -45,7 +45,6 @@ class CombiningRules:
             }
             for k, v in fill_dict.items():
                 prosumer["Rules"].at[index, k] = v
-        #Todo : If the user modifies the prosumer (df), then modify the rule.
 
     def __str__(self):
         return "CombiningRule"

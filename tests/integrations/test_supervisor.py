@@ -252,6 +252,8 @@ class TestSupervisor:
                         order=0)
         run_timeseries(prosumer, period, True)
 
+
+        # FIXME: Delay in supervisor rule application — the action take place in the next timestep.
         expected_values_q_kw = [0.0, 0.0, 0.0, 300]
         expected_value_p_comp_kw = [14, 59, 237, 0]
 
