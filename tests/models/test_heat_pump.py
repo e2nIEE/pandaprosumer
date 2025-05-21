@@ -378,13 +378,13 @@ class TestHeatPump:
 
     def test_heat_pump_cooling(self):
         prosumer=create_empty_prosumer_container()
-        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),mode = 'cooling',
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),heating = False,
                                                         **_default_argument())
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
         hp_controller.inputs = np.array([[20]])
-        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 35
         hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 4.39167745 - .5
-        hp_controller.t_m_to_deliver = lambda x: (25, 15, [2])
+        hp_controller.t_m_to_deliver = lambda x: (15, 25, [2])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hp_controller.control_step(prosumer)
         print(hp_controller.step_results)
