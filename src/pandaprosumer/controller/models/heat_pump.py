@@ -145,7 +145,6 @@ class HeatPumpController(BasicProsumerController):
 
         # 4. Calculate cop of heat pump
         cop_hp = carnot_efficiency * cop_carnot
-
         # 4bis. Calculate cop of heat pump with lorenz
         cop_hp_lz = carnot_efficiency * cop_lorenz
 
@@ -221,8 +220,8 @@ class HeatPumpController(BasicProsumerController):
 
         q_evap_kw = mdot_evap_kg_per_s * cp_evap_kj_per_kgk * (t_evap_in_c - t_evap_out_c)
 
-        # FixMe: Is it okay to use the condenser input temperature ?
-        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+        # FixMe: CORRECT ?
+        cop_carnot = (t_evap_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_in_c - t_evap_out_c)
         cop_hp = carnot_efficiency * cop_carnot
         p_comp_kw = q_evap_kw / (cop_hp - 1)
         q_cond_kw = q_evap_kw + p_comp_kw
@@ -230,6 +229,39 @@ class HeatPumpController(BasicProsumerController):
         # FixMe: Should set the condenser output temperature or mass flow ?
         cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
         mdot_cond_kg_per_s = p_comp_kw * cop_hp / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+
+        max_cop = self._get_element_param(prosumer, 'max_cop')
+        if max_cop and cop_hp > max_cop + 1e-3:
+            # If the cop is too high, consider calculate which condenser output temperature the HP can reach
+            # with the max cop
+            t_evap_out_c =  (max_cop * (t_cond_out_c + CELSIUS_TO_K) / (max_cop - carnot_efficiency)) - CELSIUS_TO_K
+            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
+                                                                                        mdot_evap_kg_per_s,
+                                                                                        t_evap_in_c,
+                                                                                        t_evap_out_c,
+                                                                                        t_cond_in_c,
+                                                                                        pinch_c)
+
+        min_pcomp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
+        if min_pcomp_kw and p_comp_kw < min_pcomp_kw - 1e-3:
+            # If the compressor power is too low, the Heat Pump cannot run
+            return 0, 0, 0, 0, 0, t_cond_in_c, t_cond_in_c, 0, t_evap_in_c, t_evap_in_c
+
+
+        max_p_comp_kw = self._get_element_param(prosumer, 'max_p_comp_kw')
+        if max_p_comp_kw and p_comp_kw > max_p_comp_kw + 1e-3:
+            # If the compressor power is too high, consider that only the evap mass flow will be affected
+            # (not the temperatures) and recalculate everything
+            mdot_evap_kg_per_s = max_p_comp_kw * (cop_hp-1) / (cp_evap_kj_per_kgk * (t_evap_in_c - t_evap_out_c))
+            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
+                                                                                        mdot_evap_kg_per_s,
+                                                                                        t_evap_in_c,
+                                                                                        t_evap_out_c,
+                                                                                        t_cond_in_c)
 
         return (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
@@ -284,7 +316,7 @@ class HeatPumpController(BasicProsumerController):
                             # If the evaporator mass flow is higher than the one required by the Heat Pump,
                             # recalculate the secondary mass flow to reduce the heat demand to reduce the evaporator mass flow
                             cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(
-                                CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
+                            CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
                             cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(
                                 CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
                             q_evap_kw = self._mdot_supply_in_kg_per_s * (
@@ -301,9 +333,14 @@ class HeatPumpController(BasicProsumerController):
                             t_bypass_c = t_evap_in_c
                             t_evap_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_evap_out_c * mdot_evap_kg_per_s) / self._mdot_supply_in_kg_per_s
                             mdot_evap_kg_per_s = self._mdot_supply_in_kg_per_s
+                    result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
+                                                                           mdot_cond_kg_per_s,
+                                                                           mdot_tab_required_kg_per_s)
+
+                    t_fluid_mix = t_cond_out_c
+
 
                 else:
-                    print(mdot_src_required_kg_per_s)
                     (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                      mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                      mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
@@ -314,7 +351,6 @@ class HeatPumpController(BasicProsumerController):
                                                                                                         )
                     if not np.isnan(self._mdot_supply_in_kg_per_s):
                         # If the evaporator is fed with a fixed mass flow (not free air)
-                        print(t_evap_in_c,t_cond_out_c)
                         if mdot_cond_kg_per_s > self._mdot_supply_in_kg_per_s :
                             # If the evaporator mass flow is higher than the one required by the Heat Pump,
                             # recalculate the secondary mass flow to reduce the heat demand to reduce the evaporator mass flow
@@ -329,7 +365,6 @@ class HeatPumpController(BasicProsumerController):
                             p_comp_kw = q_cond_kw / cop_hp
                             q_evap_kw = q_cond_kw - p_comp_kw
                             mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
-                            print(cop_hp)
 
                         elif mdot_cond_kg_per_s < self._mdot_supply_in_kg_per_s:
                             # If the evaporator mass flow is lower than the one required by the Heat Pump,
@@ -341,9 +376,11 @@ class HeatPumpController(BasicProsumerController):
                             mdot_cond_kg_per_s = self._mdot_supply_in_kg_per_s
 
 
-                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
-                                                                       mdot_cond_kg_per_s,
-                                                                       mdot_tab_required_kg_per_s)
+                    result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
+                                                                           mdot_evap_kg_per_s,
+                                                                           mdot_tab_required_kg_per_s)
+
+                    t_fluid_mix= t_evap_out_c
 
                 rerun = False
                 if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_src_required_kg_per_s:
@@ -364,13 +401,12 @@ class HeatPumpController(BasicProsumerController):
 
             result_fluid_mix = []
             for mdot_kg_per_s in result_mdot_tab_kg_per_s:
-                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,
+                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_fluid_mix,
                                          FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
             result = np.array([[q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c]])
-            print(t_cond_in_c,t_cond_out_c,t_evap_in_c,t_evap_out_c)
             assert cop_hp >= 0, f"Heat Pump {self.name} COP is negative ({cop_hp}) for timestep {self.time} in prosumer {prosumer.name}"
             assert mdot_evap_kg_per_s >= 0, f"Heat Pump {self.name} mdot_evap_kg_per_s is negative ({mdot_evap_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
             assert mdot_cond_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
