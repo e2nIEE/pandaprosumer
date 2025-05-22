@@ -41,9 +41,9 @@ class HeatPumpController(BasicProsumerController):
         self.evap_fluid = call_lib(evap_fluid) if evap_fluid else prosumer.fluid
         # FixMe: Does it works when evap fluid is a gas (e.g. air) ?
         # ToDo: Add power ramp up/down constrain
-        self.t_previous_evap_out_c = np.nan
-        self.t_previous_evap_in_c = np.nan
-        self.mdot_previous_evap_kg_per_s = np.nan
+        self.t_previous_out_c = np.nan
+        self.t_previous_in_c = np.nan
+        self.mdot_previous_kg_per_s = np.nan
 
     @property
     def _t_load_in_c(self):
@@ -70,8 +70,8 @@ class HeatPumpController(BasicProsumerController):
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
         t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self.t_m_to_deliver(prosumer)
-        if not np.isnan(self.t_previous_evap_out_c):
-            return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
+        if not np.isnan(self.t_previous_out_c):
+            return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
         else:
             delta_t_hot_default_c = self._get_element_param(prosumer, 'delta_t_hot_default_c')
             if self._get_element_param(prosumer, 'heating'):
@@ -89,25 +89,34 @@ class HeatPumpController(BasicProsumerController):
         :param t_feed_c: The feed temperature
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        t_cond_out_required_c, t_cond_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-        mdot_cond_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
-        if mdot_cond_required_kg_per_s == 0:
-            return t_cond_out_required_c, t_cond_in_required_c, 0
+        t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+        mdot_src_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
+        if mdot_src_required_kg_per_s == 0:
+            return t_src_out_required_c, t_src_in_required_c, 0
         pinch_c = self._get_element_param(prosumer, 'pinch_c')
 
         # FixMe: Do we need this function or use delta_t_hot_default_c in t_m_to_receive ?
         # FixMe: cop < 0 if t_cond_out_c < t_evap_in_c (t_feed_c)
+        if self._get_element_param(prosumer, 'heating'):
 
-        (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
-         mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-         mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                    mdot_cond_required_kg_per_s,
-                                                                                    t_cond_out_required_c,
-                                                                                    t_cond_in_required_c,
-                                                                                    t_feed_c,
-                                                                                    pinch_c)
-        if not np.isnan(self.t_previous_evap_out_c):
-            return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
+            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
+                                                                                        mdot_src_required_kg_per_s,
+                                                                                        t_src_out_required_c,
+                                                                                        t_src_in_required_c,
+                                                                                        t_feed_c,
+                                                                                        pinch_c)
+        else:
+            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_reverse(prosumer,
+                                                                                        mdot_src_required_kg_per_s,
+                                                                                        t_src_in_required_c,
+                                                                                        t_src_out_required_c,
+                                                                                        t_feed_c)
+        if not np.isnan(self.t_previous_out_c):
+            return self.t_previous_evap_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
         return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
 
 
@@ -241,8 +250,7 @@ class HeatPumpController(BasicProsumerController):
                                                                                         mdot_evap_kg_per_s,
                                                                                         t_evap_in_c,
                                                                                         t_evap_out_c,
-                                                                                        t_cond_in_c,
-                                                                                        pinch_c)
+                                                                                        t_cond_in_c)
 
         min_pcomp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
         if min_pcomp_kw and p_comp_kw < min_pcomp_kw - 1e-3:
@@ -421,16 +429,21 @@ class HeatPumpController(BasicProsumerController):
                 # If the actual output temperature is the same as the promised one, the storage is correctly applied
                 self.finalize(prosumer, result, result_fluid_mix)
                 self.applied = True
-                self.t_previous_evap_out_c = np.nan
-                self.t_previous_evap_in_c = np.nan
-                self.mdot_previous_evap_kg_per_s = np.nan
+                self.t_previous_out_c = np.nan
+                self.t_previous_in_c = np.nan
+                self.mdot_previous_kg_per_s = np.nan
             else:
                 # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
                 self._unapply_initiators(prosumer)
-                self.t_previous_evap_out_c = t_evap_out_c
-                self.t_previous_evap_in_c = t_evap_in_c
-                self.mdot_previous_evap_kg_per_s = mdot_evap_kg_per_s
                 self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
+                if self._get_element_param(prosumer, 'heating'):
+                    self.t_previous_out_c = t_evap_out_c
+                    self.t_previous_in_c = t_evap_in_c
+                    self.mdot_previous_kg_per_s = mdot_evap_kg_per_s
+                else:
+                    self.t_previous_out_c = t_cond_out_c
+                    self.t_previous_in_c = t_cond_in_c
+                    self.mdot_previous_kg_per_s = mdot_cond_kg_per_s
         else :
             self.applied = True

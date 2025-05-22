@@ -397,7 +397,7 @@ class TestHeatPump:
         assert hp_controller.step_results == pytest.approx(np.array([expected]))
         assert hp_controller.result_mass_flow_with_temp == pytest.approx([])
 
-    def test_heat_pump_cooling(self):
+    def test_controller_cooling_run_control_demand_lower_mass_flow(self):
         prosumer=create_empty_prosumer_container()
         hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),heating = False,
                                                         **_default_argument())
@@ -408,8 +408,12 @@ class TestHeatPump:
         hp_controller.t_m_to_deliver = lambda x: (15, 25, [2])
         hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hp_controller.control_step(prosumer)
-        print(hp_controller.step_results)
+        expected = [97.1759545,13.4896345, 83.68632, 7.20375, 3.89167745, 35.,
+         40.97358355,  2., 25., 15.]
 
+        assert hp_controller.step_results == pytest.approx(np.array([expected]))
+        assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 15.,
+                                                             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(2, .001)}]
 
     def test_controller_cooling_run_control_demand(self):
         """
@@ -480,4 +484,39 @@ class TestHeatPump:
         assert hp_controller.step_results == pytest.approx(np.array([expected]))
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 19.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(15.324279249888962)}]
+
+
+    def test_controller_cooling_run_control_3demands_outrange(self):
+        """
+        Test the Heat Pump controller with 3 demands out of working range
+        Test the merit order dispatch logic
+        """
+        params = {'carnot_efficiency': 0.5,
+                  'pinch_c': 0,
+                  'delta_t_evap_c': 15,
+                  'max_p_comp_kw': 400,
+                  'min_p_comp_kw': .01,
+                  'max_cop': 10}
+        prosumer = create_empty_prosumer_container()
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, heating=False, period=_default_period(prosumer),
+                                                        **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        hp_controller.inputs = np.array([[60]])
+        hp_controller.t_m_to_deliver = lambda x: (19, 35, [7, 8, 1.5])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+
+        expected =[1425.12195122,  400.        , 1025.12195122,    3.56280488,
+          22.68037624,   60.        ,   75.        ,   15.32427925,
+          35.        ,   19.        ]
+        assert hp_controller.step_results == pytest.approx(np.array([expected]))
+        assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 19.,
+                                                             FluidMixMapping.MASS_FLOW_KEY: 7},
+                                                            {FluidMixMapping.TEMPERATURE_KEY: 19.,
+                                                             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(8)},
+                                                            {FluidMixMapping.TEMPERATURE_KEY: 19.,
+                                                             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(0.3242792)}]
+
+
+
 
