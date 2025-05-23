@@ -47,7 +47,7 @@ class Test1HeatPump1DryCoolerMapping:
                      'min_delta_t_air_c': 5}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, level=0, order=0)
+                                                            data_source, period, level=0, order=0)
 
         hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period = period, **hp_params)
         dc_controller_index = create_controlled_dry_cooler(prosumer, level =1, order = 1, period = period,**dc_params)
