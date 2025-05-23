@@ -7,6 +7,7 @@
 - [UPDATED] Tests and tutorials to comply with new order checking mechanisms (minor fixes for compatibility).
 - [FIXED] Incorrect reference to "pandapipes" in `CONTRIBUTING.rst` now correctly mentions "pandaprosumer".
 - [CHANGED] Unit correction in `dry_cooler.rst` documentation.
+- [ADDED] q_exchanged_kw in Heat Exchanger result columns.
 
 [0.1.2] - 2025-04-22
 -------------------------------
