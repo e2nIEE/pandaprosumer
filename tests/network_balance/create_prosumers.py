@@ -15,7 +15,7 @@ def create_prosumer_prod(hp_level):
                  'max_p_comp_kw': 1000e3}
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                        period, data_source, 0)
+                                                        data_source, period, 0, 0)
 
 
     hp_controller_index = create_controlled_heat_pump(prosumer,period =period,level=hp_level,order = 0,**hp_params)
@@ -46,7 +46,7 @@ def create_prosumer_dmd_hx(level):
                  't_out_set_c': 20}
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                        period, data_source, 0)
+                                                        data_source, period, 0, 0)
 
     hx_controller_index = create_controlled_heat_exchanger(prosumer, period =period,level=level,order = 0,**hx_params)
     hd_controller_index = create_controlled_heat_demand(prosumer, period =period,level=level,order = 1,**hd_params)
