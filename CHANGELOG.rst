@@ -1,8 +1,11 @@
+
 [0.1.2] - 2025-05-07
 -------------------------------
 - [ADDED] `ConstProfileController` now supports automatic period detection from the DataFrame via a `period` column if no period is explicitly set.
 - [CHANGED] Improved period handling logic to reduce user configuration burden and improve flexibility.
 - [UPDATED] Tests and tutorials to reflect the new behavior in period detection and ensure compatibility with updated controller logic.
+- [FIXED] Runtime Warning due to negative value inside np.log
+- [CHANGED] merged duplicate code from dry cooler and heat exchanger
 
 
 [0.1.2] - 2025-05-02
