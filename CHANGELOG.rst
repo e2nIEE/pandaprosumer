@@ -1,3 +1,8 @@
+[0.1.2] - 2025-05-05
+-------------------------------
+- [FIXED] Runtime Warning due to negative value inside np.log
+- [CHANGED] merged duplicate code from dry cooler and heat exchanger
+
 [0.1.3] - 2025-05-02
 -------------------------------
 - [ADDED] `check_levels` function: ensures that all controllers in a prosumer have the same execution level (with exceptions for ConstProfile and pandapower/pandapipes).
