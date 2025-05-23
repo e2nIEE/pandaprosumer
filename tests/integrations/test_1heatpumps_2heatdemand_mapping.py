@@ -41,7 +41,7 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              period, data_source, 0, 0)
+                                                              data_source, period, 0, 0)
         hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
 
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
@@ -169,7 +169,7 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              period, data_source, 0, 0)
+                                                              data_source, period, 0, 0)
         hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
 
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
@@ -307,7 +307,7 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              period, data_source, 0, 0)
+                                                              data_source, period,0, 0)
         hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
 
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
