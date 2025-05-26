@@ -5,16 +5,14 @@ Module containing the DryCoolerController class.
 import logging
 import numpy as np
 from scipy import optimize
-from math import log
 
 import pandapipes
-import pandas as pd
 
-from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, HeatExchangerControl
+from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
 logger = logging.getLogger()
 
@@ -72,116 +70,6 @@ def _adiabatic_pre_cooling(t_db_c, phi_air_in_percent, phi_air_out_percent=99):
     t_db_out_c = _solve_t_bc_c(t_wb_c, phi_air_out_percent)
 
     return t_db_out_c
-
-
-def solve_dichotomy(f, x_min, x_max):
-    """
-    Solve f(x)=0 by dichotomy in the interval [x_min, x_max].
-    The function f should be strictly increasing, or x_min and x_max reversed if it is decreasing.
-
-    :param f: Function to be solved.
-    :param x_min: Minimum value.
-    :param x_max: Maximum value.
-    :return: The found value of x after convergence
-    """
-    x_mean = (x_max + x_min) / 2
-    nb_runs = 0
-    while (abs(f(x_mean)) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD
-           and abs(x_max - x_min) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD):
-        nb_runs += 1
-        if nb_runs > 300:
-            logger.warning(f"Dichotomy did not converge after {nb_runs} runs."
-                           f"Reached xmin={x_min}, xmax={x_max}. Continuing with x_mean={x_mean}")
-            break
-        x_mean = (x_max + x_min) / 2
-        if f(x_mean) < 0:
-            x_min = x_mean
-        else:
-            x_max = x_mean
-    return x_mean
-
-
-def calculate_hot_temperature_difference(a, delta_t_cold):
-    """
-    Solve the equation with dichotomy to find t_out_1
-    x is defined such as delta_t_cold / delta_t_hot = (1 - x)
-
-    :param a: The parameter 'a'
-    :param delta_t_cold: The temperature difference between the air cold (in) and water cold (out) temperatures
-    :return: The temperature difference between the air hot (out) and water hot (in) temperatures
-    """
-    dichotomy_fun = lambda x: a * x - np.log(1 + x)
-    if a > 1:
-        # dichotomy_fun is strictly decreasing on [x_max, x_min], -1 < x < 0
-        x_max = -1
-        x_min = (1 - a) / (a - 0.001)
-    else:
-        # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0
-        x_min = (1 - a) / a
-        x_max = 3 * x_min
-    x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max)
-    # x_mean = optimize.newton(dichotomy_fun, (x_min + x_max) / 2)
-    delta_t_hot = (1 + x_mean) * delta_t_cold
-    return delta_t_hot
-
-
-def compute_temp(q_ratio, q_exchanged_w, t_air_in_c, t_fluid_in_c, t_fluid_out_c,
-                 delta_t_hot_nom_c, delta_t_cold_nom_c, cp_air_j_per_kgk):
-    """
-    Calculate the return temperature and the mass flow rate of the air
-
-    :param q_ratio: The ratio of the exchanged heat and the nominal exchanged heat
-    :param q_exchanged_w: The heat to be exchanged
-    :param t_air_in_c: The air (cold) input temperature
-    :param t_fluid_in_c: The fluid (hot) input temperature
-    :param t_fluid_out_c: The fluid (cold) output temperature
-    :param delta_t_hot_nom_c: The temperature difference between the nominal
-        primary hot and secondary hot (out) temperature
-    :param delta_t_cold_nom_c: The temperature difference between the nominal
-        primary cold and secondary cold (out) temperature
-    :param cp_air_j_per_kgk: The heat capacity of the air
-
-    :return: The temperature on the primary side and the primary mass flow
-    """
-    if q_ratio == 0:
-        # No heat transfer at the secondary side so no heat transfer at the primary side
-        t_air_out_c = t_air_in_c
-    else:
-        delta_t_cold = t_fluid_out_c - t_air_in_c
-        # Logarithmic mean temperature difference (LMTD) at nominal conditions
-        if delta_t_hot_nom_c == delta_t_cold_nom_c:
-            lmtd_nom = delta_t_hot_nom_c
-        else:
-            lmtd_nom = (delta_t_hot_nom_c - delta_t_cold_nom_c) / np.log(delta_t_hot_nom_c / delta_t_cold_nom_c)
-        a_cold = delta_t_cold / (q_ratio * lmtd_nom)
-        if a_cold > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
-            logger.warning("Heat Exchanger state too far from nominal conditions. "
-                           f"The temperature difference between the primary (t_in_1_c={t_air_in_c}°C) and "
-                           f"secondary side (t_out_2_c={t_fluid_out_c}°C) may be too high or the transferred heat "
-                           "q_exchanged_w={q_exchanged_w}W too small compared to the nominal conditions")
-            t_air_out_c = t_air_in_c
-        else:
-            delta_t_hot = calculate_hot_temperature_difference(a_cold, delta_t_cold)
-            t_air_out_c = t_fluid_in_c - delta_t_hot
-
-    # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_exchanged
-    # mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
-    if t_air_out_c - t_air_in_c == 0:
-        mdot_air_kg_per_s = 0
-    else:
-        mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
-    # elif a_cold == 0:  # Note: Can go there with 'a_cold' not defined if T_in_1 is nan
-    #     mdot_air_kg_per_s = HeatExchangerControl.MIN_PRIMARY_MASS_FLOW_KG_PER_S  # 0.2 m3/h  FixMe: Why ?
-    # else:
-    #     # Find the primary mass flow rate so that the heat exchanged by the fluid on the secondary side is equal to q_exchanged
-    #     mdot_air_kg_per_s = q_exchanged_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))
-    # if t_air_out_c < t_air_in_c:
-    #     # The fluid on the primary side should not cool down
-    #     t_air_out_c = t_air_in_c
-    #     mdot_air_kg_per_s = 0
-    # FixMe: t_air_out_c=nan if T_hot_1 == T_hot_2
-    return t_air_out_c, mdot_air_kg_per_s
-
 
 class DryCoolerController(BasicProsumerController):
     """
@@ -282,6 +170,8 @@ class DryCoolerController(BasicProsumerController):
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
         min_t_air_out_c = t_air_in_c + min_delta_t_air_c
         max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
+        if max_x<=-1:
+            max_x = -0.999
         min_a = np.log(1 + max_x) / max_x
 
         if min_delta_t_air_c and a_cold < min_a:
@@ -402,7 +292,7 @@ class DryCoolerController(BasicProsumerController):
                                 mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
                                 mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
 
-            assert t_fluid_out_c <= t_fluid_in_c, f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
             # ToDo: Add a condition to check whether the mass flows are equal
             if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
@@ -420,5 +310,4 @@ class DryCoolerController(BasicProsumerController):
                 self.mdot_previous_in_kg_per_s = mdot_supplied_kg_per_s
                 self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
-
-        else: self.applied = True  # self.in_service = False
+        else : self.applied = True
