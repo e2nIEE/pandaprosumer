@@ -116,7 +116,8 @@ class TestHeatExchanger:
                                                              **_default_argument())
         hx_controller = prosumer.controller.iloc[hx_controller_idx].object
         input_columns_expected = ['t_feed_in_c']
-        result_columns_expected = ["mdot_1_kg_per_s", "t_1_in_c", "t_1_out_c",
+        result_columns_expected = ["q_exchanged_kw",
+                                   "mdot_1_kg_per_s", "t_1_in_c", "t_1_out_c",
                                    "mdot_2_kg_per_s", "t_2_in_c", "t_2_out_c"]
 
         assert hx_controller.input_columns == input_columns_expected
@@ -135,7 +136,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [0., 110., 110., 0., 0., 0.]
+        expected = [0., 0., 110., 110., 0., 0., 0.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_demand_nominal(self):
@@ -152,7 +153,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [0.15916, 90., 65., .4, 50., 60.]
+        expected = [16.693, 0.15916, 90., 65., .4, 50., 60.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 60.,
                                                              FluidMixMapping.MASS_FLOW_KEY: .4}]
@@ -183,7 +184,7 @@ class TestHeatExchanger:
         q_exchanged_kw = .4 * 4.186 * (60-45)
         mdot_1_kg_per_s = q_exchanged_kw / (4.186 * (90-75))
 
-        expected = [mdot_1_kg_per_s, 90., 75., .4, 45., 60.]
+        expected = [q_exchanged_kw, mdot_1_kg_per_s, 90., 75., .4, 45., 60.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .006)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 60.,
                                                              FluidMixMapping.MASS_FLOW_KEY: .4}]
@@ -201,8 +202,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        # expected = [1.42345, 110., 103.727, .6, 70., 55.]
-        expected = [1.018526, 93., 88, .3410815, 55., 70.]
+        expected = [21.41882, 1.018526, 93., 88, .3410815, 55., 70.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 70.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.3410815)}]
@@ -221,8 +221,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        # expected = [1.42345, 110., 103.727, .6, 70., 55.]
-        expected = [1.642249, 110., 105, .5518196, 55., 70.]
+        expected = [34.652, 1.642249, 110., 105, .5518196, 55., 70.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 70.,
                                                              FluidMixMapping.MASS_FLOW_KEY: .4},
@@ -243,7 +242,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [1.37628, 95., 90., .692119, 50., 60.]
+        expected = [28.95379, 1.37628, 95., 90., .692119, 50., 60.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 60.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.692119)}]
@@ -262,7 +261,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [1.193106, 95., 90., .12, 30., 80.]
+        expected = [25.100124, 1.193106, 95., 90., .12, 30., 80.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]))
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.12)},
@@ -338,7 +337,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [1.018526, 93., 88, .3410815, 55., 70.]
+        expected = [21.41882, 1.018526, 93., 88, .3410815, 55., 70.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 70.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.3410815)}]
@@ -358,7 +357,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [1.018526 + .5, 93., 89.64633, .3410815, 55., 70.]
+        expected = [21.42234, 1.018526 + .5, 93., 89.64633, .3410815, 55., 70.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 70.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.3410815)}]
@@ -378,7 +377,7 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [0.518526, 93., 88, .077384, 55., 88.68328]
+        expected = [10.9042, 0.518526, 93., 88, .077384, 55., 88.68328]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [
             {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(88.68328, .001),
