@@ -58,7 +58,7 @@ Combining Rule
 The `CombiningRules` class allows multiple `Rule` instances to be evaluated together using logical operators such as **AND** or **OR**.
 This enables more complex, composite logic to govern control decisions in a `Supervisor`.
 
-.. autoclass:: pandaprosumer.supervisor.rule.CombiningRules
+.. autoclass:: pandaprosumer.supervisor.combining_rule.CombiningRules
     :members:
 
 
