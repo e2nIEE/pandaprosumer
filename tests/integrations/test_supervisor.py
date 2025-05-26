@@ -80,6 +80,12 @@ def mapping_controller(prosumer,supervisor,cp,hp_index,gb_index,hd_index):
 
 class TestSupervisor:
 
+    def test_create_supervisor(self):
+        prosumer = create_empty_prosumer_container()
+        create_controlled_supervisor(prosumer, input_columns=[])
+        assert hasattr(prosumer, "controller")
+        assert len(prosumer.controller) == 1
+
     def test_modify_in_service(self):
 
         prosumer = create_empty_prosumer_container()
