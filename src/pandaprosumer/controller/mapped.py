@@ -515,7 +515,6 @@ class MappedController(Controller):
             grouped = filtered_mapping.groupby("initiator")
             for initiator, group in grouped:
                 initiator_name = container.controller.iloc[initiator].object.name
-                print(group)
                 sorted_orders = sorted(group["order"].tolist())
                 expected_orders = list(range(len(sorted_orders)))
                 if sorted_orders != expected_orders:
