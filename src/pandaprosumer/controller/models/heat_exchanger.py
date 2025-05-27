@@ -400,5 +400,4 @@ class HeatExchangerController(BasicProsumerController):
                 self.mdot_previous_1_kg_per_s = mdot_1_kg_per_s
                 self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
-        else:
-            self.applied = True
+        else: self.applied = True

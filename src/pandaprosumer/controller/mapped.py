@@ -494,7 +494,7 @@ class MappedController(Controller):
         # model = [ConstProfileController]
         for _, ctrl_row in container.controller.iterrows():
             ctrl = ctrl_row.object
-            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor:
+            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor():
                 levels.append(ctrl.level)
         if levels and not all(l == levels[0] for l in levels):
             raise ValueError(
@@ -515,6 +515,7 @@ class MappedController(Controller):
             grouped = filtered_mapping.groupby("initiator")
             for initiator, group in grouped:
                 initiator_name = container.controller.iloc[initiator].object.name
+                print(group)
                 sorted_orders = sorted(group["order"].tolist())
                 expected_orders = list(range(len(sorted_orders)))
                 if sorted_orders != expected_orders:
