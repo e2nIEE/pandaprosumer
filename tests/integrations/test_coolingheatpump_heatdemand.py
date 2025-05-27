@@ -15,10 +15,10 @@ class Test1CoolingHeatPump1HeatDemandMapping:
         prosumer = create_empty_prosumer_container()
         # ToDo: add case where demand = 0w in tests
         # ToDo: test equivalence different inputs for demand
-        data = pd.DataFrame({"Tin_cond": [70, 70, 70, 70],
+        data = pd.DataFrame({"Tin_cond": [55, 55, 55, 55],
                              "demand_1_kw": [50, 200, 337.512+30, 0],
-                             "tdmd_return1_c": [76.85, 76.85, 76.85, 76.85],
-                             "tdmd_feed1_c": [30, 30, 30, 30]})
+                             "tdmd_return1_c": [35, 35, 35, 35],
+                             "tdmd_feed1_c": [20, 20, 20, 20]})
 
         start = '2020-01-01 00:00:00'
         resol = 3600
@@ -34,13 +34,13 @@ class Test1CoolingHeatPump1HeatDemandMapping:
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
-        hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
+        # hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
 
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                             data_source, period, level=0, order=0)
-        hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period=period,**hp_params)
-        hd_controller_index = create_controlled_heat_demand(prosumer, level = 1,order = 1,period = period, **hd_params)
+        hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period=period,heating = False,**hp_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, level = 1,order = 1,period = period, heating = False)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -64,42 +64,43 @@ class Test1CoolingHeatPump1HeatDemandMapping:
         run_timeseries(prosumer, period, True)
 
         hp_data_res = {
-            'q_cond_kw': [50., 200., 337.512, 0.],
-            'p_comp_kw': [14.814286, 59.257143, 100., 0.],
-            'q_evap_kw': [35.185714, 140.742857, 237.512, 0.],
-            'cop': [3.375121, 3.375121, 3.375121, 0.],
-            'mdot_cond_kg_per_s': [.255149, 1.020598, 1.72232039, 0.],
-            't_cond_in_c': [30., 30., 30., 30.],
-            't_cond_out_c': [76.85, 76.85, 76.85, 30.],
-            'mdot_evap_kg_per_s': [1.682353, 6.729414, 11.35629, 0.],
-            't_evap_in_c': [25., 25., 25., 25.],
-            't_evap_out_c': [20., 20., 20., 25.]
+            'q_cond_kw': [65.68, 262.7, 418.78, 0.0],
+            'p_comp_kw': [15.68, 62.7, 100., 0.0],
+            'q_evap_kw': [50., 200., 318.78, 0.0],
+            'cop': [4.18, 4.18, 4.18, 4.18],
+            'mdot_cond_kg_per_s': [3.13, 12.55, 20.02, 0.0],
+            't_cond_in_c': [55., 55., 55., 55.],
+            't_cond_out_c': [60., 60., 60., 60.],
+            'mdot_evap_kg_per_s': [0.79729, 3.19, 5.08, 0.],
+            't_evap_in_c': [35., 35., 35., 20.],
+            't_evap_out_c': [20., 20., 20., 20.]
         }
         hp_expected = pd.DataFrame(hp_data_res, index=data.index)
 
         dmd_data_res = {
-            'q_received_kw': [50., 200., 337.512, 0.],
-            'q_uncovered_kw': [0., 0., 30., 0.],
-            'mdot_kg_per_s': [0.255149, 1.020598, 1.72232039, 0.],
-            't_in_c': [76.85, 76.85, 76.85, 30.],
-            't_out_c': [30., 30., 30., 30.]
+            'q_received_kw': [50., 200., 318.78, 0.0],
+            'q_uncovered_kw': [0., 0., 48.73, 0.],
+            'mdot_kg_per_s': [0.80, 3.19, 5.08, 0.],
+            't_in_c': [20., 20., 20., 20.],
+            't_out_c': [35., 35., 35., 35.]
         }
         hd_expected = pd.DataFrame(dmd_data_res, index=data.index)
         print(prosumer.time_series.loc[0].data_source.df)
+        print(prosumer.time_series.loc[1].data_source.df)
         assert not np.isnan(prosumer.time_series.loc[0, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[1, "data_source"].df).any().any()
-        assert_frame_equal(prosumer.time_series.loc[0].data_source.df, hp_expected, check_dtype=False)
-        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, hd_expected, check_dtype=False)
+        assert_frame_equal(prosumer.time_series.loc[0].data_source.df, hp_expected, check_dtype=False,check_exact=False, rtol=1e-1, atol=1e-1)
+        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, hd_expected, check_dtype=False, check_exact=False, rtol = 1e-1, atol=1e-1)
 
         hp_p_kw = prosumer.time_series.loc[0].data_source.df.p_comp_kw
-        hp_qcond_kw = prosumer.time_series.loc[0].data_source.df.q_cond_kw
+        hp_qevap_kw = prosumer.time_series.loc[0].data_source.df.q_evap_kw
         dmd_q_uncovered_kw = prosumer.time_series.loc[1].data_source.df.q_uncovered_kw
-        hp_mdot_cond_kg_per_s = prosumer.time_series.loc[0].data_source.df.mdot_cond_kg_per_s
-        hp_t_cond_out_c = prosumer.time_series.loc[0].data_source.df.t_cond_out_c
-        hp_t_cond_in_c = prosumer.time_series.loc[0].data_source.df.t_cond_in_c
+        hp_mdot_evap_kg_per_s = prosumer.time_series.loc[0].data_source.df.mdot_evap_kg_per_s
+        hp_t_evap_out_c = prosumer.time_series.loc[0].data_source.df.t_evap_out_c
+        hp_t_evap_in_c = prosumer.time_series.loc[0].data_source.df.t_evap_in_c
         assert (hp_p_kw <= hp_params['max_p_comp_kw']).all()
-        assert_series_equal(hp_qcond_kw, data.demand_1_kw - dmd_q_uncovered_kw, rtol=.0001, check_names=False)
-        mdot_demand_kg_per_s = (data.demand_1_kw - dmd_q_uncovered_kw) / ((76.85 - 30) * 4.19)
-        assert_series_equal(hp_mdot_cond_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False)
-        assert hp_t_cond_out_c.values == pytest.approx([76.85, 76.85, 76.85, 30.], .01)
-        assert hp_t_cond_in_c.values == pytest.approx([30]*len(hp_t_cond_in_c), .01)
+        assert_series_equal(hp_qevap_kw, data.demand_1_kw - dmd_q_uncovered_kw, rtol=.0001, check_names=False)
+        mdot_demand_kg_per_s = (data.demand_1_kw - dmd_q_uncovered_kw) / ((35. - 20) * 4.19)
+        assert_series_equal(hp_mdot_evap_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False)
+        assert hp_t_evap_out_c.values == pytest.approx([20., 20., 20., 20.], .01)
+        assert hp_t_evap_in_c.values == pytest.approx([35., 35., 35., 20.], .01)

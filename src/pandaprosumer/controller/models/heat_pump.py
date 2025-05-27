@@ -105,6 +105,9 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_src_in_required_c,
                                                                                         t_feed_c,
                                                                                         pinch_c)
+            if not np.isnan(self.t_previous_out_c):
+                return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
+            return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
         else:
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
              mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
@@ -113,9 +116,9 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_src_in_required_c,
                                                                                         t_src_out_required_c,
                                                                                         t_feed_c)
-        if not np.isnan(self.t_previous_out_c):
-            return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
-        return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
+            if not np.isnan(self.t_previous_out_c):
+                return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
+            return t_feed_c, t_cond_out_c, mdot_cond_kg_per_s
 
 
     def _calculate_heat_pump(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c, t_evap_out_c = None):
@@ -218,7 +221,6 @@ class HeatPumpController(BasicProsumerController):
         """
         Main method for Heat Pump physical calculation during one time step
         """
-        print('hola')
         if t_cond_out_c is None:
             t_cond_out_c = t_cond_in_c + self._get_element_param(prosumer, 'delta_t_evap_c')
         cp_evap_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
@@ -236,8 +238,6 @@ class HeatPumpController(BasicProsumerController):
         # FixMe: Should set the condenser output temperature or mass flow ?
         cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
         mdot_cond_kg_per_s = p_comp_kw * cop_hp / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
-
-        print(q_cond_kw,p_comp_kw,q_evap_kw,cop_hp,mdot_cond_kg_per_s,)
 
         max_cop = self._get_element_param(prosumer, 'max_cop')
         if max_cop and cop_hp > max_cop + 1e-3:
@@ -291,7 +291,6 @@ class HeatPumpController(BasicProsumerController):
                 return
 
             t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-            print(t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s)
             if self._get_element_param(prosumer, 'heating'):
                 assert t_src_out_required_c >= t_src_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
             elif not self._get_element_param(prosumer, 'heating'):
@@ -426,7 +425,11 @@ class HeatPumpController(BasicProsumerController):
             if not np.isnan(max_t_cond_out_c):
                 assert t_cond_out_c <= max_t_cond_out_c, f"Heat Pump {self.name} t_cond_out_c is higher than the maximum ({t_cond_out_c} > {max_t_cond_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
-            if np.isnan(self.t_keep_return_c) or mdot_evap_kg_per_s == 0 or abs(t_evap_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+            if self._get_element_param(prosumer,'heating'):
+                treturn = t_evap_out_c
+            else:
+                treturn = t_cond_out_c
+            if np.isnan(self.t_keep_return_c) or mdot_evap_kg_per_s == 0 or abs(treturn - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
                 # If the actual output temperature is the same as the promised one, the storage is correctly applied
                 self.finalize(prosumer, result, result_fluid_mix)
                 self.applied = True

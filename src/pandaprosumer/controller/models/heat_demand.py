@@ -163,13 +163,13 @@ class HeatDemandController(BasicProsumerController):
         else : dT = (t_return - t_feed)
         return self._q_demand_kw / (cp * dT) if abs(dT) >= 1e-12 else 0
 
-    def _calc_q(self, prosumer, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s):
-        t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
+    def _calc_q(self, prosumer, t_feed, t_return, mdot_demand_kg_per_s):
+        t_mean_c = (t_feed + t_return) / 2
         cp = prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c) / 1000
         if self._get_element_param(prosumer, 'heating'):
-            q = mdot_demand_kg_per_s * cp * (t_feed_demand_c - t_return_demand_c)
+            q = mdot_demand_kg_per_s * cp * (t_feed- t_return)
         else:
-            q = mdot_demand_kg_per_s * cp * (t_return_demand_c - t_feed_demand_c)
+            q = mdot_demand_kg_per_s * cp * (t_return - t_feed)
         return q
 
     def _t_m_to_receive_init(self, prosumer):
@@ -230,7 +230,7 @@ class HeatDemandController(BasicProsumerController):
             assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
             assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
             if not self._get_element_param(prosumer, 'heating'):
-                t_mean_c = (self._t_in_c + t_feed_demand_c) / 2  # incoming fluid is warmer
+                t_mean_c = (self._t_in_c + t_return_demand_c) / 2
                 cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
 
                 if np.isnan(self._mdot_received_kg_per_s):
@@ -257,7 +257,6 @@ class HeatDemandController(BasicProsumerController):
                 self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
             else:
-                print(np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C)
                 if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
                     # If the actual output temperature is the same as the promised one, the storage is correctly applied
                     self.finalize(prosumer, result)
