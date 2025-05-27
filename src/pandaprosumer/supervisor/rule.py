@@ -32,7 +32,7 @@ class Rule:
                   attr (str): The attribute to modify if the rule condition is met.
                   new_value (float): The value to assign to the attribute when the rule is satisfied.
                   value_if_false (float, default None): The value to assign to the attribute when the rule is not satisfied.
-                  mapping (bool, default False): Whether the rule should be applied an a controller or on a GenericMixMapping/FluidMixMapping object.
+                  mapping (bool, default False): Whether the rule should be applied an a controller (False) or on a GenericMixMapping/FluidMixMapping object.
 
               Raises:
                   ValueError: If an unsupported operator is provided.
