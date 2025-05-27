@@ -59,8 +59,6 @@ class HeatPumpController(BasicProsumerController):
         else:
             return np.nan
 
-    def heating(self,prosumer):
-        return getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].heating
 
     def _t_m_to_receive_init(self, prosumer):
         """
@@ -116,7 +114,7 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_src_out_required_c,
                                                                                         t_feed_c)
         if not np.isnan(self.t_previous_out_c):
-            return self.t_previous_evap_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
+            return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_kg_per_s
         return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
 
 
@@ -220,7 +218,7 @@ class HeatPumpController(BasicProsumerController):
         """
         Main method for Heat Pump physical calculation during one time step
         """
-
+        print('hola')
         if t_cond_out_c is None:
             t_cond_out_c = t_cond_in_c + self._get_element_param(prosumer, 'delta_t_evap_c')
         cp_evap_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
@@ -238,6 +236,8 @@ class HeatPumpController(BasicProsumerController):
         # FixMe: Should set the condenser output temperature or mass flow ?
         cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
         mdot_cond_kg_per_s = p_comp_kw * cop_hp / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+
+        print(q_cond_kw,p_comp_kw,q_evap_kw,cop_hp,mdot_cond_kg_per_s,)
 
         max_cop = self._get_element_param(prosumer, 'max_cop')
         if max_cop and cop_hp > max_cop + 1e-3:
@@ -291,6 +291,7 @@ class HeatPumpController(BasicProsumerController):
                 return
 
             t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+            print(t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s)
             if self._get_element_param(prosumer, 'heating'):
                 assert t_src_out_required_c >= t_src_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
             elif not self._get_element_param(prosumer, 'heating'):

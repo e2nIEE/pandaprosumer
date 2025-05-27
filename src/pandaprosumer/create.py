@@ -176,6 +176,7 @@ def create_heat_demand(prosumer,
                        name=None,
                        index=None,
                        in_service=True,
+                        heating = True,
                        **kwargs):
     """
     Creates a heat demand element in prosumer["heat_demand"]
@@ -208,8 +209,8 @@ def create_heat_demand(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_demand", index)
 
-    entries = dict(zip(["name", "scaling", "in_service"],
-                       [name, scaling, in_service]))
+    entries = dict(zip(["name", "scaling", "in_service", 'heating'],
+                       [name, scaling, in_service, heating]))
 
     _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
 

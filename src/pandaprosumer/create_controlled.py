@@ -133,6 +133,7 @@ def create_controlled_heat_demand(prosumer,
                                   period=0,
                                   level=0,
                                   order=0,
+                                  heating = True,
                                   **kwargs):
     """
         Creates a heat demand element and a controller in prosumer["heat_demand"] and an heat demand controller
