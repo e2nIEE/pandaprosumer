@@ -31,7 +31,7 @@ class Test2HeatPumps1HeatDemandMapping:
         data_source = DFData(data)
 
         cp_input_columns = ["Tin_evap", "demand_1"]
-        cp_result_columns = ["t_evap_in_c", "qdemand_kw"]
+        cp_result_columns = ["t_load_in_c", "qdemand_kw"]
         hp_params = {'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -46,16 +46,16 @@ class Test2HeatPumps1HeatDemandMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index_1,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
         
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index_2,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=1)
 
         GenericMapping(container=prosumer,

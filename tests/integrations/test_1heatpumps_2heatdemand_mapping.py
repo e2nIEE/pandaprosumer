@@ -32,7 +32,7 @@ class Test1HeatPump2HeatDemandsMapping:
         data_source = DFData(data)
 
         cp_input_columns = ["Tin_evap", "demand_1", "demand_2"]
-        cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw"]
+        cp_result_columns = ["t_load_in_c", "qdemand1_kw", "qdemand2_kw"]
         hp_params = {'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -51,9 +51,9 @@ class Test1HeatPump2HeatDemandsMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         GenericMapping(container=prosumer,
@@ -296,7 +296,7 @@ class Test1HeatPump2HeatDemandsMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1", "demand_2", "demand_1_t_in_c", "demand_1_t_out_c",
                             "demand_2_t_in_c", "demand_2_t_out_c"]
-        cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
+        cp_result_columns = ["t_load_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
                              "t_feed_demand2_c", "t_return_demand2_c"]
         hp_params = {'carnot_efficiency': .5,
                      'pinch_c': 0,
@@ -315,9 +315,9 @@ class Test1HeatPump2HeatDemandsMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         for order, init_col, resp_col in zip([1, 2, 3], ["qdemand1_kw", "t_feed_demand1_c", "t_return_demand1_c"],

@@ -34,7 +34,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         data_source = DFData(data)
 
         cp_input_columns = ["Tin_evap", "demand_1", "t_feed_demand_c", "t_return_demand_c"]
-        cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
+        cp_result_columns = ["t_load_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
         hp_params = {'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -64,9 +64,9 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         for init_col, resp_col in zip(["qdemand_kw", "t_feed_demand_c", "t_return_demand_c"],
@@ -164,7 +164,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         data_source = DFData(data)
 
         cp_input_columns = ["Tin_evap", "demand_1", "t_feed_demand_c", "t_return_demand_c"]
-        cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
+        cp_result_columns = ["t_load_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
         hp_params = {'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -194,9 +194,9 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         for init_col, resp_col in zip(["qdemand_kw", "t_feed_demand_c", "t_return_demand_c"],

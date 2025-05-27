@@ -29,7 +29,7 @@ class Test1HeatPump1DryCoolerMapping:
         data_source = DFData(data)
 
         cp_input_columns = ["t_ext_c", "mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_ext_c", "phi_air_in_percent"]
-        cp_result_columns = ["t_evap_in_c", "mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_air_in_c", "phi_air_in_percent"]
+        cp_result_columns = ["t_load_in_c", "mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_air_in_c", "phi_air_in_percent"]
         hp_params = {'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -54,9 +54,9 @@ class Test1HeatPump1DryCoolerMapping:
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
-                       initiator_column="t_evap_in_c",
+                       initiator_column="t_load_in_c",
                        responder_id=hp_controller_index,
-                       responder_column="t_evap_in_c",
+                       responder_column="t_load_in_c",
                        order=0)
 
         GenericMapping(container=prosumer,
