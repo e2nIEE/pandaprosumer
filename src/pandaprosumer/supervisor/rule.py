@@ -20,32 +20,71 @@ class Rule:
         "!=": operator.ne
     }
 
-    def __init__(self, controlled_columns, operator_str, threshold_value, controller, attr= None, new_value= None, value_if_false = None, mapping = False):
+    def __init__(self, controlled_columns, operator_str, threshold_value, controller, attr, new_value, value_if_false = None, mapping = None):
         """
-              Initializes the Rule with the necessary parameters to define the rule condition.
+        Initializes a Rule object with the necessary parameters to define a rule condition.
 
-              Args:
-                  controlled_columns (str): The column to evaluate.
-                  operator_str (str): The operator to use for comparison.
-                  threshold_value (float): The threshold value to compare against.
-                  controller (int): The index of the controller for the prosumer.
-                  attr (str): The attribute to modify if the rule condition is met.
-                  new_value (float): The value to assign to the attribute when the rule is satisfied.
-                  value_if_false (float, default None): The value to assign to the attribute when the rule is not satisfied.
-                  mapping (bool, default False): Whether the rule should be applied an a controller (False) or on a GenericMixMapping/FluidMixMapping object.
+        Args:
+            controlled_columns (str): The column to evaluate.
+            operator_str (str): The comparison operator as a string (e.g., '>', '<=', '==').
+            threshold_value (float): The threshold value for comparison.
+            controller (int or List[int]): The controller index or list of indices.
+            attr (str or List[str]): Attributes to modify if the condition is met.
+            new_value (float or List[float]): Values to assign if the condition is met.
+            value_if_false (float or List[float], optional): Values to assign if the condition is not met.
+            mapping (bool or List[bool], optional): Whether the rule applies to a mapping object.
 
-              Raises:
-                  ValueError: If an unsupported operator is provided.
-              """
+        Raises:
+            ValueError: If an unsupported operator is provided.
+        """
         self.controlled_columns = controlled_columns
         self.operator_str = operator_str
         self.threshold_value = threshold_value
-        self.controller = controller
-        self.attr = attr
-        self.new_value = new_value
-        self.value_if_false = value_if_false
         self.index = None
-        self.mapping = mapping
+
+        #controllers index
+        if isinstance(controller, list):
+            self.controller = controller
+        elif controller is not None:
+            self.controller = [controller]
+
+        #attr
+        if isinstance(attr, list):
+            self.attr = attr
+        else:
+            self.attr = [attr]
+
+        #new_value
+        if isinstance(new_value, list):
+            self.new_value = new_value
+        else:
+            self.new_value = [new_value]
+
+        #value_if_false
+        if isinstance(value_if_false, list):
+            self.value_if_false = value_if_false
+        elif value_if_false is not None:
+            self.value_if_false = [value_if_false]
+        else:
+            self.value_if_false = None
+
+        #mapping
+        if isinstance(mapping, list):
+            self.mapping = mapping
+        elif mapping is not None:
+            self.mapping = [mapping]
+        # Complete mapping with False if not provided
+        if not mapping:
+            self.mapping = [False] * len(self.controller)
+
+        if not (len(self.attr) == len(self.new_value) == len(self.controller)):
+            raise ValueError("attr, new_value, and controller must have the same length.")
+
+        if self.value_if_false and len(self.value_if_false) != len(self.controller):
+            raise ValueError("value_if_false must have the same length as controller if provided.")
+
+        if len(self.mapping) != len(self.controller):
+            raise ValueError("mapping must have the same length as controller if provided.")
 
     def __str__(self):
         return "Rule"
@@ -88,72 +127,72 @@ class Rule:
 
         return self.OPERATORS[self.operator_str](input[self.controlled_columns], self.threshold_value)
 
-    def evaluate_assert(self,new_value, stored_value, is_max=True):
+    def evaluate_assert(self,new_value, stored_value, attr, is_max=True):
         if is_max and new_value > stored_value:
-            raise ValueError(f"The new value {new_value} should not exceed the original {self.attr} value ({stored_value}).")
+            raise ValueError(f"The new value {new_value} should not exceed the original {attr} value ({stored_value}).")
         elif not is_max and new_value < stored_value:
-            raise ValueError(f"The new value {new_value} should not be smaller than the original {self.attr} value ({stored_value}).")
+            raise ValueError(f"The new value {new_value} should not be smaller than the original {attr} value ({stored_value}).")
 
-    def execute_action(self, prosumer,supervisor):
+    def execute_action(self, prosumer, supervisor):
         """
-        Executes the action on the controller.
+        Executes the action(s) on the controller(s).
         """
-        if not self.mapping:
-            df = getattr(prosumer, prosumer.controller.iloc[self.controller].object.obj.element_name)
-            element_index = prosumer.controller.iloc[self.controller].object.obj.element_index[0]
+        if not self.attr or not self.new_value:
+            return
 
-            if self.attr is None or self.new_value is None:
-                return
-            if hasattr(df.iloc[element_index], self.attr):
-                current_value = df.at[element_index, self.attr]
+        for a, v, c, m in zip(self.attr, self.new_value, self.controller, self.mapping):
+            if not m:
+                df = getattr(prosumer, prosumer.controller.iloc[c].object.obj.element_name)
+                element_index = prosumer.controller.iloc[c].object.obj.element_index[0]
 
-                # Ensure that max_ attributes are not exceeded
-                if self.attr.startswith("max_") or self.attr.startswith("min_"):
-                    if (self.controller not in supervisor.assert_rule) or (self.attr not in supervisor.assert_rule[self.controller]):
-                        supervisor.add_assert_rule(self.controller, self.attr, current_value)
-                    is_max = self.attr.startswith("max_")
-                    self.evaluate_assert(self.new_value, supervisor.assert_rule[self.controller][self.attr], is_max)
+                if hasattr(df.iloc[element_index], a):
+                    current_value = df.at[element_index, a]
+                    if a.startswith("max_") or a.startswith("min_"):
+                        if (c not in supervisor.assert_rule) or (a not in supervisor.assert_rule[c]):
+                            supervisor.add_assert_rule(c, a, current_value)
+                        is_max = a.startswith("max_")
+                        self.evaluate_assert(v, supervisor.assert_rule[c][a], a, is_max)
+                    df.at[element_index, a] = v
 
-                df.at[element_index, self.attr] = self.new_value
+                elif hasattr(prosumer.controller.iloc[c], a):
+                    prosumer.controller.at[c, a] = v
+                else:
+                    raise AttributeError(f"'{a}' not found in {df}")
 
-            elif hasattr(prosumer.controller.iloc[self.controller], self.attr):
-                prosumer.controller.at[self.controller, self.attr] = self.new_value
             else:
-                raise AttributeError(f"'{self.attr}' not found in {df}")
-        else:
-            df = prosumer.mapping.iloc[self.controller].object
-            if hasattr(df, self.attr):
-                prosumer.mapping.at[self.controller, self.attr] = self.new_value
-            else:
-                raise AttributeError(f"'{self.attr}' not found in {df}")
-
+                df = prosumer.mapping.iloc[c].object
+                if hasattr(df, a):
+                    prosumer.mapping.at[c, a] = v
+                else:
+                    raise AttributeError(f"'{a}' not found in {df}")
 
     def execute_opposite(self, prosumer, supervisor):
-        if self.value_if_false is not None:
-            if not self.mapping:
-                df = getattr(prosumer, prosumer.controller.iloc[self.controller].object.obj.element_name)
-                element_index = prosumer.controller.iloc[self.controller].object.obj.element_index[0]
-                if self.attr is None:
-                    return
-                if hasattr(df.iloc[element_index], self.attr):
-                    current_value = df.at[element_index, self.attr]
-                    # Ensure that max_ attributes are not exceeded
-                    if self.attr.startswith("max_") or self.attr.startswith("min_"):
-                        if (self.controller not in supervisor.assert_rule) or (
-                                self.attr not in supervisor.assert_rule[self.controller]):
-                            supervisor.add_assert_rule(self.controller, self.attr, current_value)
-                        is_max = self.attr.startswith("max_")
-                        self.evaluate_assert(self.value_if_false, supervisor.assert_rule[self.controller][self.attr], is_max)
+        if self.value_if_false is None:
+            return
 
-                    df.at[element_index, self.attr] = self.value_if_false
+        for a, v_false, c, m in zip(self.attr, self.value_if_false, self.controller, self.mapping):
+            if v_false is None:
+                continue
+            if not m:
+                df = getattr(prosumer, prosumer.controller.iloc[c].object.obj.element_name)
+                element_index = prosumer.controller.iloc[c].object.obj.element_index[0]
 
-                elif hasattr(prosumer.controller.iloc[self.controller], self.attr):
-                    prosumer.controller.at[self.controller, self.attr] = self.value_if_false
+                if hasattr(df.iloc[element_index], a):
+                    current_value = df.at[element_index, a]
+                    if a.startswith("max_") or a.startswith("min_"):
+                        if (c not in supervisor.assert_rule) or (a not in supervisor.assert_rule[c]):
+                            supervisor.add_assert_rule(c, a, current_value)
+                        is_max = a.startswith("max_")
+                        self.evaluate_assert(v_false, supervisor.assert_rule[c][a], a, is_max)
+                    df.at[element_index, a] = v_false
+
+                elif hasattr(prosumer.controller.iloc[c], a):
+                    prosumer.controller.at[c, a] = v_false
                 else:
-                    raise AttributeError(f"'{self.attr}' not found in {df}")
+                    raise AttributeError(f"'{a}' not found in {df}")
             else:
-                df = prosumer.mapping.iloc[self.controller].object
-                if hasattr(df, self.attr):
-                    prosumer.mapping.at[self.controller, self.attr] = self.value_if_false
+                df = prosumer.mapping.iloc[c].object
+                if hasattr(df, a):
+                    prosumer.mapping.at[c, a] = v_false
                 else:
-                    raise AttributeError(f"'{self.attr}' not found in {df}")
+                    raise AttributeError(f"'{a}' not found in {df}")

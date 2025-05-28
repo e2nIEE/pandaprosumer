@@ -102,11 +102,15 @@ class TestSupervisor:
         supervisor = prosumer.controller.iloc[supervisor_index].object
         hp_index, gb_index, hd_index = create_controllers(prosumer,period)
 
-        rule1 = Rule(controlled_columns='price_gas',operator_str='>',threshold_value=28,controller=gb_index,attr = 'in_service',new_value = False, value_if_false=True)
-        rule2 = Rule(controlled_columns='price_gas',operator_str='>',threshold_value=28,controller=hp_index,attr = 'in_service',new_value = True, value_if_false=False)
+        rule = Rule(controlled_columns='price_gas',
+                     operator_str='>',
+                     threshold_value=28,
+                     controller=[gb_index,hp_index],
+                     attr = ['in_service','in_service'],
+                     new_value = [False,True],
+                     value_if_false=[True,False])
 
-        supervisor.add_rule(rule1)
-        supervisor.add_rule(rule2)
+        supervisor.add_rule(rule)
 
         mapping_controller(prosumer,supervisor_index,cp,hp_index,gb_index,hd_index)
 
@@ -134,11 +138,16 @@ class TestSupervisor:
         supervisor = prosumer.controller.iloc[supervisor_index].object
         hp_index, gb_index, hd_index = create_controllers(prosumer, period)
 
-        rule1 = Rule(controlled_columns='price_gas', operator_str='>', threshold_value=28, controller=gb_index, attr='order', new_value=1, value_if_false=0)
-        rule2 = Rule(controlled_columns='price_gas', operator_str='>', threshold_value=28, controller=hp_index, attr='order', new_value=0, value_if_false=1)
+        rule = Rule(controlled_columns='price_gas',
+                     operator_str='>',
+                     threshold_value=28,
+                     controller=[gb_index,hp_index],
+                     attr=['order','order'],
+                     new_value=[1,0],
+                     value_if_false=[0,1])
 
-        supervisor.add_rule(rule1)
-        supervisor.add_rule(rule2)
+
+        supervisor.add_rule(rule)
 
         mapping_controller(prosumer, supervisor_index, cp, hp_index, gb_index, hd_index)
 
@@ -221,10 +230,14 @@ class TestSupervisor:
         hp_index = create_controlled_heat_pump(prosumer, period=period, order=0, level=1, **hp_params)
         hd_index = create_controlled_heat_demand(prosumer, period=period, order=2, level=1, **hd_params)
 
-        rule = Rule('p_comp_kw','>',200,hp_index,'order',1)
+        rule = Rule('p_comp_kw',
+                    '>',
+                    200,
+                    [hp_index,gb_index],
+                    ['order','order'],
+                    [1,0])
         supervisor.add_rule(rule)
-        rule = Rule('p_comp_kw','>',200,gb_index,'order',0)
-        supervisor.add_rule(rule)
+
 
         GenericMapping(container=prosumer,
                        initiator_id=cp,
@@ -300,7 +313,6 @@ class TestSupervisor:
         supervisor.add_rule(CombiningRules([rule1, rule2, rule2_], 'AND'))
         rule3 = Rule('p_comp_kw', '>', 500, hp_index, 'in_service', False, value_if_false=True)
         supervisor.add_rule(rule3)
-        print(prosumer['Rules'])
 
         rules_df = prosumer['Rules']
 
@@ -468,10 +480,15 @@ class TestSupervisor:
                         responder_id=hd_controller_index_2,
                         order=1)
 
-        rule1 = Rule('dummy_rule', '==', 0, first_mapping.index, 'order', 0, value_if_false=1, mapping = True)
-        rule2 = Rule('dummy_rule', '==', 1, second_mapping.index, 'order', 0, value_if_false=1, mapping = True)
-        supervisor.add_rule(rule1)
-        supervisor.add_rule(rule2)
+        rule = Rule('dummy_rule',
+                     '==',
+                     0,
+                     [first_mapping.index,second_mapping.index],
+                     ['order',"order"],
+                     [0,1],
+                     value_if_false=[1,0],
+                     mapping = [True,True])
+        supervisor.add_rule(rule)
 
         run_timeseries(prosumer, period, True)
 
