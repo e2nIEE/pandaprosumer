@@ -6,10 +6,10 @@ import re
 from pandaprosumer.run_time_series import run_timeseries
 
 def _define_and_get_period_and_data_source(prosumer):
-    data = pd.DataFrame({"Tin_load": [25, 25, 25, 40],
+    data = pd.DataFrame({"Tin_load": [25, 25, 25, 30],
                          "demand_1": [50, 200, 800, 300],
                          "heating": [True,True,True,False],
-                         "t_return_demand_c": [30,30,30,20],
+                         "t_return_demand_c": [30,30,30,25],
                          "t_feed_demand_c": [40,40,40,15]})
 
     start = '2020-01-01 00:00:00'
@@ -41,7 +41,7 @@ class TestReversibleHeatPump:
 
         hp_params = {'carnot_efficiency': 0.5,
                  'pinch_c': 0,
-                 'delta_t_evap_c': 5,
+                 'delta_t_evap_c': 10,
                  'max_p_comp_kw': 100}
         hd_params = {}
         # hd_params = {'t_in_set_c': 40, 't_out_set_c': 30}
@@ -57,27 +57,32 @@ class TestReversibleHeatPump:
                                            **hd_params)
 
         supervisor = prosumer.controller.iloc[supervisor_index].object
-        r = Rule('heating','==',True, hp, 'heating',True,False)
+        r = Rule('heating',
+                 '==',
+                 True,
+                 [hp,hd],
+                 ['heating','heating'],
+                 [True,True],
+                 [False,False])
+
         supervisor.add_rule(r)
 
-
-
         GenericMapping(prosumer,
-                       cp,
-                    'Tin_load',
-                       hp,
-                       responder_column='t_load_in_c')
+                        initiator_id=  cp,
+                        initiator_column = 'Tin_load',
+                        responder_id= hp,
+                        responder_column='t_load_in_c')
         GenericMapping(prosumer,
-                       cp,
-                        initiator_column='heating',
+                       initiator_id = cp,
+                       initiator_column='heating',
                        responder_id = supervisor_index,
                        responder_column='heating'
                        )
         GenericMapping(prosumer,
-                       cp,
-                       ['demand_1','t_return_demand_c','t_feed_demand_c'],
-                       hd,
-                       ['q_demand_kw','t_return_demand_c','t_feed_demand_c'])
+                       initiator_id = cp,
+                       initiator_column = ['demand_1','t_return_demand_c','t_feed_demand_c'],
+                       responder_id = hd,
+                       responder_column = ['q_demand_kw','t_return_demand_c','t_feed_demand_c'])
 
         FluidMixMapping(prosumer,
                         hp,
