@@ -167,10 +167,12 @@ class Rule:
                     raise AttributeError(f"'{a}' not found in {df}")
 
     def execute_opposite(self, prosumer, supervisor):
-        if not self.value_if_false:
+        if self.value_if_false is None:
             return
 
         for a, v_false, c, m in zip(self.attr, self.value_if_false, self.controller, self.mapping):
+            if v_false is None:
+                continue
             if not m:
                 df = getattr(prosumer, prosumer.controller.iloc[c].object.obj.element_name)
                 element_index = prosumer.controller.iloc[c].object.obj.element_index[0]
