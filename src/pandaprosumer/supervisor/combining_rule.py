@@ -1,7 +1,6 @@
 from typing import List
 from .rule import *
 
-
 class CombiningRules:
     """
     A class that allows combining multiple rules using logical operators (AND, OR).
