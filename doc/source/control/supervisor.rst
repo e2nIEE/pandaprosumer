@@ -28,8 +28,12 @@ Rule Class
 
 Each rule evaluates one input column using a comparison operator (e.g., `<`, `>`, `==`, etc.) against a threshold.
 If the condition is true, the rule executes an action that changes an attribute in the prosumer or a mapped object.
-If false, it can optionally execute an alternative action.
-
+If false, it can optionally execute an alternative action. If you decide to change the value of a maximum or minimum
+attribute, such as the max_q_value of the gas boiler, the supervisor ensures that the new value does not exceed the original extremum.
+It is also possible to change the attributes of a mapping controller (e.g., FluidMixMapping), especially if you want to modify the
+fluid mix mapping order between an initiator and its responders; in that case, you must set the mapping argument to true.
+Finally, you can use lists for the last parameters (controller, attr, new_value, value_if_false, mapping), allowing each rule to execute
+multiple actions. All lists must be the same length, where action 1 corresponds to the first element of each list, action 2 to the second, and so on.
 
 .. autoclass:: pandaprosumer.supervisor.rule.Rule
     :members:
@@ -49,7 +53,8 @@ Suppose you want to reduce the maximum power output of a generator if the price 
        controller=0,
        attr="max_p_kw",
        new_value=50.0,
-       value_if_false=100.0
+       value_if_false=100.0,
+       mapping = False
    )
    supervisor.add_rule(rule)
 
