@@ -165,64 +165,65 @@ class HeatDemandController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
-            super().control_step(prosumer)
-            if not self._are_initiators_converged(prosumer):
-                # If some of the initiators are not converged, do not run the control step
-                self._unapply_initiators(prosumer)
-                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
-                return
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
+        super().control_step(prosumer)
+        if not self._are_initiators_converged(prosumer):
+            # If some of the initiators are not converged, do not run the control step
+            self._unapply_initiators(prosumer)
+            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
+            return
 
-            if not np.isnan(self._get_input('q_received_kw')):
-                q_received_kw = self._get_input('q_received_kw')
-                q_uncovered_kw = self._q_demand_kw - q_received_kw
-                result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
+        if not np.isnan(self._get_input('q_received_kw')):
+            q_received_kw = self._get_input('q_received_kw')
+            q_uncovered_kw = self._q_demand_kw - q_received_kw
+            result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
+            self.finalize(prosumer, result)
+            self.applied = True
+            return
+
+        q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
+
+        # ToDo: If t_in < t_out, return t_in, not t_out
+
+        assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+
+        t_mean_c = (self._t_in_c + t_return_demand_c) / 2
+        cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
+        if np.isnan(self._mdot_received_kg_per_s):
+            q_received_kw = q_demand_kw
+            mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+        else:
+            mdot_received_kg_per_s = self._mdot_received_kg_per_s
+            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
+        t_out_c = t_return_demand_c
+        # Calculate the difference between the received and the required power, wo considering the temperature level
+        # FixMe: Consider the temperature level in the output
+        q_uncovered_kw = q_demand_kw - q_received_kw
+        result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
+        if np.isnan(result).any():
+            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
+        else:
+            if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+                # If the actual output temperature is the same as the promised one, the storage is correctly applied
                 self.finalize(prosumer, result)
                 self.applied = True
-                return
-
-            q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
-
-            # ToDo: If t_in < t_out, return t_in, not t_out
-
-            assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-
-            t_mean_c = (self._t_in_c + t_return_demand_c) / 2
-            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-            if np.isnan(self._mdot_received_kg_per_s):
-                q_received_kw = q_demand_kw
-                mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+                self.t_previous_out_c = np.nan
+                self.t_previous_in_c = np.nan
+                self.mdot_previous_in_kg_per_s = np.nan
             else:
-                mdot_received_kg_per_s = self._mdot_received_kg_per_s
-                q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
-            t_out_c = t_return_demand_c
-            # Calculate the difference between the received and the required power, wo considering the temperature level
-            # FixMe: Consider the temperature level in the output
-            q_uncovered_kw = q_demand_kw - q_received_kw
-            result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
-            if np.isnan(result).any():
+                # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
+                self._unapply_initiators(prosumer)
+                self.t_previous_out_c = t_out_c
+                self.t_previous_in_c = self._t_in_c
+                self.mdot_previous_in_kg_per_s = mdot_received_kg_per_s
                 self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
-            else:
-                if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-                    # If the actual output temperature is the same as the promised one, the storage is correctly applied
-                    self.finalize(prosumer, result)
-                    self.applied = True
-                    self.t_previous_out_c = np.nan
-                    self.t_previous_in_c = np.nan
-                    self.mdot_previous_in_kg_per_s = np.nan
-                else:
-                    # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
-                    self._unapply_initiators(prosumer)
-                    self.t_previous_out_c = t_out_c
-                    self.t_previous_in_c = self._t_in_c
-                    self.mdot_previous_in_kg_per_s = mdot_received_kg_per_s
-                    self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                                      FluidMixMapping.MASS_FLOW_KEY: np.nan}
-
-        else: self.applied = True  # self.in_service = False

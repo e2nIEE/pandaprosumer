@@ -69,30 +69,31 @@ class HeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
-            super().control_step(prosumer)
-            q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
-            _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
-            e_received_kwh = self._get_input("q_received_kw") * self.resol / 3600
-            potential_kwh = self._soc * _q_capacity_kwh + e_received_kwh
-            demand_kwh = q_to_deliver_kw * self.resol / 3600
-            if demand_kwh > potential_kwh:
-                # Cannot meet the demand
-                demand_kwh = potential_kwh
-            if not isinstance(demand_kwh, np.ndarray) and demand_kwh == 0:
-                demand_kwh = np.array([0.]) / self.resol / 3600
-            fill_level_kwh = potential_kwh - demand_kwh
-
-            excess_energy_kwh = max(0, fill_level_kwh - _q_capacity_kwh)
-            if excess_energy_kwh > 0:
-                raise ValueError(f"Excess energy detected: {excess_energy_kwh} kWh exceeds the maximum capacity.")
-
-            self._soc = fill_level_kwh / _q_capacity_kwh
-            demand_kw = demand_kwh / (self.resol / 3600)
-            assert 0 <= self._soc <= 1, (f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name}"
-                                         f"at timestep {self.time}")
-            result = np.array([pd.Series(self._soc), pd.Series(demand_kw)])
-            self.finalize(prosumer, result.T)
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
             self.applied = True
+            return
+        super().control_step(prosumer)
+        q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
+        _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
+        e_received_kwh = self._get_input("q_received_kw") * self.resol / 3600
+        potential_kwh = self._soc * _q_capacity_kwh + e_received_kwh
+        demand_kwh = q_to_deliver_kw * self.resol / 3600
+        if demand_kwh > potential_kwh:
+            # Cannot meet the demand
+            demand_kwh = potential_kwh
+        if not isinstance(demand_kwh, np.ndarray) and demand_kwh == 0:
+            demand_kwh = np.array([0.]) / self.resol / 3600
+        fill_level_kwh = potential_kwh - demand_kwh
 
-        else: self.applied = True  # self.in_service = False
+        excess_energy_kwh = max(0, fill_level_kwh - _q_capacity_kwh)
+        if excess_energy_kwh > 0:
+            raise ValueError(f"Excess energy detected: {excess_energy_kwh} kWh exceeds the maximum capacity.")
+
+        self._soc = fill_level_kwh / _q_capacity_kwh
+        demand_kw = demand_kwh / (self.resol / 3600)
+        assert 0 <= self._soc <= 1, (f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name}"
+                                     f"at timestep {self.time}")
+        result = np.array([pd.Series(self._soc), pd.Series(demand_kw)])
+        self.finalize(prosumer, result.T)
+        self.applied = True

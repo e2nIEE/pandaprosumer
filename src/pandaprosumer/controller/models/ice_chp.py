@@ -116,71 +116,72 @@ class IceChpController(BasicProsumerController):
         # ICE CHP CALCULATIONS:
         # =====================
 
-        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
 
         # New CHP instance:
-        # 1 - Read time step input data:
-            cycle_type = self._get_input("cycle")
-            t_ice_chp_k = self._get_input("t_intake_k")
-            #
-            q_requested_kw = self.q_requested_kw(prosumer)
+    # 1 - Read time step input data:
+        cycle_type = self._get_input("cycle")
+        t_ice_chp_k = self._get_input("t_intake_k")
+        #
+        q_requested_kw = self.q_requested_kw(prosumer)
 
-            #
-            # 2 - Calculations:
-            # 2a - Calculate CHP outputs:
-            loadList = self.calculate_load(cycle_type, q_requested_kw, t_ice_chp_k, self.h_ice_chp_m, self.ice_chp_map, self.time)
-            load = loadList[1]
-            p_el_out_kw = self.calculate_electrical_power_out(load, self.ice_chp_map)
-            p_th_out_kw = self.calculate_recovered_heat_flow(load, self.ice_chp_map)
-            p_in_kw = self.calculate_input_energy_flow(load, self.ice_chp_map)
-            p_rad_out_kw = self.calculate_radiation(load, self.ice_chp_map)
-            mdot_fuel_in_kg_per_s = self.calculate_fuel_input_mass_flow(p_in_kw, self.fuel_type, self.fuel_data)
-            m_fuel_in_kg = mdot_fuel_in_kg_per_s * self.resol
-            self.acc_m_fuel_in_kg += m_fuel_in_kg
-            #
-            # cumulative fuel consumption
-            #
-            # 2b - Calculate emissions:
-            m_co2_equiv_kg = self.calculate_co2_equiv_mass_flow(p_in_kw, self.fuel_type, self.fuel_data) * self.resol
-            m_co2_inst_kg = self.calculate_co2_instant_mass_flow(mdot_fuel_in_kg_per_s, self.fuel_type, self.fuel_data) * self.resol
-            m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map) * self.resol
-            # Calculate cumulative emissions
-            self.acc_m_co2_equiv_kg += m_co2_equiv_kg
-            self.acc_m_co2_inst_kg += m_co2_inst_kg
-            self.acc_m_nox_mg += m_nox_mg
-            #
-            # 3 - Determine the operational time of the ICE CHP
-            if load == 0:
-                time_ice_chp_oper_s = 0
-            else:
-                time_ice_chp_oper_s = self.resol
-            #
-            self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
-            #
-            # 4 - Calculate the total efficiency:
-            p_loss_kw = self.calculate_energy_flow_loss(p_in_kw, p_th_out_kw, p_el_out_kw)
-            ice_chp_efficiency = self.calculate_efficiency(p_in_kw, p_loss_kw)
-            #
-            # 5 - Results array:
-            result = np.array([
-                      pd.Series(load),
-                      pd.Series(p_in_kw),
-                      pd.Series(p_el_out_kw),
-                      pd.Series(p_th_out_kw),
-                      pd.Series(p_rad_out_kw),
-                      pd.Series(ice_chp_efficiency),
-                      pd.Series(mdot_fuel_in_kg_per_s),
-                      pd.Series(self.acc_m_fuel_in_kg),
-                      pd.Series(self.acc_m_co2_equiv_kg),
-                      pd.Series(self.acc_m_co2_inst_kg),
-                      pd.Series(self.acc_m_nox_mg),
-                      pd.Series(self.acc_time_ice_chp_oper_s)])
+        #
+        # 2 - Calculations:
+        # 2a - Calculate CHP outputs:
+        loadList = self.calculate_load(cycle_type, q_requested_kw, t_ice_chp_k, self.h_ice_chp_m, self.ice_chp_map, self.time)
+        load = loadList[1]
+        p_el_out_kw = self.calculate_electrical_power_out(load, self.ice_chp_map)
+        p_th_out_kw = self.calculate_recovered_heat_flow(load, self.ice_chp_map)
+        p_in_kw = self.calculate_input_energy_flow(load, self.ice_chp_map)
+        p_rad_out_kw = self.calculate_radiation(load, self.ice_chp_map)
+        mdot_fuel_in_kg_per_s = self.calculate_fuel_input_mass_flow(p_in_kw, self.fuel_type, self.fuel_data)
+        m_fuel_in_kg = mdot_fuel_in_kg_per_s * self.resol
+        self.acc_m_fuel_in_kg += m_fuel_in_kg
+        #
+        # cumulative fuel consumption
+        #
+        # 2b - Calculate emissions:
+        m_co2_equiv_kg = self.calculate_co2_equiv_mass_flow(p_in_kw, self.fuel_type, self.fuel_data) * self.resol
+        m_co2_inst_kg = self.calculate_co2_instant_mass_flow(mdot_fuel_in_kg_per_s, self.fuel_type, self.fuel_data) * self.resol
+        m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map) * self.resol
+        # Calculate cumulative emissions
+        self.acc_m_co2_equiv_kg += m_co2_equiv_kg
+        self.acc_m_co2_inst_kg += m_co2_inst_kg
+        self.acc_m_nox_mg += m_nox_mg
+        #
+        # 3 - Determine the operational time of the ICE CHP
+        if load == 0:
+            time_ice_chp_oper_s = 0
+        else:
+            time_ice_chp_oper_s = self.resol
+        #
+        self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
+        #
+        # 4 - Calculate the total efficiency:
+        p_loss_kw = self.calculate_energy_flow_loss(p_in_kw, p_th_out_kw, p_el_out_kw)
+        ice_chp_efficiency = self.calculate_efficiency(p_in_kw, p_loss_kw)
+        #
+        # 5 - Results array:
+        result = np.array([
+                  pd.Series(load),
+                  pd.Series(p_in_kw),
+                  pd.Series(p_el_out_kw),
+                  pd.Series(p_th_out_kw),
+                  pd.Series(p_rad_out_kw),
+                  pd.Series(ice_chp_efficiency),
+                  pd.Series(mdot_fuel_in_kg_per_s),
+                  pd.Series(self.acc_m_fuel_in_kg),
+                  pd.Series(self.acc_m_co2_equiv_kg),
+                  pd.Series(self.acc_m_co2_inst_kg),
+                  pd.Series(self.acc_m_nox_mg),
+                  pd.Series(self.acc_time_ice_chp_oper_s)])
 
-            self.finalize(prosumer, result.T)
+        self.finalize(prosumer, result.T)
 
-            self.applied = True
-
-        else: self.applied = True  # self.in_service = False
+        self.applied = True
         #------------ end of ICE CHP calculations -----------------------------
         
 
