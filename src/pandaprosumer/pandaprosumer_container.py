@@ -38,7 +38,7 @@ class pandaprosumerContainer(ADict):
         r += "\nFollowing mappings are generated:"
         r += "\n   - %s (%s entries)" % ('mapping', len(self['mapping']))
         r += "\nFollowing Rules are generated:"
-        r += "\n   - %s (%s entries)" % ('Rules', len(self['Rules']))
+        r += "\n   - %s (%s entries)" % ('rules', len(self['rules']))
         return r
 
 
