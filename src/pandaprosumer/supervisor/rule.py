@@ -104,7 +104,7 @@ class Rule:
         index = get_free_id(prosumer["Rules"])
         self.set_index(index)
 
-        prosumer["Rules"].loc[index] = {
+        prosumer["rules"].loc[index] = {
             "object": self,
             "controlled_columns": self.controlled_columns,
             "operator": self.operator_str,
