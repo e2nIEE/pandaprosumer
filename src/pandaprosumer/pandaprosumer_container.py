@@ -55,7 +55,7 @@ def get_default_prosumer_container_structure():
                     ('initiator', dtype(object)),
                     ('responder', dtype(object)),
                     ('order', dtype(object))],
-        "Rules": [("object", dtype(object)),
+        "rules": [("object", dtype(object)),
                   ("controlled_columns", dtype(object)),
                   ("operator", dtype(object)),
                   ("threshold_value", dtype(float)),

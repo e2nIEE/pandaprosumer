@@ -69,7 +69,7 @@ class CombiningRules:
 
     def execute_action(self, prosumer, supervisor):
         """
-        Executes the action of the first rule if the condition is met.
+        Executes the action of all the rules if the condition is met.
         """
 
         for rule in self.rules:
