@@ -312,7 +312,7 @@ class TestSupervisor:
         rule3 = Rule('p_comp_kw', '>', 500, hp_index, 'in_service', False, value_if_false=True)
         supervisor.add_rule(rule3)
 
-        rules_df = prosumer['Rules']
+        rules_df = prosumer['rules']
 
 
         expected_rule_count = 4  # rule1, rule2, rule2_, rule3

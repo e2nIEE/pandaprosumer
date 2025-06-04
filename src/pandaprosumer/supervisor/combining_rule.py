@@ -23,10 +23,10 @@ class CombiningRules:
 
     def add_to_prosumer(self,prosumer):
         n = len(self.rules)
-        if prosumer["Rules"].empty:
+        if prosumer["rules"].empty:
             index_list = list(range(n))
         else :
-            max_id = prosumer["Rules"].index.max()
+            max_id = prosumer["rules"].index.max()
             index_list = list(range(max_id + 1, max_id + 1 + n))
 
         for rule, index in zip(self.rules, index_list):
@@ -44,7 +44,7 @@ class CombiningRules:
                 "linked_rules": [idx for idx in index_list if idx != index]
             }
             for k, v in fill_dict.items():
-                prosumer["Rules"].at[index, k] = v
+                prosumer["rules"].at[index, k] = v
         #Todo : If the user modifies the prosumer (df), then modify the rule ?
 
     def __str__(self):
