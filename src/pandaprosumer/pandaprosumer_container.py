@@ -38,7 +38,7 @@ class pandaprosumerContainer(ADict):
         r += "\nFollowing mappings are generated:"
         r += "\n   - %s (%s entries)" % ('mapping', len(self['mapping']))
         r += "\nFollowing Rules are generated:"
-        r += "\n   - %s (%s entries)" % ('Rules', len(self['Rules']))
+        r += "\n   - %s (%s entries)" % ('rules', len(self['rules']))
         return r
 
 
@@ -55,7 +55,7 @@ def get_default_prosumer_container_structure():
                     ('initiator', dtype(object)),
                     ('responder', dtype(object)),
                     ('order', dtype(object))],
-        "Rules": [("object", dtype(object)),
+        "rules": [("object", dtype(object)),
                   ("controlled_columns", dtype(object)),
                   ("operator", dtype(object)),
                   ("threshold_value", dtype(float)),

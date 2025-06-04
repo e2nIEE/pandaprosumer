@@ -96,15 +96,15 @@ class Rule:
         """
         Adds the rule to the prosumer's 'Rules' DataFrame.
         """
-        if "Rules" not in prosumer:
-            prosumer["Rules"] = pd.DataFrame(columns=[
+        if "rules" not in prosumer:
+            prosumer["rules"] = pd.DataFrame(columns=[
                 "object", "controlled_columns", "operator", "threshold_value",
                 "controller_index", "attribute", "new_value", "value_if_false"])
 
-        index = get_free_id(prosumer["Rules"])
+        index = get_free_id(prosumer["rules"])
         self.set_index(index)
 
-        prosumer["Rules"].loc[index] = {
+        prosumer["rules"].loc[index] = {
             "object": self,
             "controlled_columns": self.controlled_columns,
             "operator": self.operator_str,

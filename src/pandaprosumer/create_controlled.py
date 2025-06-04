@@ -26,7 +26,7 @@ def create_controlled_const_profile(prosumer, input_columns, result_columns, dat
 
 
 
-def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, order=0):
+def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, order= 0):
     spdata = SupervisorData(
         input_columns=input_columns,
         result_columns = input_columns

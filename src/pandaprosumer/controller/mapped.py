@@ -259,11 +259,8 @@ class MappedController(Controller):
         responders = [prosumer.controller.loc[item.responder]["object"] for item in
                       prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
                       [["object", "responder"]].itertuples()]
-        responders_res = []
-        for responder in responders:
-            if not responder.is_supervisor():
-                responders_res.append(responder)
-        return responders_res
+        return [responder for responder in responders if not responder.is_supervisor()]
+
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """

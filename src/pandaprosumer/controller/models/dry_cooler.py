@@ -248,66 +248,68 @@ class DryCoolerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service:
-            super().control_step(prosumer)
-            if not self._are_initiators_converged(prosumer):
-                # If some of the initiators are not converged, do not run the control step
-                self._unapply_initiators(prosumer)
-                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
-                return
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
+        super().control_step(prosumer)
+        if not self._are_initiators_converged(prosumer):
+            # If some of the initiators are not converged, do not run the control step
+            self._unapply_initiators(prosumer)
+            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
+            return
 
-            mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
-            t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
-            t_out_required_c = self._get_input('t_out_c')
+        mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
+        t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
+        t_out_required_c = self._get_input('t_out_c')
 
-            assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            assert not np.isnan(mdot_supplied_kg_per_s), f"Dry Cooler {self.name} mdot_supplied_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        assert not np.isnan(mdot_supplied_kg_per_s), f"Dry Cooler {self.name} mdot_supplied_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
-            (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
-             mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
-             mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c) = self._calculate_dry_cooler(prosumer,
-                                                                                            mdot_supplied_kg_per_s,
-                                                                                            t_in_supplied_c,
-                                                                                            t_out_required_c)
+        (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
+         mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
+         mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c) = self._calculate_dry_cooler(prosumer,
+                                                                                        mdot_supplied_kg_per_s,
+                                                                                        t_in_supplied_c,
+                                                                                        t_out_required_c)
 
-            if not np.isnan(mdot_supplied_kg_per_s):
-                # If the primary is fed with a fixed mass flow (not free air)
-                if mdot_fluid_kg_per_s > mdot_supplied_kg_per_s:
-                    # If the primary mass flow is higher than the one required by the Cooler,
-                    # recalculate the secondary mass flow to reduce the heat demand to reduce the primary mass flow
-                    # ToDo: This case should never happen for the dry cooler ?
-                    assert abs(mdot_fluid_kg_per_s - mdot_supplied_kg_per_s) < .01
-                elif mdot_fluid_kg_per_s < mdot_supplied_kg_per_s:
-                    # If the primary mass flow is lower than the one required by the Cooler,
-                    # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
-                    # Recalculate the primary output temperature
-                    mdot_bypass_kg_per_s = mdot_supplied_kg_per_s - mdot_fluid_kg_per_s
-                    t_bypass_c = t_in_supplied_c
-                    t_fluid_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_fluid_out_c * mdot_fluid_kg_per_s) / mdot_supplied_kg_per_s
-                    mdot_fluid_kg_per_s = mdot_supplied_kg_per_s
+        if not np.isnan(mdot_supplied_kg_per_s):
+            # If the primary is fed with a fixed mass flow (not free air)
+            if mdot_fluid_kg_per_s > mdot_supplied_kg_per_s:
+                # If the primary mass flow is higher than the one required by the Cooler,
+                # recalculate the secondary mass flow to reduce the heat demand to reduce the primary mass flow
+                # ToDo: This case should never happen for the dry cooler ?
+                assert abs(mdot_fluid_kg_per_s - mdot_supplied_kg_per_s) < .01
+            elif mdot_fluid_kg_per_s < mdot_supplied_kg_per_s:
+                # If the primary mass flow is lower than the one required by the Cooler,
+                # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
+                # Recalculate the primary output temperature
+                mdot_bypass_kg_per_s = mdot_supplied_kg_per_s - mdot_fluid_kg_per_s
+                t_bypass_c = t_in_supplied_c
+                t_fluid_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_fluid_out_c * mdot_fluid_kg_per_s) / mdot_supplied_kg_per_s
+                mdot_fluid_kg_per_s = mdot_supplied_kg_per_s
 
-            result = np.array([[q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
-                                mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
-                                mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
+        result = np.array([[q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
+                            mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
+                            mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
 
-            assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
-            # ToDo: Add a condition to check whether the mass flows are equal
-            if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-                # If the actual output temperature is the same as the promised one, the controller is correctly applied
-                self.finalize(prosumer, result)
-                self.applied = True
-                self.t_previous_out_c = np.nan
-                self.t_previous_in_c = np.nan
-                self.mdot_previous_in_kg_per_s = np.nan
-            else:
-                # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
-                self._unapply_initiators(prosumer)
-                self.t_previous_out_c = t_fluid_out_c
-                self.t_previous_in_c = t_in_supplied_c
-                self.mdot_previous_in_kg_per_s = mdot_supplied_kg_per_s
-                self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
-                                                  FluidMixMapping.MASS_FLOW_KEY: np.nan}
-        else : self.applied = True
+        # ToDo: Add a condition to check whether the mass flows are equal
+        if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
+            # If the actual output temperature is the same as the promised one, the controller is correctly applied
+            self.finalize(prosumer, result)
+            self.applied = True
+            self.t_previous_out_c = np.nan
+            self.t_previous_in_c = np.nan
+            self.mdot_previous_in_kg_per_s = np.nan
+        else:
+            # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
+            self._unapply_initiators(prosumer)
+            self.t_previous_out_c = t_fluid_out_c
+            self.t_previous_in_c = t_in_supplied_c
+            self.mdot_previous_in_kg_per_s = mdot_supplied_kg_per_s
+            self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
+                                              FluidMixMapping.MASS_FLOW_KEY: np.nan}
