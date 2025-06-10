@@ -33,6 +33,7 @@ class FluidMixMapping(BaseMapping):
         super().__init__(container, initiator_id, None, responder_id, None, order, no_chain, index)
         self.application_operation = application_operation
         self.weights = weights
+        self.initiator_net = container
         self.responder_net = container
         self.order = order
         self.initiator = initiator_id
@@ -65,7 +66,7 @@ class FluidMixMapping(BaseMapping):
         # FixMe: Will break if the order are not 0, 1, 2, ...
         if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
 
-        order = self.responder_net.mapping.at[self.index, 'order']
+        order = int(self.initiator_net.mapping.at[self.index, 'order'])
         initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]
         initiator_mass_flow = initiator_mapped_results[self.MASS_FLOW_KEY]
