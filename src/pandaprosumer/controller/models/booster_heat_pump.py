@@ -40,6 +40,10 @@ class BoosterHeatPumpController(BasicProsumerController):
         return self._get_input("t_source_k")
 
     @property
+    def _t_sink(self):
+        return self._get_input("t_sink_k")
+
+    @property
     def _mode(self):
         return self._get_input("mode")
 
@@ -100,29 +104,62 @@ class BoosterHeatPumpController(BasicProsumerController):
         p_el_kw = self._p_received_kw
         q_kw = self._q_received_kw
         t_source_k = self._t_source
-        hp_type = self._get_element_param(prosumer, "hp_type")
+        t_sink_k = self._t_sink
+        bhp_type = self._get_element_param(prosumer, "bhp_type")
         mode = self._mode
-
         t_source_k = t_source_k - 273.0  # in celsius
 
-        if hp_type == "air-water":
+        if bhp_type == "air-water":
             t_min_source_k = -25.0
             t_max_source_k = 45.0
             cop_coeff = [5.06, -0.05, 0.00006]
-        elif hp_type == "water-water1":
+            if np.isnan(t_sink_k):
+                t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
+                t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
+            else:
+                t_sink_floor_heating_k = t_sink_k - 273.0
+                t_sink_radiator_heating_k = t_sink_k - 273.0
+            q_max_kw = 5.8 + 0.21 * t_source_k
+        elif bhp_type == "water-water1":
             t_min_source_k = -10.0
             t_max_source_k = 25.0
             cop_coeff = [5.06, -0.05, 0.00006]
-
-        elif hp_type == "water-water2":
-            t_max_source_k = 45.0
+            if np.isnan(t_sink_k):
+                t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
+                t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
+            else:
+                t_sink_floor_heating_k = t_sink_k - 273.0
+                t_sink_radiator_heating_k = t_sink_k - 273.0
+            q_max_kw = 5.8 + 0.21 * t_source_k
+        elif bhp_type == "water-water2":
+            t_min_source_k = 10.0
+            t_max_source_k = 80.0
             cop_coeff = [23.69, -0.986, 0.012]
+            if np.isnan(t_sink_k):
+                t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
+                t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
+            else:
+                t_sink_floor_heating_k = t_sink_k - 273.0
+                t_sink_radiator_heating_k = t_sink_k - 273.0
+            q_max_kw = 25.308 + 0.963 * t_source_k
+        elif bhp_type == "water-water3":
+            t_min_source_k = 10.0
+            t_max_source_k = 80.0
+            cop_coeff = [19.37, -0.757, 0.009]
+            if np.isnan(t_sink_k):
+                t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
+                t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
+            else:
+                t_sink_floor_heating_k = t_sink_k - 273.0
+                t_sink_radiator_heating_k = t_sink_k - 273.0
+            q_max_kw = 29.005 + 1.035 * t_source_k
+
         else:
-            raise ValueError(f"Unknown heat pump type: {hp_type}")
+            raise ValueError(f"Unknown heat pump type: {bhp_type}")
 
         if mode in [1, 2, 3]:
             if mode == 1: # Mode 1: total heat is source heat plus heat generated (boosting)
-                if hp_type == 'water-water1' or hp_type == 'air-water':
+                if bhp_type == 'water-water1' or bhp_type == 'air-water':
                     if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -134,16 +171,12 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                     f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        q_max_kw = 5.8 + 0.21 * t_source_k
-
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.first_mode_calc(q_kw, demand_kw, p_el_kw, q_max_kw,
                                              t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
                         pel_floor_kw = p_el_kw
                         pel_radiator_kw = p_el_kw
-                if hp_type == 'water-water2':
+                if bhp_type == 'water-water2':
                     if t_source_k > t_max_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -155,12 +188,23 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                         f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
-                            raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-                        q_max_kw = 25.308 + 0.963 * t_source_k
-
+                        q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
+                            self.first_mode_calc(q_kw, demand_kw, p_el_kw, q_max_kw,
+                                                 t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
+                        pel_floor_kw = p_el_kw
+                        pel_radiator_kw = p_el_kw
+                if bhp_type == 'water-water3':
+                    if t_source_k > t_max_source_k:
+                        cop_floor = 0
+                        cop_radiator = 0
+                        pel_floor_kw = 0
+                        pel_radiator_kw = 0
+                        q_floor_kw = 0
+                        q_radiator_kw = 0
+                        q_remain_kw = demand_kw
+                        logging.warning(f"Heat pump is not operating due to the heat source "
+                                        f"temperature being out of range: {float(t_source_k)} celsius")
+                    else:
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.first_mode_calc(q_kw, demand_kw, p_el_kw, q_max_kw,
                                                  t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
@@ -168,7 +212,7 @@ class BoosterHeatPumpController(BasicProsumerController):
                         pel_radiator_kw = p_el_kw
 
             if mode == 2:
-                if hp_type == 'water-water1' or hp_type == 'air-water':# Mode 2: total heat is heat generated
+                if bhp_type == 'water-water1' or bhp_type == 'air-water':# Mode 2: total heat is heat generated
                     if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -180,16 +224,13 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                     f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        q_max_kw = 5.8 + 0.21 * t_source_k
-
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.second_mode_calc(demand_kw, p_el_kw, q_max_kw,
                                               t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
                         pel_floor_kw = p_el_kw
                         pel_radiator_kw = p_el_kw
-                if hp_type == 'water-water2':
+                        print(f'{cop_floor}')
+                if bhp_type == 'water-water2':
                     if t_source_k > t_max_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -201,19 +242,30 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                         f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
-                            raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-                        q_max_kw = 25.308 + 0.963 * t_source_k
-
+                        q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
+                            self.second_mode_calc(demand_kw, p_el_kw, q_max_kw,
+                                                  t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
+                        pel_floor_kw = p_el_kw
+                        pel_radiator_kw = p_el_kw
+                if bhp_type == 'water-water3':
+                    if t_source_k > t_max_source_k:
+                        cop_floor = 0
+                        cop_radiator = 0
+                        pel_floor_kw = 0
+                        pel_radiator_kw = 0
+                        q_floor_kw = 0
+                        q_radiator_kw = 0
+                        q_remain_kw = demand_kw
+                        logging.warning(f"Heat pump is not operating due to the heat source "
+                                        f"temperature being out of range: {float(t_source_k)} celsius")
+                    else:
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.second_mode_calc(demand_kw, p_el_kw, q_max_kw,
                                                   t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff))
                         pel_floor_kw = p_el_kw
                         pel_radiator_kw = p_el_kw
             if mode == 3:
-                if hp_type == 'water-water1' or hp_type == 'air-water':# Mode 3: produced heat is a result of infinite electrical source, produced heat is either q_max_kw or demand_kw
+                if bhp_type == 'water-water1' or bhp_type == 'air-water':# Mode 3: produced heat is a result of infinite electrical source, produced heat is either q_max_kw or demand_kw
                     if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -225,13 +277,9 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                         f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        q_max_kw = 5.8 + 0.21 * t_source_k
-
                         q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
                             = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff)
-                if hp_type == 'water-water2':
+                if bhp_type == 'water-water2':
                     if t_source_k > t_max_source_k:
                         cop_floor = 0
                         cop_radiator = 0
@@ -243,13 +291,21 @@ class BoosterHeatPumpController(BasicProsumerController):
                         logging.warning(f"Heat pump is not operating due to the heat source "
                                         f"temperature being out of range: {float(t_source_k)} celsius")
                     else:
-                        t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
-                        t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
-                            raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-
-                        q_max_kw = 25.308 + 0.963 * t_source_k
-
+                        q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
+                            = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k,
+                                                   t_sink_radiator_heating_k, t_source_k, cop_coeff)
+                if bhp_type == 'water-water3':
+                    if t_source_k > t_max_source_k:
+                        cop_floor = 0
+                        cop_radiator = 0
+                        pel_floor_kw = 0
+                        pel_radiator_kw = 0
+                        q_floor_kw = 0
+                        q_radiator_kw = 0
+                        q_remain_kw = demand_kw
+                        logging.warning(f"Heat pump is not operating due to the heat source "
+                                        f"temperature being out of range: {float(t_source_k)} celsius")
+                    else:
                         q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
                             = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k,
                                                    t_sink_radiator_heating_k, t_source_k, cop_coeff)
@@ -264,6 +320,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                   pd.Series(q_floor_kw),
                   pd.Series(q_radiator_kw)
                   ])
+
+        print(result)
 
         self.finalize(prosumer, result.T)
 
