@@ -34,7 +34,7 @@ dependencies = [
     "matplotlib>=3.8.0",
     "numpy>=1.25.0",
     "pandapipes>=0.11.0",
-    "pandapower==2.14.11",
+    "pandapower>=2.14.11",
     "pandas==2.0.2",
     "savReaderWriter==3.4.2",
     "scipy>=1.11.0",
