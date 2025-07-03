@@ -632,22 +632,6 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
 
     return bhp.index
 
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
-    from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
-    bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
-    from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
-    bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name='heat_pump_controller')
-
-    return bhp.index
-
 def create_controlled_ice_chp(prosumer,
                               size,
                               fuel,
