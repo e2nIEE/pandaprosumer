@@ -36,7 +36,7 @@ class StratifiedHeatStorageControllerData:
     element_index: List[int]
     element_name: str = 'stratified_heat_storage'
     period_index: int = None
-    input_columns: List[str] = field(default_factory=lambda: [])
+    input_columns: List[str] = field(default_factory=lambda: ["q_received_kw", "q_requested_limit"])
     result_columns: List[str] = field(default_factory=lambda: ["mdot_discharge_kg_per_s",
                                                                "t_discharge_c",
                                                                "q_delivered_kw",

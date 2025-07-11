@@ -294,6 +294,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
         self.t_previous_in_charge_c = np.nan
         self.mdot_previous_in_kg_per_s = np.nan
 
+        self.q_received_kw = np.nan
+
         # Used for debugging
         self.plot = plot
         self.bypass = bypass
@@ -355,12 +357,32 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
         t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
-
         if not np.isnan(self.t_previous_out_charge_c):
             mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
             return self.t_previous_in_charge_c, self.t_previous_out_charge_c, mdot_charge_kg_per_s
 
         return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
+
+    def t_m_to_q_kw(self,
+                    mdot, t_in, t_out) -> float:
+        """
+        Rückgabe der thermischen Leistung [kW], die der SHS aktuell aufnimmt.
+        Wird von GenericMapping mit responder_column="q_received_kw" aufgerufen.
+        """
+
+        if mdot is None or np.isnan(mdot) or mdot <= 0:
+            return 0.0
+
+        t_mean_K = CELSIUS_TO_K + 0.5 * (t_in + t_out)
+        cp = self.fluid.get_heat_capacity(t_mean_K)
+        return mdot * cp * (t_in - t_out) / 1e3
+
+
+    def q_to_receive_kw(self, prosumer):
+        #self.applied = False
+        t_required_in_c, t_required_out_c, mdot_required_kg_per_s = self._t_m_to_receive_init(prosumer)
+        self.q_received_kw = self.t_m_to_q_kw(mdot_required_kg_per_s, t_required_in_c, t_required_out_c)
+        return self.q_received_kw
 
     @property
     def _t_charge_out(self):
@@ -398,11 +420,28 @@ class StratifiedHeatStorageController(BasicProsumerController):
         ret = sum([float(self.fluid.get_density(CELSIUS_TO_K + self._layer_temps_c[z])) * self.A_m2 *
                    float(self.fluid.get_heat_capacity(CELSIUS_TO_K + self._layer_temps_c[z])) *
                    (self._layer_temps_c[z] - self.init_layer_temps_c[z]) * self.dz_m
-                   for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - .1]) / 3.6e6
+                   #for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - .1]) / 3.6e6
+                   for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - .5]) / 3.6e6
         return ret
 
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
+
+        t_required_in_c, t_required_out_c, mdot_required_kg_per_s = self._t_m_to_receive_init(prosumer)
+        if np.isnan(t_received_in_c):
+            t_received_in_c = t_required_in_c
+
+        cp_received_j_per_kgk = float(
+            self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_demand_in_c) / 2))
+        q_requested_kw = self.t_m_to_q_kw(mdot_required_kg_per_s, t_required_in_c, t_required_out_c)
+        q_limit = self._get_input('q_requested_limit')
+        #print(f'q_requested_kw = {q_requested_kw}')
+        #print(f'q_limit = {q_limit}')
+        q_received_kw = min(q_requested_kw, q_limit)
+        #print(f'q_received_kw = {q_received_kw}')
+        if np.isnan(mdot_received_kg_per_s):
+            mdot_received_kg_per_s = q_received_kw * 1e3 / (cp_received_j_per_kgk * (t_required_in_c - t_required_out_c))
+
 
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
