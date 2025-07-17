@@ -60,6 +60,8 @@ class ConstProfileController(MappedController):
         """
         super().control_step(prosumer)
         # ToDo: error message if column not found in data_source
+        if self.time.tz is None:
+            self.time = self.time.tz_localize('UTC')
         results = self.df_data.get_time_step_value(time_step=self.time, profile_name=self.input_columns).reshape(1, -1)
         results = results.astype('float64')
 
