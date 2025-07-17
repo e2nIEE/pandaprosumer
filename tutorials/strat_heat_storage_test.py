@@ -111,6 +111,3 @@ GenericMapping(
 
 run_timeseries(chp_prosumer, period, True)
 
-chp_prosumer.time_series.data_source.loc[0].df.head(30)
-chp_prosumer.time_series.data_source.loc[1].df.head(30)
-chp_prosumer.time_series.data_source.loc[2].df.head(30)
