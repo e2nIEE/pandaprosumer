@@ -352,11 +352,15 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # the temperature is smaller than the feed temperature
         rho_mean_kg_per_m3 = self.fluid.get_density(CELSIUS_TO_K + np.mean(self._layer_temps_c))
         m_layer_kg = self.A_m2 * self.dz_m * rho_mean_kg_per_m3
-        nb_cold_layers = np.sum(np.array(self._layer_temps_c) < t_required_in_c)
+        nb_cold_layers = np.sum(np.array(self._layer_temps_c) < t_required_in_c - 1.5) # Added tolerance
         mdot_charge_kg_per_s = nb_cold_layers * m_layer_kg / self.resol
 
         mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
-        t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
+        if mdot_required_kg_per_s != 0: # Debugging: if there is no demand and the storage is fully charged
+            t_required_out_c = ((mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c)
+                                / mdot_required_kg_per_s)
+        else:
+            t_required_out_c = t_demand_in_c
         if not np.isnan(self.t_previous_out_charge_c):
             mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
             return self.t_previous_in_charge_c, self.t_previous_out_charge_c, mdot_charge_kg_per_s
@@ -366,8 +370,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
     def t_m_to_q_kw(self,
                     mdot, t_in, t_out) -> float:
         """
-        Rückgabe der thermischen Leistung [kW], die der SHS aktuell aufnimmt.
-        Wird von GenericMapping mit responder_column="q_received_kw" aufgerufen.
+        Calculate the thermal power from massflow and temperature difference
         """
 
         if mdot is None or np.isnan(mdot) or mdot <= 0:
@@ -421,27 +424,23 @@ class StratifiedHeatStorageController(BasicProsumerController):
                    float(self.fluid.get_heat_capacity(CELSIUS_TO_K + self._layer_temps_c[z])) *
                    (self._layer_temps_c[z] - self.init_layer_temps_c[z]) * self.dz_m
                    #for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - .1]) / 3.6e6
-                   for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - .5]) / 3.6e6
+                   for z in range(self.N_l) if self._layer_temps_c[z] >= t_extraction_c - 1.5]) / 3.6e6 # higher tolrenace for extraction
         return ret
 
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
 
         t_required_in_c, t_required_out_c, mdot_required_kg_per_s = self._t_m_to_receive_init(prosumer)
-        if np.isnan(t_received_in_c):
-            t_received_in_c = t_required_in_c
+        if np.isnan(t_received_in_c): # in case of Generic Mapping
+            t_received_in_c = t_required_in_c # Received Temperature set to the required Temperature
 
         cp_received_j_per_kgk = float(
             self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_demand_in_c) / 2))
-        q_requested_kw = self.t_m_to_q_kw(mdot_required_kg_per_s, t_required_in_c, t_required_out_c)
-        q_limit = self._get_input('q_requested_limit')
-        #print(f'q_requested_kw = {q_requested_kw}')
-        #print(f'q_limit = {q_limit}')
-        q_received_kw = min(q_requested_kw, q_limit)
-        #print(f'q_received_kw = {q_received_kw}')
-        if np.isnan(mdot_received_kg_per_s):
+        q_requested_kw = self.t_m_to_q_kw(mdot_required_kg_per_s, t_required_in_c, t_required_out_c) # requested thermal power
+        q_limit = self._get_input('q_requested_limit') # thermal power, that can be provided
+        q_received_kw = min(q_requested_kw, q_limit) # received thermal power
+        if np.isnan(mdot_received_kg_per_s): # in case of Generic Mapping
             mdot_received_kg_per_s = q_received_kw * 1e3 / (cp_received_j_per_kgk * (t_required_in_c - t_required_out_c))
-
 
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
@@ -452,7 +451,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
             # mass flow to provide at self._t_charge_c to provide the same energy to the demand
             if t_received_in_c - t_demand_out_c > 0:
                 delta_t_demand_c = t_demand_out_c - t_demand_in_c
-                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
+                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_in_c) # is this the right delta_T?
+                #mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
             else:
                 mdot_toprovide_kg_per_s = mdot_demand_kg_per_s
             if mdot_toprovide_kg_per_s > mdot_received_kg_per_s:

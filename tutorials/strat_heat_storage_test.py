@@ -60,12 +60,13 @@ demand_input = DFData(demand_data)
 chp_prosumer = create_empty_prosumer_container()
 
 period = create_period(chp_prosumer, time_resolution_s, start, end, 'utc', 'default')
+print(period)
 
 cp_input_columns = ["t_air", "demand_power", "t_feed_demand_c", "t_return_demand_c", 'cycle', 't_intake_k']
 cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c", 'cycle_cp', 't_intake_cp_k']
 
 cp_index = create_controlled_const_profile(
-    chp_prosumer, cp_input_columns, cp_result_columns, demand_input, period)
+    chp_prosumer, cp_input_columns, cp_result_columns, demand_input, period, level=0, order=0)
 
 ice_chp_index = create_controlled_ice_chp(chp_prosumer, size_kw, fuel, altitude_m,level=1,order=0, name='chp' )
 
@@ -109,3 +110,7 @@ GenericMapping(
 )
 
 run_timeseries(chp_prosumer, period, True)
+
+chp_prosumer.time_series.data_source.loc[0].df.head(30)
+chp_prosumer.time_series.data_source.loc[1].df.head(30)
+chp_prosumer.time_series.data_source.loc[2].df.head(30)
