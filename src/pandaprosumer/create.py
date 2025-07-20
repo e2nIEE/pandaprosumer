@@ -94,9 +94,9 @@ def create_heat_pump(prosumer,
                      max_cop=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
+                     heating=True,
                      name=None,
                      index=None,
-                     heating= True,
                      in_service=True,
                      **kwargs):
     """
@@ -173,10 +173,10 @@ def create_heat_pump(prosumer,
 
 def create_heat_demand(prosumer,
                        scaling=1.0,
+                       heating=True,
                        name=None,
                        index=None,
                        in_service=True,
-                        heating = True,
                        **kwargs):
     """
     Creates a heat demand element in prosumer["heat_demand"]

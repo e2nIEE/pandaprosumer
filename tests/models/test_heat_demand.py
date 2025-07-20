@@ -31,7 +31,7 @@ class TestHeatDemand:
         assert len(prosumer.heat_demand) == 1
 
         expected_columns = ["name", "scaling", "heating", "in_service"]
-        expected_values = [None, 1., True]
+        expected_values = [None, 1., True, True]
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
         assert prosumer.heat_demand.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -44,6 +44,7 @@ class TestHeatDemand:
         create_period(prosumer, 1)
 
         hd_params = {"scaling": 3.2,
+                     "heating": False,
                      "t_in_set_c": 63,
                      "t_out_set_c": 35}
 
@@ -54,7 +55,7 @@ class TestHeatDemand:
         assert prosumer.heat_demand.index[0] == hd_idx
 
         expected_columns = ["name", "scaling", "heating", "in_service", "custom", "t_in_set_c", "t_out_set_c",]
-        expected_values = ['foo', 3.2, False, 'test', 63, 35]
+        expected_values = ['foo', 3.2, False, False, 'test', 63, 35]
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
         assert prosumer.heat_demand.iloc[0].values == pytest.approx(expected_values)

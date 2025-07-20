@@ -35,8 +35,8 @@ class TestHeatPump:
         assert len(prosumer.heat_pump) == 1
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
                             "max_p_comp_kw", "min_p_comp_kw", "max_t_cond_out_c", "max_cop",
-                            "cond_fluid", "evap_fluid", "in_service"]
-        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, 'water', 'water', True]
+                            "cond_fluid", "evap_fluid", "heating", "in_service"]
+        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, 'water', 'water', True, True]
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -57,7 +57,8 @@ class TestHeatPump:
                   'min_p_comp_kw': 10,
                   'max_t_cond_out_c': 80,
                   'max_cop': 5,
-                  'evap_fluid': 'air'}
+                  'evap_fluid': 'air',
+                  'heating': False}
 
         hp_idx = create_heat_pump(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "heat_pump")
@@ -67,8 +68,8 @@ class TestHeatPump:
 
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
                             "max_p_comp_kw", "min_p_comp_kw", "max_t_cond_out_c", "max_cop",
-                            "cond_fluid", "evap_fluid", "in_service", "custom"]
-        expected_values = ['foo', 15., .5, 5., 10., 300, 10, 80, 5, 'water', 'air', False, 'test']
+                            "cond_fluid", "evap_fluid", "heating", "in_service", "custom"]
+        expected_values = ['foo', 15., .5, 5., 10., 300, 10, 80, 5, 'water', 'air', False, False, 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
 
