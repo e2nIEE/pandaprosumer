@@ -111,9 +111,9 @@ class DryCoolerController(BasicProsumerController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        t_feed_required_c = self._get_input('t_in_c')
-        t_return_required_c = self._get_input('t_out_c')
-        mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s')
+        t_feed_required_c = self._get_input('t_in_c', prosumer)
+        t_return_required_c = self._get_input('t_out_c', prosumer)
+        mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s', prosumer)
 
         if not np.isnan(self.t_previous_out_c):
             assert self.mdot_previous_in_kg_per_s >= 0
@@ -210,8 +210,8 @@ class DryCoolerController(BasicProsumerController):
         t_fluid_mean_c = (t_out_required_c + t_in_required_c) / 2
         cp_fluid_kj_per_kg_k = self.fluid.get_heat_capacity(CELSIUS_TO_K + t_fluid_mean_c) / 1000
 
-        t_air_in_c = self._get_input('t_air_in_c')
-        phi_air_in_percent = self._get_input('phi_air_in_percent')
+        t_air_in_c = self._get_input('t_air_in_c', prosumer)
+        phi_air_in_percent = self._get_input('phi_air_in_percent', prosumer)
         phi_air_out_percent = self._get_element_param(prosumer, 'phi_adiabatic_sat_percent')
 
         # If the adiabatic mode is activated, the air is pre-cooled
@@ -262,7 +262,7 @@ class DryCoolerController(BasicProsumerController):
 
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
-        t_out_required_c = self._get_input('t_out_c')
+        t_out_required_c = self._get_input('t_out_c', prosumer)
 
         assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
