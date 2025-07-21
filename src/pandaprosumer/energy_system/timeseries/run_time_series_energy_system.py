@@ -8,7 +8,8 @@ from pandapower import pandapowerNet
 from pandapower.control import control_diagnostic
 from pandapower.timeseries.run_time_series import init_default_outputwriter as init_output_writer_pp
 from pandapower.timeseries.run_time_series import run_loop, get_recycle_settings, init_output_writer
-from pandaprosumer.energy_system.control.run_control_energy_system import prepare_run_ctrl, run_control
+from pandaprosumer.energy_system.control.run_control_energy_system import prepare_run_ctrl, print_progress, \
+    run_time_step, run_control
 from pandaprosumer.run_time_series import control_diagnostic_pandaprosumer
 from pandaprosumer.run_time_series import time_series_initialization, time_series_finalization
 
@@ -19,6 +20,22 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.WARNING)
+
+
+def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
+    """
+    runs the time series loop which calls runpp (or another run function) in each iteration
+
+    Parameters
+    ----------
+    net - pandapower net
+    ts_variables - settings for time series
+
+    """
+    for i, time_step in enumerate(ts_variables["time_steps"]):
+        print_progress(i, time_step, ts_variables["time_steps"], ts_variables["verbose"], ts_variables=ts_variables,
+                       **kwargs)
+        run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
 def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True):
