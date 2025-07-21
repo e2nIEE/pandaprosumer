@@ -321,6 +321,7 @@ class HeatPumpController(BasicProsumerController):
                                                                                             self._t_load_in_c,
                                                                                             pinch_c)
                 if not np.isnan(self._mdot_supply_in_kg_per_s):
+                    assert self._mdot_supply_in_kg_per_s >= 0, f"Heat Pump {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
                     # If the evaporator is fed with a fixed mass flow (not free air)
                     if mdot_evap_kg_per_s > self._mdot_supply_in_kg_per_s :
                         # If the evaporator mass flow is higher than the one required by the Heat Pump,

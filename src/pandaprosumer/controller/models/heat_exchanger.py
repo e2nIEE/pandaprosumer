@@ -310,6 +310,7 @@ class HeatExchangerController(BasicProsumerController):
                 #     mdot_1_kg_per_s = m_1_kg_per_s_in
 
                 if not np.isnan(self._mdot_1_provided_kg_per_s):
+                    assert self._mdot_1_provided_kg_per_s >= 0, f"Heat Exchanger {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
                     # If the primary is fed with a fixed mass flow (not free air)
                     if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is higher than the one required by the Heat Exchanger,
