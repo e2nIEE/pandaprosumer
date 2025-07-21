@@ -178,7 +178,10 @@ class HeatExchangerController(BasicProsumerController):
         max_t_1_out_c = t_1_in_c - min_delta_t_1_c
         min_x = 1 - (max_t_1_out_c - t_2_in_c) / delta_t_hot_c
 
-        min_a = -np.log(1 - min_x) / min_x
+        if min_x == 0:
+            min_a = 1
+        else:
+            min_a = -np.log(1 - min_x) / min_x
 
         if a < min_a:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
