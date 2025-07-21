@@ -232,14 +232,14 @@ def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_
         run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
-def run_time_step(net, time_step, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer,
+def run_time_step(energy_system, time_step, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer,
                   **kwargs):
     """
     Time Series step function
     Is called to run the PANDAPOWER AC power flows with the timeseries module
 
     INPUT:
-        **net** - The pandapower format network
+        **energy_system** - The energy system
 
         **time_step** (int) - time_step to be calculated
 
@@ -253,7 +253,7 @@ def run_time_step(net, time_step, ts_variables, run_control_fct=run_control, out
 
     try:
         # calls controller init, control steps and run function (runpp usually is called in here)
-        run_control_fct(net, ctrl_variables=ts_variables, **kwargs)
+        run_control_fct(energy_system, ctrl_variables=ts_variables, **kwargs)
     except ControllerNotConverged:
         ctrl_converged = False
         # If controller did not converge do some stuff
@@ -263,7 +263,7 @@ def run_time_step(net, time_step, ts_variables, run_control_fct=run_control, out
         pf_converged = False
         pf_not_converged(time_step, ts_variables)
 
-    output_writer_fct(net, time_step, pf_converged, ctrl_converged, ts_variables)
+    output_writer_fct(energy_system, time_step, pf_converged, ctrl_converged, ts_variables)
 
     finalize_step(ts_variables['controller_order'], time_step)
 

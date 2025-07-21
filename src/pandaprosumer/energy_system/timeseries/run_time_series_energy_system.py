@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.WARNING)
 
 
-def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
+def run_loop(energy_system, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
     """
     runs the time series loop which calls runpp (or another run function) in each iteration
 
     Parameters
     ----------
-    net - pandapower net
+    energy_system - energy system
     ts_variables - settings for time series
 
     """
@@ -37,10 +37,10 @@ def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_
                        **kwargs)
         if "transient" in kwargs:
             kwargs["simulation_time_step"] = i
-        run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
+        run_time_step(energy_system, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
-def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True):
+def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True, **kwargs):
     start = energy_system.period.at[period_index, 'start']
     end = energy_system.period.at[period_index, 'end']
     resol = int(energy_system.period.at[period_index, 'resolution_s'])
@@ -54,13 +54,11 @@ def run_timeseries(energy_system, period_index, continue_on_divergence=False, ve
     #for pros_name in energy_system['prosumer'].keys():
     #    control_diagnostic_pandaprosumer(energy_system['prosumer'][pros_name], start, end, resol)
     time_series_initialization(ts_variables['controller_order'])
-    run_loop(energy_system, ts_variables, output_writer_fct=_call_output_writer,
-             run_control_fct=run_control)
+    run_loop(energy_system, ts_variables, output_writer_fct=_call_output_writer, run_control_fct=run_control, **kwargs)
     time_series_finalization(ts_variables['controller_order'])
 
 
-def init_time_series(energy_system, time_steps, continue_on_divergence=False, verbose=True,
-                     **kwargs):
+def init_time_series(energy_system, time_steps, continue_on_divergence=False, verbose=True, **kwargs):
     """
     Initializes the time series calculation.
     Besides it creates the dict ts_variables, which includes necessary variables for the time series / control loop.
