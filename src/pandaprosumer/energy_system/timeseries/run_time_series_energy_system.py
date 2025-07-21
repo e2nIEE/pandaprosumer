@@ -7,7 +7,7 @@ from pandapipes.timeseries.run_time_series import init_default_outputwriter as i
 from pandapower import pandapowerNet
 from pandapower.control import control_diagnostic
 from pandapower.timeseries.run_time_series import init_default_outputwriter as init_output_writer_pp
-from pandapower.timeseries.run_time_series import run_loop, get_recycle_settings, init_output_writer
+from pandapower.timeseries.run_time_series import get_recycle_settings, init_output_writer
 from pandaprosumer.energy_system.control.run_control_energy_system import prepare_run_ctrl, print_progress, \
     run_time_step, run_control
 from pandaprosumer.run_time_series import control_diagnostic_pandaprosumer
