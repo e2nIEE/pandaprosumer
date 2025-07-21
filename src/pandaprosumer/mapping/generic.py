@@ -3,19 +3,21 @@ import numpy as np
 from .base import BaseMapping
 
 
-def _add_mapping(initiator_controller, responder_controller, initiator_column, responder_column):
+def _add_mapping(initiator_controller, responder_controller, initiator_column, responder_column, conversion_function = lambda x : x):
     init_col_idx = initiator_controller.result_columns.index(initiator_column)  # ToDo: add detailed error if IndexError
     resp_col_idx = responder_controller.input_columns.index(responder_column)
-    responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(
-        responder_controller.inputs[:, resp_col_idx], nan=0.0) + initiator_controller.step_results[:, init_col_idx]
+    initiator_result = initiator_controller.step_results[:, init_col_idx]
+    mapped_value = conversion_function(initiator_result)
+    responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(responder_controller.inputs[:, resp_col_idx], nan=0.0) + mapped_value
 
 
 # ToDo: test subtract mapping and exception, do we need subtract (for el coupling)?
-def _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column):
+def _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column, conversion_function = lambda x : x):
     init_col_idx = initiator_controller.result_columns.index(initiator_column)
     resp_col_idx = responder_controller.input_columns.index(responder_column)
-    responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(
-        responder_controller.inputs[:, resp_col_idx], nan=0.0) - initiator_controller.step_results[:, init_col_idx]
+    initiator_result = initiator_controller.step_results[:, init_col_idx]
+    mapped_value = conversion_function(initiator_result)
+    responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(responder_controller.inputs[:, resp_col_idx], nan=0.0) - mapped_value
 
 
 class GenericMapping(BaseMapping):
@@ -28,7 +30,7 @@ class GenericMapping(BaseMapping):
     """
 
     def __init__(self, container=None, initiator_id=None, initiator_column=None, responder_id=None, responder_column=None,
-                 order=None, application_operation="add", weights=None, no_chain=True, index=None):
+                 order=None, application_operation="add", weights=None, no_chain=True, conversion_function=None, index=None):
         """
         Initializes the GenericWiseMapping.
 
@@ -48,6 +50,10 @@ class GenericMapping(BaseMapping):
         self.responder_net = container
         self.initiator = initiator_id
         self.responder = responder_id
+        if conversion_function is None:
+            self.conversion_function = lambda x : x
+        else:
+            self.conversion_function = conversion_function
 
     def __str__(self):
         return "ElementWiseMapping"

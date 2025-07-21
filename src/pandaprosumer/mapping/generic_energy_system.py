@@ -12,7 +12,7 @@ class GenericEnergySystemMapping(GenericMapping):
 
     def __init__(self, container=None, initiator_id=None, initiator_column=None,
                  responder_net=None, responder_id=None, responder_column=None,
-                 order=None, application_operation="add", weights=None, no_chain=True, index=None):
+                 order=None, application_operation="add", weights=None, no_chain=True, conversion_function=None, index=None):
         """
         Initializes the GenericWiseMapping.
 
@@ -27,7 +27,7 @@ class GenericEnergySystemMapping(GenericMapping):
         :param index: The index of the mapping
         """
         super().__init__(container, initiator_id, initiator_column, responder_id, responder_column,
-                         order, application_operation, weights, no_chain, index)
+                         order, application_operation, weights, no_chain, conversion_function, index)
 
         self.responder_net = responder_net
 
