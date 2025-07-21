@@ -4,7 +4,7 @@ import tqdm
 from pandapower.control import get_controller_order
 from pandapower.create import _get_multiple_index_with_check
 from pandapower.timeseries import DFData
-from pandapower.timeseries.run_time_series import print_progress, run_time_step
+from pandapower.timeseries.run_time_series import print_progress, run_time_step, _call_output_writer
 from pandaprosumer.run_control import run_control, prepare_run_ctrl
 
 try:
