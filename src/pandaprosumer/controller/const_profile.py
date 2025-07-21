@@ -73,4 +73,3 @@ class ConstProfileController(MappedController):
             self.finalize(prosumer, results)
 
         self.applied = True
-        self.applied = True
