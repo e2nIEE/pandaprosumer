@@ -4,6 +4,9 @@
 
 import numpy as np
 import pandas as pd
+from pandapipes.timeseries.run_time_series import pf_not_converged
+from pandapower import ControllerNotConverged
+from pandapower.timeseries.run_time_series import controller_not_converged, finalize_step
 
 import pandaprosumer as ppros
 from pandapipes.multinet.control.run_control_multinet import prepare_ctrl_variables_for_net, _evaluate_multinet, \
