@@ -13,7 +13,7 @@ class BoosterHeatPumpControllerData:
     element_index : List[int]
         List of element indices.
     input_columns : List[str]
-        List of input column names. Inputs are: t_amb_k, t_source_k, t_sink_l, demand, mode, q_received_kw, p_received_kw.
+        List of input column names. Inputs are: t_amb_k, t_source_k, t_sink_k, demand, mode, q_received_kw, p_received_kw.
     result_columns : List[str]
         List of result column names. Results are: cop_floor, cop_radiator, p_el_floor, p_el_radiator, q_remain, q_floor, q_radiator.
     period_index : int, optional

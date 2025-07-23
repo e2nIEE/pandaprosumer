@@ -39,11 +39,11 @@ class BoosterHeatPumpController(BasicProsumerController):
         return self._get_input("t_amb_k")
 
     @property
-    def _t_source(self):
+    def _t_source_k(self):
         return self._get_input("t_source_k")
 
     @property
-    def _t_sink(self):
+    def _t_sink_k(self):
         return self._get_input("t_sink_k")
 
     @property
@@ -107,9 +107,9 @@ class BoosterHeatPumpController(BasicProsumerController):
         p_el_kw = self._p_received_kw
         q_kw = self._q_received_kw
         t_amb_k = self._t_amb_k
-        t_source_k = self._t_source
-        t_sink_k = self._t_sink
-        bhp_type = self._get_element_param(prosumer, "bhp_type")
+        t_source_k = self._t_source_k
+        t_sink_k = self._t_sink_k
+        bhp_type = self._get_element_param(prosumer, "hp_type")
         mode = self._mode
 
         t_source_k = t_source_k - 273.0  # in celsius
@@ -165,7 +165,7 @@ class BoosterHeatPumpController(BasicProsumerController):
 
         if mode in [1, 2, 3]:
             if mode == 1: # Mode 1: total heat is source heat plus heat generated (boosting)
-                if hp_type == 'water-water1' or hp_type == 'air-water':
+                if bhp_type == 'water-water1' or bhp_type == 'air-water':
                     if t_source_k > t_max_source_k or t_source_k < t_min_source_k:
                         cop_floor = 0
                         cop_radiator = 0
