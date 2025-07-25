@@ -83,16 +83,16 @@ class GenericMapping(BaseMapping):
             # if initiator_controller.has_elements and initiator_controller._nb_elements >= 2:
             if isinstance(self.initiator_column, list):
                 for initiator_column, responder_column in zip(self.initiator_column, self.responder_column):
-                    _add_mapping(initiator_controller, responder_controller, initiator_column, responder_column)
+                    _add_mapping(initiator_controller, responder_controller, initiator_column, responder_column, self.conversion_function)
             else:
-                _add_mapping(initiator_controller, responder_controller, self.initiator_column, self.responder_column)
+                _add_mapping(initiator_controller, responder_controller, self.initiator_column, self.responder_column, self.conversion_function)
         elif self.application_operation == 'subtract':
             # if initiator_controller.has_elements and initiator_controller._nb_elements >= 2:
             if isinstance(self.initiator_column, list):
                 for initiator_column, responder_column in zip(self.initiator_column, self.responder_column):
-                    _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column)
+                    _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column, self.conversion_function)
             else:
-                _subtract_mapping(initiator_controller, responder_controller, self.initiator_column, self.responder_column)
+                _subtract_mapping(initiator_controller, responder_controller, self.initiator_column, self.responder_column, self.conversion_function)
         else:
             raise ValueError(f"Application operation '{self.application_operation}' not supported for GenericMapping"
                              f"from controller '{initiator_controller.name}' on column '{self.initiator_column}' "
