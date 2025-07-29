@@ -290,9 +290,9 @@ class HeatExchangerController(BasicProsumerController):
         else:
             # FixMe: What to do in these cases ?
             t_out_2_required_c_init = t_out_2_required_c
-            if t_1_in_c >= t_out_2_required_c:
+            if t_1_in_c < t_out_2_required_c:
                 t_out_2_required_c = t_1_in_c - self._get_element_param(prosumer, 'delta_t_hot_default_c')
-            if t_out_2_required_c >= t_in_2_required_c:
+            if t_out_2_required_c < t_in_2_required_c:
                 t_in_2_required_c += t_out_2_required_c - t_out_2_required_c_init
 
             assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
