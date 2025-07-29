@@ -50,7 +50,7 @@ class GenericMapping(BaseMapping):
         self.responder_net = container
         self.initiator = initiator_id
         self.responder = responder_id
-        if conversion_function is None:
+        if conversion_function is None:  # ToDO: add tests and documentation for conversion_function
             self.conversion_function = lambda x : x
         else:
             self.conversion_function = conversion_function
