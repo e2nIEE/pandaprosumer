@@ -38,7 +38,8 @@ class ConstProfileController(MappedController):
         return "const_profile_control"
 
     def __init__(self, prosumer, const_object, df_data: DFData, order=-1, level=-1, in_service=True, index=None,
-                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None, temp_fluid_map_idx = None, mdot_fluid_map_idx= None, **kwargs):
+                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None,
+                 temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs):
         """
         Initializes the ConstProfileController.
         """
@@ -47,8 +48,6 @@ class ConstProfileController(MappedController):
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
 
         self.has_elements = False
-
-
         self.temp_fluid_map_idx = temp_fluid_map_idx
         self.mdot_fluid_map_idx = mdot_fluid_map_idx
 
@@ -60,8 +59,6 @@ class ConstProfileController(MappedController):
         """
         super().control_step(prosumer)
         # ToDo: error message if column not found in data_source
-        if self.time.tz is None:
-            self.time = self.time.tz_localize('UTC')
         results = self.df_data.get_time_step_value(time_step=self.time, profile_name=self.input_columns).reshape(1, -1)
         results = results.astype('float64')
 
