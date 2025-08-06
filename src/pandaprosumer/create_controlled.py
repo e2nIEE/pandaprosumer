@@ -4,6 +4,7 @@ from pandaprosumer.controller.models import *
 from pandaprosumer.controller.data_model import *
 from pandaprosumer.controller import *
 import numpy as np
+from pandaprosumer.supervisor import *
 
 
 def create_controlled_const_profile(prosumer, input_columns, result_columns, data_source, period = 0, level=0, order=0,
@@ -22,6 +23,22 @@ def create_controlled_const_profile(prosumer, input_columns, result_columns, dat
                                            temp_fluid_map_idx=temp_fluid_map_idx,
                                            mdot_fluid_map_idx=mdot_fluid_map_idx)
     return const_profile.index
+
+
+
+def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, order= 0):
+    spdata = SupervisorData(
+        input_columns=input_columns,
+        result_columns = input_columns
+    )
+    supervisor = Supervisor(prosumer,
+                            supervisor_object=spdata,
+                            period_index=period,
+                            level=level,
+                            order=order)
+
+    return supervisor.index
+
 
 
 def create_controlled_heat_pump(prosumer,

@@ -69,6 +69,10 @@ class HeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
         _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")

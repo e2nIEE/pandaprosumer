@@ -63,6 +63,7 @@ class MappedController(Controller):
         self.has_elements = hasattr(self.obj, "element_index") or np.iterable(self.obj) and hasattr(self.obj[0], "element_index")
         self._nb_elements = len(self.obj) if self.has_elements and np.iterable(self.obj) else 1
         self.has_period = False
+        self.in_service = in_service
 
         if np.iterable(self.obj):
             self.input_columns = [name for obj in self.obj for name in obj.input_columns]  # [obj.input_columns for obj in self.obj]
@@ -162,6 +163,9 @@ class MappedController(Controller):
             Check if controller already was applied
         """
         return self.applied
+
+    def is_supervisor(self):
+        return False
     
     def level_reset(self, container):
         """
@@ -252,9 +256,11 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        return [prosumer.controller.loc[item.responder]["object"] for item in
-                prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                [["object", "responder"]].itertuples()]
+        responders = [prosumer.controller.loc[item.responder]["object"] for item in
+                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+                      [["object", "responder"]].itertuples()]
+        return [responder for responder in responders if not responder.is_supervisor()]
+
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
@@ -485,7 +491,7 @@ class MappedController(Controller):
         # model = [ConstProfileController]
         for _, ctrl_row in container.controller.iterrows():
             ctrl = ctrl_row.object
-            if not ctrl.name_class() == 'const_profile_control':
+            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor():
                 levels.append(ctrl.level)
         if levels and not all(l == levels[0] for l in levels):
             raise ValueError(

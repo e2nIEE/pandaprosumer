@@ -35,6 +35,7 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water",c
     add_new_element(prosumer, TimeSeries)
     prosumer['controller'] = pd.DataFrame(np.zeros(0, dtype=prosumer['controller']), index=[])
     prosumer['mapping'] = pd.DataFrame(np.zeros(0, dtype=prosumer['mapping']), index=[])
+    prosumer['rules'] = pd.DataFrame(np.zeros(0, dtype=prosumer['rules']), index=[])
     prosumer['check_order'] = check_order
 
     if fluid is not None:
