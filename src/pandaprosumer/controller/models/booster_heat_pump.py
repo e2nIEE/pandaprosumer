@@ -360,7 +360,7 @@ class BoosterHeatPumpController(BasicProsumerController):
         cop_floor = cop_coeff[0] + cop_coeff[1] * (t_sink_floor_heating_k - t_source_k) + cop_coeff[2] * (
                 t_sink_floor_heating_k - t_source_k) ** 2
         cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
+                t_sink_radiator_heating_k - t_source_k) ** 2
         q_floor_kw = p_el_kw * cop_floor + q_kw if p_el_kw * cop_floor + q_kw < q_max_kw else q_max_kw
         q_radiator_kw = p_el_kw * cop_radiator + q_kw if p_el_kw * cop_radiator + q_kw < q_max_kw else q_max_kw
         return q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator
@@ -395,7 +395,7 @@ class BoosterHeatPumpController(BasicProsumerController):
         cop_floor = cop_coeff[0] + cop_coeff[1] * (t_sink_floor_heating_k - t_source_k) + cop_coeff[2] * (
                 t_sink_floor_heating_k - t_source_k) ** 2
         cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
+                t_sink_radiator_heating_k - t_source_k) ** 2
         q_floor_kw = p_el_kw * cop_floor if p_el_kw * cop_floor < q_max_kw else q_max_kw
         q_radiator_kw = p_el_kw * cop_radiator if p_el_kw * cop_radiator < q_max_kw else q_max_kw
         return q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator
