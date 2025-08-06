@@ -361,8 +361,20 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k - t_source_k) ** 2
         cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
                 t_sink_radiator_heating_k - t_source_k) ** 2
-        q_floor_kw = p_el_kw * cop_floor + q_kw if p_el_kw * cop_floor + q_kw < q_max_kw else q_max_kw
-        q_radiator_kw = p_el_kw * cop_radiator + q_kw if p_el_kw * cop_radiator + q_kw < q_max_kw else q_max_kw
+
+        q_generated_floor = p_el_kw * cop_floor + q_kw
+        q_generated_radiator = p_el_kw * cop_radiator + q_kw
+
+        if q_generated_floor < q_max_kw and q_generated_floor < demand_kw:
+            q_floor_kw = q_generated_floor
+        else:
+            q_floor_kw = min(q_max_kw, demand_kw)
+
+        if q_generated_radiator < q_max_kw and q_generated_radiator < demand_kw:
+            q_radiator_kw = q_generated_radiator
+        else:
+            q_radiator_kw = min(q_max_kw, demand_kw)
+
         return q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator
 
     def second_mode_calc(self, demand_kw, p_el_kw, q_max_kw,
@@ -396,8 +408,20 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k - t_source_k) ** 2
         cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
                 t_sink_radiator_heating_k - t_source_k) ** 2
-        q_floor_kw = p_el_kw * cop_floor if p_el_kw * cop_floor < q_max_kw else q_max_kw
-        q_radiator_kw = p_el_kw * cop_radiator if p_el_kw * cop_radiator < q_max_kw else q_max_kw
+
+        q_generated_floor = p_el_kw * cop_floor
+        q_generated_radiator = p_el_kw * cop_radiator
+
+        if q_generated_floor < q_max_kw and q_generated_floor < demand_kw:
+            q_floor_kw = q_generated_floor
+        else:
+            q_floor_kw = min(q_max_kw, demand_kw)
+
+        if q_generated_radiator < q_max_kw and q_generated_radiator < demand_kw:
+            q_radiator_kw = q_generated_radiator
+        else:
+            q_radiator_kw = min(q_max_kw, demand_kw)
+
         return q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator
 
     def third_mode_calc(self, demand_kw, q_max_kw, t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff):
