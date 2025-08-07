@@ -7,7 +7,12 @@ import numpy as np
 from pandaprosumer.supervisor import *
 
 
-def create_controlled_const_profile(prosumer, input_columns, result_columns, data_source, period = 0, level=0, order=0,
+def create_controlled_const_profile(prosumer, input_columns, result_columns, data_source,
+                                    name=None,
+                                    in_service=True,
+                                    level=0,
+                                    order=0,
+                                    period=0,
                                     temp_fluid_map_idx=None,
                                     mdot_fluid_map_idx=None):
     const_controller_data = ConstProfileControllerData(
@@ -18,6 +23,8 @@ def create_controlled_const_profile(prosumer, input_columns, result_columns, dat
     const_profile = ConstProfileController(prosumer,
                                            const_object=const_controller_data,
                                            df_data=data_source,
+                                           name=name,
+                                           in_service=in_service,
                                            order=order,
                                            level=level,
                                            temp_fluid_map_idx=temp_fluid_map_idx,
