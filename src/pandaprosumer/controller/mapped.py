@@ -3,6 +3,7 @@ Module containing the MappedController class.
 """
 
 import numpy as np
+import pandaprosumer.create
 import pandas as pd
 import logging as pplog
 
@@ -42,11 +43,27 @@ class MappedController(Controller):
                          drop_same_existing_ctrl, True, overwrite,
                          matching_params, **kwargs)
 
+        if getattr(container, "check_order", False):
+            if isinstance(order, list):
+                if len(order) == 1:
+                    order = order[0]
+                else:
+                    raise ValueError("order must be an integer, or the check should be set to False.")
+            self.order = int(order)
+
+            if isinstance(level, list):
+                if len(level) == 1:
+                    level = level[0]
+                else:
+                    raise ValueError("order must be an integer, or the check should be set to False.")
+            self.level = int(level)
+
         self.matching_params = dict() if matching_params is None else matching_params
         self.obj = basic_prosumer_object
         self.has_elements = hasattr(self.obj, "element_index") or np.iterable(self.obj) and hasattr(self.obj[0], "element_index")
         self._nb_elements = len(self.obj) if self.has_elements and np.iterable(self.obj) else 1
         self.has_period = False
+        self.in_service = in_service
 
         if np.iterable(self.obj):
             self.input_columns = [name for obj in self.obj for name in obj.input_columns]  # [obj.input_columns for obj in self.obj]
@@ -71,7 +88,51 @@ class MappedController(Controller):
             self.result_columns = self.obj.result_columns
             self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
             self.step_results = np.full([self._nb_elements, len(self.result_columns)], np.nan)
+
             if hasattr(self.obj, "period_index") and self.obj.period_index is not None:
+                if not hasattr(container, "period"):
+                    ds = container.controller.object.at[0].df_data
+                    if ds is None or ds.df is None:
+                        raise ValueError(
+                            "No period specified and the first controller doesn't have a data source. Please provide a period.")
+
+                    # Try to detect a datetime column to use as time index
+                    datetime_cols = [col for col in ds.df.columns if
+                                     pd.api.types.is_datetime64_any_dtype(ds.df[col])]
+                    if not datetime_cols:
+                        raise ValueError("No datetime column found in the data source to infer the period.")
+
+                    time_col = datetime_cols[0]
+                    time_series = ds.df[time_col].sort_values()
+
+                    start = time_series.iloc[0]
+                    end = time_series.iloc[-1]
+
+                    try:
+                        inferred_freq = pd.infer_freq(time_series.astype("datetime64[ns]"))
+                    except Exception as e:
+                        inferred_freq = None
+
+                    if inferred_freq is None:
+                        # Fallback: compute difference between first two timestamps
+                        if len(time_series) < 2:
+                            raise ValueError("Not enough timestamps to infer frequency.")
+                        step = time_series.iloc[1] - time_series.iloc[0]
+                    else:
+                        step = pd.Timedelta(inferred_freq)
+                    resolution_s = int(step.total_seconds())
+                    dur = pd.date_range(start, end, freq='%ss' % 3600, tz='utc')
+                    container.controller.object.at[0].df_data.df.index = dur
+                    # Create the period in the container
+                    pandaprosumer.create.create_period(
+                        container,
+                        resolution_s=resolution_s,
+                        start=str(start),
+                        end=str(end),
+                        timezone='utc',
+                        name='default'
+                    )
+
                 self.has_period = True
                 self.period_index = self.obj.period_index
                 self.start = container.period.at[self.obj.period_index, 'start']
@@ -102,6 +163,9 @@ class MappedController(Controller):
             Check if controller already was applied
         """
         return self.applied
+
+    def is_supervisor(self):
+        return False
     
     def level_reset(self, container):
         """
@@ -192,9 +256,11 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        return [prosumer.controller.loc[item.responder]["object"] for item in
-                prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                [["object", "responder"]].itertuples()]
+        responders = [prosumer.controller.loc[item.responder]["object"] for item in
+                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+                      [["object", "responder"]].itertuples()]
+        return [responder for responder in responders if not responder.is_supervisor()]
+
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
@@ -344,6 +410,7 @@ class MappedController(Controller):
         super().restore_init_state(container)
 
     def initialize_control(self, container):
+        if getattr(container, "check_order", False): self.check_levels(container)
         super().initialize_control(container)
         
     def finalize_step(self, container, time):
@@ -402,6 +469,7 @@ class MappedController(Controller):
         # Execute all the mappings for which this controller is the initiator
         for row in self._get_mappings(container):
             if row.object.responder_net == container:
+                if container.check_order: self.check_mappings_orders(container)
                 row.object.map(self, container.controller.loc[row.responder].object)
             else:
                 row.object.map(self, row.responder)
@@ -410,3 +478,44 @@ class MappedController(Controller):
         # self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)
         # self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
         #                                   FluidMixMapping.MASS_FLOW_KEY: np.nan}
+
+    def check_levels(self, container):
+        """
+        Check that all controllers in the prosumer have the same level, except for controllers of type
+        ConstProfile (which are allowed to be executed first).
+
+        Raises:
+            ValueError: If there is more than one level among controllers.
+        """
+        levels = []
+        # model = [ConstProfileController]
+        for _, ctrl_row in container.controller.iterrows():
+            ctrl = ctrl_row.object
+            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor():
+                levels.append(ctrl.level)
+        if levels and not all(l == levels[0] for l in levels):
+            raise ValueError(
+                f"Level error: Not all controllers have the same level. "
+                f"Found levels: {set(levels)}."
+            )
+
+
+    def check_mappings_orders(self,container):
+            """
+            For each initiator in FluidMixMappings, check that the mapping orders are unique and form
+            a consecutive sequence of integers starting from 0.
+
+            Raises:
+                ValueError: If the order numbers for any initiator are not consecutive.
+            """
+            filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
+            grouped = filtered_mapping.groupby("initiator")
+            for initiator, group in grouped:
+                initiator_name = container.controller.iloc[initiator].object.name
+                sorted_orders = sorted(group["order"].tolist())
+                expected_orders = list(range(len(sorted_orders)))
+                if sorted_orders != expected_orders:
+                    raise ValueError(
+                        f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
+                        f"are not consecutive integers starting at 0 (expected: {expected_orders})."
+                    )

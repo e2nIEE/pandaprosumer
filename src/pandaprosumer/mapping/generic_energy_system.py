@@ -34,6 +34,10 @@ class GenericEnergySystemMapping(GenericMapping):
     def __str__(self):
         return "GenericEnergySystemMapping"
 
+    @property
+    def name(self):
+        return "GenericEnergySystemMapping"
+
     def _validate(self):
         """
         Validates the generic mapping.

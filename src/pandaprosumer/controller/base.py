@@ -30,8 +30,7 @@ class BasicProsumerController(MappedController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         return "basic_controller"
 
     def __init__(self, container, basic_prosumer_object, order=0, level=0, in_service=True, index=None,
@@ -218,3 +217,6 @@ class BasicProsumerController(MappedController):
         treturn_res_c = np.sum(mdot_tab_kg_per_s * treturn_tab_c) / mdot_kg_per_s if abs(mdot_kg_per_s) > 1e-8 else tfeed_res_c
 
         return tfeed_res_c, treturn_res_c, mdot_tab_kg_per_s
+
+    def is_supervisor(self):
+        return False

@@ -6,10 +6,9 @@ from pandaprosumer.controller.base import BasicProsumerController
 class ChillerController(BasicProsumerController):
     """Definition of the Class for the Controller"""
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         """Name of the chiller"""
-        return "sn_chiller"
+        return "sn_chiller_controller"
 
     def __init__(self, prosumer, sn_chiller_object, order, level, data_source=None, in_service=True, index=None,
                  name=None, **kwargs):
@@ -89,6 +88,10 @@ class ChillerController(BasicProsumerController):
 
 
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         # @tecnalia: this is where you have to put the calculation of the time series dependent values in
         # try:  # why try except here? --> because there was the

@@ -12,3 +12,4 @@ and are used to implement the physical model of the elements and allow to create
 
     control/basic
     control/const_profile
+    control/supervisor

@@ -4,7 +4,7 @@ from tests.data_sources.define_period import *
 
 
 def create_prosumer_prod(hp_level):
-    prosumer = create_empty_prosumer_container(name='prosumer_prod')
+    prosumer = create_empty_prosumer_container(name='prosumer_prod',check_order=False)
     period, data_source = define_and_get_period_and_data_source(prosumer)
 
     cp_input_columns = ["Tin,evap"]
@@ -16,7 +16,7 @@ def create_prosumer_prod(hp_level):
                  'max_p_comp_kw': 1000e3}
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                        period, data_source, 0)
+                                                        data_source, period, 0)
 
     hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=hp_level, **hp_params)
 
@@ -31,7 +31,7 @@ def create_prosumer_prod(hp_level):
 
 
 def create_prosumer_dmd_hx(level):
-    prosumer = create_empty_prosumer_container()
+    prosumer = create_empty_prosumer_container(check_order=False)
     period, data_source = define_and_get_period_and_data_source(prosumer)
 
     cp_input_columns = ["demand_1"]  # demand_4 is 10 times lower than demand_1, doesn't work with demand_1 ?
@@ -47,7 +47,7 @@ def create_prosumer_dmd_hx(level):
                  't_out_set_c': 20}
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                        period, data_source, 0)
+                                                        data_source, period, 0)
 
     hx_controller_index = create_controlled_heat_exchanger(prosumer, period=period,  level=level, order=0, **hx_params)
     hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=level, order=1, **hd_params)

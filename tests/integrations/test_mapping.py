@@ -1,11 +1,12 @@
 import pytest
-
+import re
 from pandaprosumer.mapping import GenericMapping
 from tests.integrations.base_controller import BaseControllerData
 from pandaprosumer import *
 from tests.data_sources.define_period import define_and_get_period_and_data_source
 
-def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, **kwargs):
+
+def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, name = "", **kwargs):
     dummy_controller_data = BaseControllerData(
         input_columns=input_columns,
         result_columns=result_columns
@@ -13,7 +14,8 @@ def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, ord
     BasicProsumerController(prosumer,
                             dummy_controller_data,
                             order=order,
-                            level=level)
+                            level=level,
+                            name = name)
     return prosumer.controller.index[-1]
 
 
@@ -136,7 +138,7 @@ class TestMapping:
         """
         Check that the output of a controller can be successfully mapped to the input of another controller
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -164,7 +166,7 @@ class TestMapping:
         Default 'application_operation' of a Generic Mapping is 'add'
         Which means that mapping 2 outputs to the same input will result in summing the outputs
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order = False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller1_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -204,7 +206,7 @@ class TestMapping:
         """
         Check that the output of a controller can be successfully mapped to the input of 2 downstream controllers
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -258,5 +260,60 @@ class TestMapping:
                                  order=0)
 
         assert initiator_controller._get_mappings(prosumer)[0].object == mapping
+
+    def test_check_controllers_orders(self):
+        prosumer = create_empty_prosumer_container()
+        period, data_source = define_and_get_period_and_data_source(prosumer)
+
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'],level=0,order=0)
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [],level=0,order=0)
+
+        initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
+        responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
+
+        first_mapping = GenericMapping(container=prosumer,
+                                       initiator_id=initiator_controller_index,
+                                       initiator_column="ctrl_out",
+                                       responder_id=responder_controller_index,
+                                       responder_column="ctrl_in",
+                                       order=0)
+
+        second_mapping = GenericMapping(container=prosumer,
+                                        initiator_id=initiator_controller_index,
+                                        initiator_column="ctrl_out2",
+                                        responder_id=responder_controller_index,
+                                        responder_column="ctrl_in",
+                                        order=1)
+
+        with pytest.raises(ValueError, match=re.escape("Controller order error: Initiator '' (order: 0) must be executed before responder '' (order: 0).")):
+            self._map(prosumer, initiator_controller)
+
+    def test_check_levels(self):
+        prosumer = create_empty_prosumer_container()
+        period, data_source = define_and_get_period_and_data_source(prosumer)
+
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0,name = 'test2')
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=1, order=0,name = 'test1')
+
+        initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
+        responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
+
+        first_mapping = GenericMapping(container=prosumer,
+                                       initiator_id=initiator_controller_index,
+                                       initiator_column="ctrl_out",
+                                       responder_id=responder_controller_index,
+                                       responder_column="ctrl_in",
+                                       order=0)
+
+        second_mapping = GenericMapping(container=prosumer,
+                                        initiator_id=initiator_controller_index,
+                                        initiator_column="ctrl_out2",
+                                        responder_id=responder_controller_index,
+                                        responder_column="ctrl_in",
+                                        order=1)
+
+        with pytest.raises(ValueError, match=re.escape(
+                "Level error: Not all controllers have the same level. Found levels: {0, 1}.")):
+            initiator_controller.initialize_control(prosumer)
 
 # ToDO: Test merit order (both ways)

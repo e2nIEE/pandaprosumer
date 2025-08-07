@@ -27,8 +27,7 @@ class HeatDemandController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         return "heat_demand_controller"
 
     def __init__(self, prosumer, heat_demand_object, order=-1, level=-1,
@@ -166,6 +165,10 @@ class HeatDemandController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step

@@ -38,7 +38,7 @@ class Test1HeatPump1HeatDemandMapping:
 
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, level=0, order=0)
+                                                            data_source, period, level=0, order=0)
         hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period=period,**hp_params)
         hd_controller_index = create_controlled_heat_demand(prosumer, level = 1,order = 1,period = period, **hd_params)
 

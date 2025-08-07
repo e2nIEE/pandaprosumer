@@ -238,9 +238,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "stratified_heat_storage"
+    def name_class(self):
+        return "stratified_heat_storage_controller"
 
     def __init__(self, prosumer, stratified_heat_storage_object, order, level, init_layer_temps_c=None, plot=False,
                  bypass=True, in_service=True, index=None, name=None, **kwargs):
@@ -533,6 +532,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
