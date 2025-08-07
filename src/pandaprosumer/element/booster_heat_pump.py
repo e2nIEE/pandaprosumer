@@ -13,6 +13,6 @@ class BoosterHeatPumpElementData:
     name: str = "booster_heat_pump"
     input: List[tuple] = field(default_factory=lambda: [
         ('name', dtype(object)),
-        ('hp_type', 'str'),
+        ('bhp_type', 'str'),
         ('in_service', bool)])
     
