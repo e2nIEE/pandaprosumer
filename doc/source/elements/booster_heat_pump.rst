@@ -48,7 +48,7 @@ Input Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "t_amb_k", "Ambient temperature that must be provided if using heating curves", "K"
+    "t_amb_k", "Ambient temperature that must be provided if using the heating curves", "K"
     "t_source_k", "Source temperature that must be provided", "K"
     "t_sink_k", "Sink temperature that is optional but must be provided if the user doesn't want to use built-in heating curves", "K"
     "mode", "Operational mode of the Booster heat pump", "N/A"
