@@ -8,8 +8,7 @@ class FluidMixEnergySystemMapping(FluidMixMapping):
     Fluid Mix mapping between controllers in different networks/producers.
     """
 
-    def __init__(self, container=None, initiator_id=None, responder_net=None, responder_id=None,
-                 order=None, application_operation="add", weights=None, no_chain=True, index=None):
+    def __init__(self, container, initiator_id, responder_net, responder_id, order=0, no_chain=True, index=None):
         """
         Initializes the GenericWiseMapping.
 
@@ -17,12 +16,9 @@ class FluidMixEnergySystemMapping(FluidMixMapping):
         :param initiator_id: The initiating controller
         :param responder_id: The responding controller
         :param order: The order of mapping application
-        :param application_operation: The operation to apply (default: "add")
-        :param weights: Weights for the mapping
         :param index: The index of the mapping
         """
-        super().__init__(container, initiator_id, responder_id,
-                         order, application_operation, weights, no_chain, index)
+        super().__init__(container, initiator_id, responder_id, order, no_chain, index)
 
         self.responder_net = responder_net
 

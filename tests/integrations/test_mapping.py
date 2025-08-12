@@ -316,4 +316,32 @@ class TestMapping:
                 "Level error: Not all controllers have the same level. Found levels: {0, 1}.")):
             initiator_controller.initialize_control(prosumer)
 
+    def test_conversion_function(self):
+        """
+        Check that the output of a controller can be successfully mapped to the input of another controller
+        """
+        prosumer = create_empty_prosumer_container(check_order=False)
+        period, data_source = define_and_get_period_and_data_source(prosumer)
+
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [])
+
+        initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
+        responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
+
+        GenericMapping(container=prosumer,
+                       initiator_id=initiator_controller_index,
+                       initiator_column="ctrl_out",
+                       responder_id=responder_controller_index,
+                       responder_column="ctrl_in",
+                       order=0,
+                       conversion_function=lambda x: x * 1000 + 273.15)
+
+        mapped_values = [10, 2]
+        initiator_controller.step_results = np.array([mapped_values])
+
+        self._map(prosumer, initiator_controller)
+
+        assert responder_controller.inputs[0][0] == mapped_values[0] * 1000 + 273.15
+
 # ToDO: Test merit order (both ways)

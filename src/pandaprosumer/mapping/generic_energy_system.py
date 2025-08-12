@@ -10,9 +10,8 @@ class GenericEnergySystemMapping(GenericMapping):
     Allows to map a variable to a responder controller in another container responder_net.
     """
 
-    def __init__(self, container=None, initiator_id=None, initiator_column=None,
-                 responder_net=None, responder_id=None, responder_column=None,
-                 order=None, application_operation="add", weights=None, no_chain=True, index=None):
+    def __init__(self, container, initiator_id, initiator_column, responder_net, responder_id, responder_column,
+                 order=0, application_operation="add", no_chain=True, conversion_function=None,  index=None):
         """
         Initializes the GenericWiseMapping.
 
@@ -22,12 +21,13 @@ class GenericEnergySystemMapping(GenericMapping):
         :param responder_id: The responding controller
         :param responder_column: The column in the responding controller
         :param order: The order of mapping application
-        :param application_operation: The operation to apply (default: "add")
-        :param weights: Weights for the mapping
+        :param application_operation: The operation to apply ("add" or "subtract" - default: "add")
+        :param no_chain: Boolean (default: True)
+        :param conversion_function: function to apply to the mapping results (default if None: identity function)
         :param index: The index of the mapping
         """
         super().__init__(container, initiator_id, initiator_column, responder_id, responder_column,
-                         order, application_operation, weights, no_chain, index)
+                         order, application_operation, no_chain, conversion_function, index)
 
         self.responder_net = responder_net
 
