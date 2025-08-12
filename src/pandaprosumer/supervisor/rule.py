@@ -115,6 +115,7 @@ class Rule:
             "value_if_false": self.value_if_false
         }
         #Todo : If the user modifies the prosumer (df), then modify the rule.
+        return index
 
 
     def evaluate(self, input):
