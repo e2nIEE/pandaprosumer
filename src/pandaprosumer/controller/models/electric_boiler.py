@@ -89,11 +89,11 @@ class ElectricBoilerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
-            self.obj.element_index[0]].in_service):
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
-            super().control_step(prosumer)
+
+        super().control_step(prosumer)
 
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
