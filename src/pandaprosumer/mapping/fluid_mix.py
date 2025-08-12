@@ -42,7 +42,6 @@ class FluidMixMapping(BaseMapping):
     def __str__(self):
         return "FluidMixMapping"
 
-
     @property
     def name(self):
         return "FluidMixMapping"
@@ -66,8 +65,7 @@ class FluidMixMapping(BaseMapping):
         # FixMe: Will break if the order are not 0, 1, 2, ...
         if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
 
-        order = int(self.initiator_net.mapping.at[self.index, 'order'])
-        initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[order]
+        initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[self.order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]
         initiator_mass_flow = initiator_mapped_results[self.MASS_FLOW_KEY]
 
