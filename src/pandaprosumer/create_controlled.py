@@ -11,11 +11,11 @@ def create_controlled_const_profile(prosumer,
                                     input_columns,
                                     result_columns,
                                     data_source,
-                                    name=None,
-                                    in_service=True,
+                                    period=0,
                                     level=0,
                                     order=0,
-                                    period=0,
+                                    name=None,
+                                    in_service=True,
                                     temp_fluid_map_idx=None,
                                     mdot_fluid_map_idx=None):
     const_controller_data = ConstProfileControllerData(
@@ -28,8 +28,8 @@ def create_controlled_const_profile(prosumer,
                                            df_data=data_source,
                                            name=name,
                                            in_service=in_service,
-                                           order=order,
                                            level=level,
+                                           order=order,
                                            temp_fluid_map_idx=temp_fluid_map_idx,
                                            mdot_fluid_map_idx=mdot_fluid_map_idx)
     return const_profile.index
@@ -39,7 +39,7 @@ def create_controlled_supervisor(prosumer,
                                  input_columns,
                                  period=0,
                                  level=0,
-                                 order= 0):
+                                 order=0):
     spdata = SupervisorData(
         input_columns=input_columns,
         result_columns = input_columns
