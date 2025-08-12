@@ -7,9 +7,13 @@ from pandapipes.timeseries.run_time_series import init_default_outputwriter as i
 from pandapower import pandapowerNet
 from pandapower.control import control_diagnostic
 from pandapower.timeseries.run_time_series import init_default_outputwriter as init_output_writer_pp
-from pandapower.timeseries.run_time_series import run_loop, get_recycle_settings, init_output_writer
-from pandaprosumer.energy_system.run_control_energy_system import prepare_run_ctrl, run_control
+from pandapower.timeseries.run_time_series import get_recycle_settings, init_output_writer
+
+from pandaprosumer.energy_system.control.run_control_energy_system import (prepare_run_ctrl, run_control,
+                                                                           print_progress, run_time_step)
 from pandaprosumer.run_time_series import time_series_initialization, time_series_finalization
+
+# from pandaprosumer.run_control import run_control, prepare_run_ctrl
 
 try:
     import pandaplan.core.pplog as logging
@@ -20,7 +24,24 @@ logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.WARNING)
 
 
-def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True):
+def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
+    """
+    runs the time series loop which calls pp.runpp (or another run function) in each iteration
+
+    Parameters
+    ----------
+    net - pandapower net
+    ts_variables - settings for time series
+
+    """
+    for i, time_step in enumerate(ts_variables["time_steps"]):
+        print_progress(i, time_step, ts_variables["time_steps"], ts_variables["verbose"], ts_variables=ts_variables, **kwargs)
+        if "transient" in kwargs:
+            kwargs["simulation_time_step"] = i
+        run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
+
+
+def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True, **kwargs):
     start = energy_system.period.at[period_index, 'start']
     end = energy_system.period.at[period_index, 'end']
     resol = int(energy_system.period.at[period_index, 'resolution_s'])
@@ -31,16 +52,14 @@ def run_timeseries(energy_system, period_index, continue_on_divergence=False, ve
 
     for net_name in energy_system['nets'].keys():
         control_diagnostic(energy_system['nets'][net_name])
-    #for pros_name in energy_system['prosumer'].keys():
+    # for pros_name in energy_system['prosumer'].keys():
     #    control_diagnostic_pandaprosumer(energy_system['prosumer'][pros_name], start, end, resol)
     time_series_initialization(ts_variables['controller_order'])
-    run_loop(energy_system, ts_variables, output_writer_fct=_call_output_writer,
-             run_control_fct=run_control)
+    run_loop(energy_system, ts_variables, output_writer_fct=_call_output_writer, run_control_fct=run_control, **kwargs)
     time_series_finalization(ts_variables['controller_order'])
 
 
-def init_time_series(energy_system, time_steps, continue_on_divergence=False, verbose=True,
-                     **kwargs):
+def init_time_series(energy_system, time_steps, continue_on_divergence=False, verbose=True, **kwargs):
     """
     Initializes the time series calculation.
     Besides it creates the dict ts_variables, which includes necessary variables for the time series / control loop.

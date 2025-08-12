@@ -14,7 +14,6 @@ from pandapower.control.run_control import control_initialization, \
 from pandaprosumer.run_control import prepare_run_ctrl as prepare_run_ctrl_ppros
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 
-
 try:
     import pandaplan.core.pplog as logging
 except ImportError:
