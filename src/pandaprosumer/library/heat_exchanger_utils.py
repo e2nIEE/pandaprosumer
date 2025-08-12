@@ -1,6 +1,7 @@
-from pandaprosumer.constants import HeatExchangerControl
 import numpy as np
 import logging
+
+from pandaprosumer.constants import HeatExchangerControl
 
 logger = logging.getLogger(__name__)
 

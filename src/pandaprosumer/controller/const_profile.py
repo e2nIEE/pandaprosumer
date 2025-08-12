@@ -3,6 +3,7 @@ Module containing the ConstProfileController class.
 """
 
 from pandapower.timeseries.data_sources.frame_data import DFData
+
 from .mapped import MappedController
 from pandaprosumer.mapping import FluidMixMapping
 

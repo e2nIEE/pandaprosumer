@@ -1,5 +1,3 @@
-import numpy as np
-
 from .fluid_mix import FluidMixMapping
 
 

@@ -3,17 +3,16 @@
 # Use of this source code is governed by a BSD-style license that can be found in the LICENSE file.
 
 import copy
-
 import pandas as pd
 from numpy import dtype
 import numpy as np
+
 from pandapower import pandapowerNet
 from pandapower.auxiliary import ADict
-
 from pandapipes import __version__
 from pandapipes import pandapipesNet
 
-from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
+from pandaprosumer.pandaprosumer_container import pandaprosumerContainer
 
 try:
     import pandaplan.core.pplog as logging
@@ -105,7 +104,7 @@ def get_default_energy_system_structure():
         "comp_list": [],
         "version": __version__,
         "nets": dict(),
-        "prosumer": dict(),
+        "prosumer": dict(),  # ToDo: Change to plural for consistency
         "controller": [('object', dtype(object)),
                        ('in_service', "bool"),
                        ('order', dtype(object)),

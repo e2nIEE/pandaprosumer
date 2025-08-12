@@ -3,10 +3,8 @@ Module containing the BasicProsumerController class.
 """
 
 import numpy as np
-import pandas as pd
-from pandapower.control.basic_controller import BasicCtrl
-from pandapower.control.util.auxiliary import drop_same_type_existing_controllers, log_same_type_existing_controllers
 import logging as pplog
+
 from .mapped import MappedController
 from ..mapping import FluidMixMapping
 
@@ -17,17 +15,17 @@ class BasicProsumerController(MappedController):
     """
     Base class for all prosumer controllers that can be part of a 'get_t_m' chain.
 
-    :param container: The prosumer object
-    :param basic_prosumer_object: The basic prosumer object
-    :param order: The order of the controller
-    :param level: The level of the controller
-    :param in_service: The in-service status of the controller
-    :param index: The index of the controller
-    :param drop_same_existing_ctrl: Whether to drop existing controllers of the same type
-    :param overwrite: Whether to overwrite existing controllers
-    :param name: The name of the controller
-    :param matching_params: Matching parameters for the controller
-    :param kwargs: Additional keyword arguments
+    :param container: The prosumer object.
+    :param basic_prosumer_object: The basic prosumer object.
+    :param order: The order of the controller.
+    :param level: The level of the controller.
+    :param in_service: The in-service status of the controller.
+    :param index: The index of the controller.
+    :param drop_same_existing_ctrl: Whether to drop existing controllers of the same type.
+    :param overwrite: Whether to overwrite existing controllers.
+    :param name: The name of the controller.
+    :param matching_params: Matching parameters for the controller.
+    :param kwargs: Additional keyword arguments.
     """
 
     def name_class(self):
@@ -56,10 +54,10 @@ class BasicProsumerController(MappedController):
 
         Get the expected temperatures and mass flow of the responders (mapped downstream controllers)
 
-        Provide the maximal feed temperature
+        Provide the maximal feed temperature.
         Calculate the mass flows to feed to the other responders to provide the same power
-        (assuming that the return temperature is not changed!)
-        Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
+        (assuming that the return temperature is not changed!).
+        Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows.
 
 
         :param prosumer: The prosumer object
@@ -87,15 +85,15 @@ class BasicProsumerController(MappedController):
         Calculates the feed temperature and mass flow to deliver
         as well as the expected return temperature in °C and kg/s.
 
-        Get the expected temperatures and mass flow of the responders (mapped downstream controllers)
+        Get the expected temperatures and mass flow of the responders (mapped downstream controllers).
 
-        Provide the maximal feed temperature
+        Provide the maximal feed temperature.
         Calculate the mass flows to feed to the other responders to provide the same power
-        (assuming that the return temperature is not changed!)
-        Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows
+        (assuming that the return temperature is not changed!).
+        Calculate the return temperature as the average of the expected return temperatures weighted by the mass flows.
 
-        :param prosumer: The prosumer object
-        :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
+        :param prosumer: The prosumer object.
+        :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float]).
         """
         # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
         # m = pd.Series(0, index=self.element_index)
@@ -132,8 +130,8 @@ class BasicProsumerController(MappedController):
 
     def _t_m_to_receive_init(self, prosumer):
         """
-        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s
-        This superclass method implement a default behavior that should normally be overridden in the subclasses
+        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s.
+        This superclass method implements a default behavior that should normally be overridden in the subclasses.
 
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
@@ -144,11 +142,11 @@ class BasicProsumerController(MappedController):
 
     def t_m_to_receive(self, prosumer):
         """
-        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s
+        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s.
         Call the function _t_m_to_receive_init that should normally be overridden in the subclasses, to
         get the expected temperatures and mass flow of the controller
         and calculate the required mass flow and feed temperature that should still be provided
-        given the values already mapped in the input to provide the expected values
+        given the values already mapped in the input to provide the expected values.
 
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
@@ -181,7 +179,7 @@ class BasicProsumerController(MappedController):
         Calculates the mass flow to deliver as well as the expected return temperature in °C and kg/s.
 
         Used for the element directly connected to a District Heating Network (Heat Exchanger, Heat Pump)
-        to assess what would be the required mass flow through the substation for a given feed temperature
+        to assess what would be the required mass flow through the substation for a given feed temperature.
 
         For a given feed temperature in °C, calculate the required feed mass flow and the expected return temperature
         if this feed temperature is provided.

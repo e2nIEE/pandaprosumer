@@ -1,6 +1,6 @@
 import operator
-from pandapower.auxiliary import get_free_id
 import pandas as pd
+from pandapower.auxiliary import get_free_id
 
 
 class Rule:

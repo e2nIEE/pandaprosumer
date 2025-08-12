@@ -2,13 +2,13 @@
 Module containing the Supervisor class.
 """
 
-from pandaprosumer.controller.mapped import MappedController
 from dataclasses import dataclass
 from typing import List
+import numpy as np
 
+from pandaprosumer.controller.mapped import MappedController
 from .combining_rule import CombiningRules
 from .rule import *
-import numpy as np
 
 try:
     import pandaplan.core.pplog as logging
