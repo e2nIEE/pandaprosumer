@@ -38,7 +38,8 @@ class ConstProfileController(MappedController):
         return "const_profile_control"
 
     def __init__(self, prosumer, const_object, df_data: DFData, order=-1, level=-1, in_service=True, index=None,
-                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None, temp_fluid_map_idx = None, mdot_fluid_map_idx= None, **kwargs):
+                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None,
+                 temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs):
         """
         Initializes the ConstProfileController.
         """
@@ -47,8 +48,6 @@ class ConstProfileController(MappedController):
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
 
         self.has_elements = False
-
-
         self.temp_fluid_map_idx = temp_fluid_map_idx
         self.mdot_fluid_map_idx = mdot_fluid_map_idx
 
@@ -70,5 +69,4 @@ class ConstProfileController(MappedController):
         else:
             self.finalize(prosumer, results)
 
-        self.applied = True
         self.applied = True

@@ -178,7 +178,7 @@ class HeatExchangerController(BasicProsumerController):
         max_t_1_out_c = t_1_in_c - min_delta_t_1_c
         min_x = 1 - (max_t_1_out_c - t_2_in_c) / delta_t_hot_c
 
-        min_a = -np.log(1 - min_x) / min_x
+        min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1
 
         if a < min_a:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
@@ -287,7 +287,13 @@ class HeatExchangerController(BasicProsumerController):
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
         else:
-            # FixMe: What to do in these cases ?
+            # FixMe: case where t_out_2_required_c == t_in_2_required_c
+            t_out_2_required_c_init = t_out_2_required_c
+            if t_1_in_c < t_out_2_required_c:
+                t_out_2_required_c = t_1_in_c - min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
+            if t_out_2_required_c < t_in_2_required_c:
+                t_in_2_required_c += t_out_2_required_c - t_out_2_required_c_init
+
             assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
             assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
@@ -312,6 +318,7 @@ class HeatExchangerController(BasicProsumerController):
                 #     mdot_1_kg_per_s = m_1_kg_per_s_in
 
                 if not np.isnan(self._mdot_1_provided_kg_per_s):
+                    assert self._mdot_1_provided_kg_per_s >= 0, f"Heat Exchanger {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
                     # If the primary is fed with a fixed mass flow (not free air)
                     if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is higher than the one required by the Heat Exchanger,
