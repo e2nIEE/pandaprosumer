@@ -25,7 +25,6 @@ def create_controlled_const_profile(prosumer, input_columns, result_columns, dat
     return const_profile.index
 
 
-
 def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, order= 0):
     spdata = SupervisorData(
         input_columns=input_columns,
@@ -38,7 +37,6 @@ def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, o
                             order=order)
 
     return supervisor.index
-
 
 
 def create_controlled_heat_pump(prosumer,
@@ -385,8 +383,7 @@ def create_controlled_heat_exchanger(prosumer,
     heat_exchanger_controller_data = HeatExchangerControllerData(
         element_name='heat_exchanger',
         element_index=[heat_exchanger_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     heat_exchanger_controller = HeatExchangerController(prosumer,
                                                         heat_exchanger_controller_data,
@@ -444,8 +441,7 @@ def create_controlled_electric_boiler(prosumer,
     electric_boiler_controller_data = ElectricBoilerControllerData(
         element_name='electric_boiler',
         element_index=[electric_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     electric_boiler_controller = ElectricBoilerController(prosumer,
                                                           electric_boiler_controller_data,
@@ -507,8 +503,7 @@ def create_controlled_gas_boiler(prosumer,
     gas_boiler_controller_data = GasBoilerControllerData(
         element_name='gas_boiler',
         element_index=[gas_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     gas_boiler_controller = GasBoilerController(prosumer,
                                                 gas_boiler_controller_data,
@@ -773,8 +768,7 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_c
     chiller_controller_data = ChillerControllerData(
         element_name='sn_chiller',
         element_index=[chiller_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
 
     chiller_controller = ChillerController(prosumer,
@@ -836,8 +830,7 @@ def create_controlled_heat_storage(prosumer,
     heat_storage_controller_data = HeatStorageControllerData(
         element_name='heat_storage',
         element_index=[heat_storage_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     hs = HeatStorageController(
         prosumer,
