@@ -3,11 +3,7 @@ Module containing the ElectricBoilerController class.
 """
 
 import numpy as np
-from math import log
-import pandas as pd
-from numba import njit
 
-from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
@@ -68,7 +64,6 @@ class ElectricBoilerController(BasicProsumerController):
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-
 
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 

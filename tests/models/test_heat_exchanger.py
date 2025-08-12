@@ -181,8 +181,8 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        q_exchanged_kw = .4 * 4.186 * (60-45)
-        mdot_1_kg_per_s = q_exchanged_kw / (4.186 * (90-75))
+        q_exchanged_kw = .4 * 4.186 * (60 - 45)
+        mdot_1_kg_per_s = q_exchanged_kw / (4.186 * (90 - 75))
 
         expected = [q_exchanged_kw, mdot_1_kg_per_s, 90., 75., .4, 45., 60.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .006)

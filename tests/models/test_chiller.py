@@ -19,12 +19,14 @@ def _default_argument():
         'in_service': True
     }
 
+
 def _default_period(prosumer):
     return create_period(prosumer, 3600,
-                               name="foo",
-                               start='2020-01-01 00:00:00',
-                               end = '2020-01-01 01:59:59',
-                               timezone="utc")
+                         name="foo",
+                         start='2020-01-01 00:00:00',
+                         end='2020-01-01 01:59:59',
+                         timezone="utc")
+
 
 class TestChiller:
     """
@@ -183,7 +185,6 @@ class TestChiller:
         # Check that the results match expected values
         assert chiller_controller.step_results == pytest.approx(np.array([expected_results]), rel=1e-2)
 
-
     def test_controller_run_control_invalid_source_temperature(self):
         """
         Test the Chiller controller with source temperature too low to operate.
@@ -226,12 +227,3 @@ class TestChiller:
         expected_outputs = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 285.15, 303.15, 0.0, 0.0, 0.0]])
 
         assert np.allclose(chiller.step_results, expected_outputs, rtol=1e-3)
-
-
-
-
-
-
-
-
-

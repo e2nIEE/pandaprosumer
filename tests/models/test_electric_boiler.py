@@ -1,15 +1,19 @@
 import pytest
 from pandaprosumer import *
 
+
 def _default_argument():
     return {'max_p_kw': 100}
 
+
 def _default_period(prosumer):
     return create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
+                         name="foo",
+                         start="2020-01-01 00:00:00",
+                         end="2020-01-01 11:59:59",
+                         timezone="utc")
+
+
 class TestElectricBoiler:
     """
     Tests the functionalities of a Electric Boiler element and controller
@@ -22,7 +26,7 @@ class TestElectricBoiler:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        create_electric_boiler(prosumer,**_default_argument())
+        create_electric_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
         expected_columns = ["name", "max_p_kw", "efficiency_percent", "in_service"]
@@ -59,8 +63,8 @@ class TestElectricBoiler:
         """
         prosumer = create_empty_prosumer_container()
         create_controlled_electric_boiler(prosumer,
-                                          order = 0,
-                                          period = _default_period(prosumer),
+                                          order=0,
+                                          period=_default_period(prosumer),
                                           **_default_argument())
 
         assert hasattr(prosumer, "controller")
@@ -73,7 +77,7 @@ class TestElectricBoiler:
         elb_controller_idx = create_controlled_electric_boiler(prosumer,
 
                                                                order=0,
-                                                                period= _default_period(prosumer),
+                                                               period=_default_period(prosumer),
                                                                **_default_argument())
         print(elb_controller_idx)
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
@@ -90,7 +94,7 @@ class TestElectricBoiler:
         """
         prosumer = create_empty_prosumer_container()
         elb_controller_idx = create_controlled_electric_boiler(prosumer,
-                                                               order = 0,
+                                                               order=0,
                                                                period=_default_period(prosumer),
                                                                **_default_argument())
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
@@ -108,7 +112,7 @@ class TestElectricBoiler:
         Expect the demand to be delivered.
         """
         params = {'max_p_kw': 500,
-                  'order' :0}
+                  'order': 0}
         prosumer = create_empty_prosumer_container()
         elb_controller_idx = create_controlled_electric_boiler(prosumer,
                                                                period=_default_period(prosumer),
@@ -118,7 +122,7 @@ class TestElectricBoiler:
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
 
-        expected = [1.5*4.186*(80-20), 1.5, 20, 80, 1.5*4.186*(80-20)]
+        expected = [1.5 * 4.186 * (80 - 20), 1.5, 20, 80, 1.5 * 4.186 * (80 - 20)]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                               FluidMixMapping.MASS_FLOW_KEY: 1.5}]
@@ -140,7 +144,7 @@ class TestElectricBoiler:
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
 
-        t_expected_out_c = 20+250/(4*4.186)
+        t_expected_out_c = 20 + 250 / (4 * 4.186)
         expected = [250, 4, 20, t_expected_out_c, 500]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01),
@@ -156,19 +160,19 @@ class TestElectricBoiler:
                   'efficiency_percent': 50,
                   'order': 0}
         prosumer = create_empty_prosumer_container()
-        elb_controller_idx = create_controlled_electric_boiler(prosumer, period=_default_period(prosumer),
+        elb_controller_idx = create_controlled_electric_boiler(prosumer,
+                                                               period=_default_period(prosumer),
                                                                **params)
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         elb_controller.t_m_to_deliver = lambda x: (80, 20, [3, 2, 4])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
 
-        t_expected_out_c = 20+250/(9*4.186)
+        t_expected_out_c = 20 + 250 / (9 * 4.186)
         expected = [250, 9, 20, t_expected_out_c, 500]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
-        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01),
-                                                              FluidMixMapping.MASS_FLOW_KEY: 3},
-                                                             {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01),
-                                                              FluidMixMapping.MASS_FLOW_KEY: 2},
-                                                             {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01),
-                                                              FluidMixMapping.MASS_FLOW_KEY: 4}]
+        assert elb_controller.result_mass_flow_with_temp == [
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 3},
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 2},
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 4}
+        ]

@@ -4,9 +4,9 @@ Module containing the HeatPumpController class.
 
 import numpy as np
 from math import log
-import pandas as pd
 
-from pandapipes import create_fluid_from_lib, call_lib
+from pandapipes import call_lib
+
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
@@ -291,7 +291,6 @@ class HeatPumpController(BasicProsumerController):
                     t_bypass_c = t_evap_in_c
                     t_evap_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_evap_out_c * mdot_evap_kg_per_s) / self._mdot_evap_in_kg_per_s
                     mdot_evap_kg_per_s = self._mdot_evap_in_kg_per_s
-
 
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_cond_kg_per_s,

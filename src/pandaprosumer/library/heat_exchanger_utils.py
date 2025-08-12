@@ -4,6 +4,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 def solve_dichotomy(f, x_min, x_max, is_increasing=True):
     """
     Solve f(x)=0 by dichotomy in the interval [x_min, x_max].
@@ -31,6 +32,7 @@ def solve_dichotomy(f, x_min, x_max, is_increasing=True):
             x_max = x_mean
     return x_mean
 
+
 def calculate_temperature_difference(a, delta_t, is_cold=True):
     """
     Solve the equation with dichotomy to find the temperature difference.
@@ -42,7 +44,7 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
     :return: The temperature difference between the primary and secondary temperatures.
     """
     if is_cold:
-        dichotomy_fun = lambda x: a * x + np.log(1 - x) # if (1 - x) > 0 else float('inf')
+        dichotomy_fun = lambda x: a * x + np.log(1 - x)  # if (1 - x) > 0 else float('inf')
         if a > 1:
             # dichotomy_fun is strictly decreasing on [x_min, x_max], 0 < x < 1
             x_max = 1
@@ -55,7 +57,7 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
         x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max, is_increasing=False)
         return (1 - x_mean) * delta_t
     else:
-        dichotomy_fun = lambda x: a * x - np.log(1 + x)  if (1 + x) > 0 else float('inf')
+        dichotomy_fun = lambda x: a * x - np.log(1 + x) if (1 + x) > 0 else float('inf')
         if a > 1:
             # dichotomy_fun is strictly decreasing on [x_max, x_min], -1 < x < 0
             x_max = -1
@@ -122,7 +124,7 @@ def compute_temp(q_ratio, q_u_w, t_in_c, t_fluid_in_c, t_fluid_out_c,
     # elif a == 0:  # Note: Can go there with 'a' not defined if T_in_1 is nan
     #     mdot_kg_per_s = HeatExchangerControl.MIN_PRIMARY_MASS_FLOW_KG_PER_S  # 0.2 m3/h  FixMe: Why ?
     else:
-       mdot_kg_per_s = q_u_w / (cp_j_per_kgk * abs(t_in_c - t_out_c))
+        mdot_kg_per_s = q_u_w / (cp_j_per_kgk * abs(t_in_c - t_out_c))
 
     # self._a = a
 

@@ -14,7 +14,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-
 class ConstProfileController(MappedController):
     """
     Controller for constant profiles.
@@ -64,8 +63,8 @@ class ConstProfileController(MappedController):
 
         if self.temp_fluid_map_idx is not None and self.mdot_fluid_map_idx is not None:
             result_fluid_mix = [{FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_idx],
-                             FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_idx]}]
-            self.finalize(prosumer, results,result_fluid_mix)
+                                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_idx]}]
+            self.finalize(prosumer, results, result_fluid_mix)
         else:
             self.finalize(prosumer, results)
 

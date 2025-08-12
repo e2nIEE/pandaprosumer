@@ -29,4 +29,3 @@ class ChillerControllerData:
             "q_cond_kw",
         ]
     )
-

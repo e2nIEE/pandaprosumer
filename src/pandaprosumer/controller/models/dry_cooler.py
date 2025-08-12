@@ -41,6 +41,7 @@ def _solve_t_bc_c(t_wb_c, phi_air_out_percent):
     :param phi_air_out_percent: The relative humidity of the air in percent (0-100) at the output
     :return: The dry bulb temperature of the air after adiabatic pre-cooling
     """
+
     # Define the equation in terms of t_bc_c (the variable we are solving for)
     def equation(t_bc_c):
         return _get_wet_bulb_temperature(t_bc_c, phi_air_out_percent) - t_wb_c
@@ -70,6 +71,7 @@ def _adiabatic_pre_cooling(t_db_c, phi_air_in_percent, phi_air_out_percent=99):
     t_db_out_c = _solve_t_bc_c(t_wb_c, phi_air_out_percent)
 
     return t_db_out_c
+
 
 class DryCoolerController(BasicProsumerController):
     """
@@ -170,7 +172,7 @@ class DryCoolerController(BasicProsumerController):
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
         min_t_air_out_c = t_air_in_c + min_delta_t_air_c
         max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
-        if max_x<=-1:
+        if max_x <= -1:
             max_x = -0.999
         min_a = np.log(1 + max_x) / max_x
 

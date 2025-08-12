@@ -2,7 +2,7 @@ import pytest
 
 from pandaprosumer import HeatDemandControllerData
 from pandaprosumer.create import (create_empty_prosumer_container, create_period,
-create_ice_chp, create_booster_heat_pump, create_heat_storage, create_heat_demand)
+                                  create_ice_chp, create_booster_heat_pump, create_heat_storage, create_heat_demand)
 import pandas as pd
 import numpy as np
 from pandas.testing import assert_frame_equal
@@ -11,7 +11,8 @@ from pandaprosumer.controller.data_model import ConstProfileControllerData
 from pandaprosumer.controller.data_model.ice_chp import IceChpControllerData
 from pandaprosumer.controller.data_model import BoosterHeatPumpControllerData
 from pandaprosumer.controller import HeatStorageControllerData
-from pandaprosumer.controller import ConstProfileController, IceChpController, BoosterHeatPumpController, HeatDemandController, HeatStorageController
+from pandaprosumer.controller import ConstProfileController, IceChpController, BoosterHeatPumpController, \
+    HeatDemandController, HeatStorageController
 from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.run_time_series import run_timeseries
 
@@ -19,7 +20,6 @@ from pandaprosumer.run_time_series import run_timeseries
 class TestChpBhpStorageDemandMapping:
 
     def test_mapping(self):
-
         chp_size = 350
         chp_name = 'example_chp'
         altitude = 0
@@ -34,11 +34,11 @@ class TestChpBhpStorageDemandMapping:
         end = '2020-01-01 00:59:00'
         time_resolution = 15 * 60
 
-        demand_data= pd.DataFrame({'cycle': [1, 1, 1, 1],
-                      't_source_k': [278, 295, 295, 400],
-                      'demand': [100, 100, 500, 500],
-                      'mode': [1, 1, 1, 1],
-                      't_intake_k': [273, 273, 273, 273]})
+        demand_data = pd.DataFrame({'cycle': [1, 1, 1, 1],
+                                    't_source_k': [278, 295, 295, 400],
+                                    'demand': [100, 100, 500, 500],
+                                    'mode': [1, 1, 1, 1],
+                                    't_intake_k': [273, 273, 273, 273]})
 
         dur = pd.date_range(start, end, freq="15min", tz='utc')
         demand_data.index = dur
@@ -101,10 +101,10 @@ class TestChpBhpStorageDemandMapping:
                               level=0,
                               name='hs_ctrl')
         HeatDemandController(prosumer,
-                                   heat_demand_controller_data,
-                                   order=4,
-                                   level=0,
-                                   name='kassel_ctrl')
+                             heat_demand_controller_data,
+                             order=4,
+                             level=0,
+                             name='kassel_ctrl')
 
         GenericMapping(
             prosumer,
@@ -227,10 +227,9 @@ class TestChpBhpStorageDemandMapping:
         cop_floor = prosumer.time_series.loc[1].data_source.df.cop_floor
         cop_radiator = prosumer.time_series.loc[1].data_source.df.cop_radiator
 
-        assert ((cop_floor >= 1.0) | (cop_floor==0.0)).all()
-        assert ((cop_radiator >= 1.0) | (cop_radiator==0.0)).all()
+        assert ((cop_floor >= 1.0) | (cop_floor == 0.0)).all()
+        assert ((cop_radiator >= 1.0) | (cop_radiator == 0.0)).all()
 
         soc = prosumer.time_series.loc[2].data_source.df.soc
 
         assert ((1.0 >= soc) & (soc >= 0.0)).all()
-
