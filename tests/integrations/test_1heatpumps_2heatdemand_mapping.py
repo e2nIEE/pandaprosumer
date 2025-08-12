@@ -47,8 +47,6 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
         hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
 
-
-
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
                        initiator_column="t_evap_in_c",
