@@ -166,7 +166,7 @@ class MappedController(Controller):
 
     def is_supervisor(self):
         return False
-    
+
     def level_reset(self, container):
         """
         Resets the level for the controller.
@@ -243,7 +243,7 @@ class MappedController(Controller):
                            container.mapping[(container.mapping["initiator"] == self.index) &
                                              [r.no_chain == False for r in container.mapping.object]].sort_values("order")
                            [["object", "responder"]].itertuples()]
-        
+
         if remove_duplicate:
             return list(dict.fromkeys(list_responders))
         else:
@@ -260,7 +260,6 @@ class MappedController(Controller):
                       prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
                       [["object", "responder"]].itertuples()]
         return [responder for responder in responders if not responder.is_supervisor()]
-
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
@@ -346,7 +345,7 @@ class MappedController(Controller):
             if not initiator.is_converged(prosumer):
                 return False
         return True
-        
+
     def time_step(self, container, time):
         """
         Executes the time step for the controller.
@@ -402,7 +401,7 @@ class MappedController(Controller):
             return self.res
         else:
             return []
-        
+
     def repair_control(self, container):
         super().repair_control(container)
 
@@ -412,7 +411,7 @@ class MappedController(Controller):
     def initialize_control(self, container):
         if getattr(container, "check_order", False): self.check_levels(container)
         super().initialize_control(container)
-        
+
     def finalize_step(self, container, time):
         super().finalize_step(container, time)
 
@@ -440,7 +439,7 @@ class MappedController(Controller):
             mdot_res_tab_kg_per_s.append(mdot_delivered_responder_i_kg_per_s)
             mdot_still_to_delivered_kg_per_s -= mdot_delivered_responder_i_kg_per_s
         return mdot_res_tab_kg_per_s
-    
+
     def finalize(self, container, result, result_fluid_mix=None):
         """
         Function that should be called at the end of the control step of the controllers.
@@ -499,23 +498,22 @@ class MappedController(Controller):
                 f"Found levels: {set(levels)}."
             )
 
+    def check_mappings_orders(self, container):
+        """
+        For each initiator in FluidMixMappings, check that the mapping orders are unique and form
+        a consecutive sequence of integers starting from 0.
 
-    def check_mappings_orders(self,container):
-            """
-            For each initiator in FluidMixMappings, check that the mapping orders are unique and form
-            a consecutive sequence of integers starting from 0.
-
-            Raises:
-                ValueError: If the order numbers for any initiator are not consecutive.
-            """
-            filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
-            grouped = filtered_mapping.groupby("initiator")
-            for initiator, group in grouped:
-                initiator_name = container.controller.iloc[initiator].object.name
-                sorted_orders = sorted(group["order"].tolist())
-                expected_orders = list(range(len(sorted_orders)))
-                if sorted_orders != expected_orders:
-                    raise ValueError(
-                        f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
-                        f"are not consecutive integers starting at 0 (expected: {expected_orders})."
-                    )
+        Raises:
+            ValueError: If the order numbers for any initiator are not consecutive.
+        """
+        filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
+        grouped = filtered_mapping.groupby("initiator")
+        for initiator, group in grouped:
+            initiator_name = container.controller.iloc[initiator].object.name
+            sorted_orders = sorted(group["order"].tolist())
+            expected_orders = list(range(len(sorted_orders)))
+            if sorted_orders != expected_orders:
+                raise ValueError(
+                    f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
+                    f"are not consecutive integers starting at 0 (expected: {expected_orders})."
+                )

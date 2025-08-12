@@ -23,7 +23,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-
 class EnergySystem(ADict):
     """
         A 'EnergySyste,' is a frame for different pandapipes & pandapower nets, pandaprosumer and coupling controllers.
@@ -75,7 +74,7 @@ class EnergySystem(ADict):
         r += "\nThis energy system includes following prosumers:"
         for cat in self.prosumer:
             if isinstance(self['prosumer'][cat], pandaprosumerContainer):
-                r += "\n   - %s (%s pandaprosumer)" %(cat, 1)
+                r += "\n   - %s (%s pandaprosumer)" % (cat, 1)
             else:
                 r += "\n   - %s (%s prosumer)" % (cat, len(self['prosumer'][cat]))
 
@@ -114,6 +113,3 @@ def get_default_energy_system_structure():
                        ('initial_run', 'bool'),
                        ('recycle', 'bool')]}
     return default_energy_system_structure
-
-
-

@@ -3,10 +3,7 @@ Module containing the GasBoilerController class.
 """
 
 import numpy as np
-from math import log
-import pandas as pd
 
-from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
@@ -91,9 +88,9 @@ class GasBoilerController(BasicProsumerController):
         rerun = True
         while rerun:
             q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(prosumer,
-                                                                                                   mdot_required_kg_per_s,
-                                                                                                   t_out_required_c,
-                                                                                                   t_in_required_c)
+                                                                                                           mdot_required_kg_per_s,
+                                                                                                           t_out_required_c,
+                                                                                                           t_in_required_c)
 
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_delivered_kg_per_s,
@@ -116,7 +113,6 @@ class GasBoilerController(BasicProsumerController):
                     rerun = True
 
         assert q_kw >= 0, f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:

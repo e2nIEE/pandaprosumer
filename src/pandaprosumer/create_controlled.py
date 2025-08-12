@@ -1,9 +1,5 @@
-from pandaprosumer.controller.models.heat_pump import HeatPumpController
 from pandaprosumer.create import *
-from pandaprosumer.controller.models import *
-from pandaprosumer.controller.data_model import *
 from pandaprosumer.controller import *
-import numpy as np
 from pandaprosumer.supervisor import *
 
 
@@ -42,7 +38,7 @@ def create_controlled_supervisor(prosumer,
                                  order=0):
     spdata = SupervisorData(
         input_columns=input_columns,
-        result_columns = input_columns
+        result_columns=input_columns
     )
     supervisor = Supervisor(prosumer,
                             supervisor_object=spdata,
@@ -616,7 +612,8 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0,
+                                        period=0, **kwargs):
     """
                Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
 
@@ -647,32 +644,35 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
            """
     bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
+                                                        element_index=[bhp_index],
+                                                        period_index=period
+                                                        )
     bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name=name)
+                                    bhp_controller_data,
+                                    order=order,
+                                    level=level,
+                                    name=name)
 
     return bhp.index
 
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+
+def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0,
+                                               order=0, period=0, **kwargs):
     bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
     from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
+                                                        element_index=[bhp_index],
+                                                        period_index=period
+                                                        )
     from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
     bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name=name)
+                                    bhp_controller_data,
+                                    order=order,
+                                    level=level,
+                                    name=name)
 
     return bhp.index
+
 
 def create_controlled_ice_chp(prosumer,
                               size,
@@ -731,7 +731,7 @@ def create_controlled_ice_chp(prosumer,
     return ice_chp.index
 
 
-def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_cond=5.0,
+def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_cond=5.0,
                               pp_evap=5.0, plf_cc=0.9,
                               w_evap_pump=200.0, w_cond_pump=200.0,
                               eng_eff=1.0, n_ref="R410A",
@@ -803,7 +803,6 @@ def create_controlled_heat_storage(prosumer,
                                    init_soc=0.,
                                    period=0,
                                    **kwargs):
-
     """
     Creates a heat storage element in the prosumer and a heat storage controller.
 

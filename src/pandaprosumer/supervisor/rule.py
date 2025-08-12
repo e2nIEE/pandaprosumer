@@ -20,7 +20,8 @@ class Rule:
         "!=": operator.ne
     }
 
-    def __init__(self, controlled_columns, operator_str, threshold_value, controller, attr, new_value, value_if_false = None, mapping = None):
+    def __init__(self, controlled_columns, operator_str, threshold_value, controller, attr, new_value,
+                 value_if_false=None, mapping=None):
         """
         Initializes a Rule object with the necessary parameters to define a rule condition.
 
@@ -42,25 +43,25 @@ class Rule:
         self.threshold_value = threshold_value
         self.index = None
 
-        #controllers index
+        # controllers index
         if isinstance(controller, list):
             self.controller = controller
         elif controller is not None:
             self.controller = [controller]
 
-        #attr
+        # attr
         if isinstance(attr, list):
             self.attr = attr
         else:
             self.attr = [attr]
 
-        #new_value
+        # new_value
         if isinstance(new_value, list):
             self.new_value = new_value
         else:
             self.new_value = [new_value]
 
-        #value_if_false
+        # value_if_false
         if isinstance(value_if_false, list):
             self.value_if_false = value_if_false
         elif value_if_false is not None:
@@ -68,7 +69,7 @@ class Rule:
         else:
             self.value_if_false = None
 
-        #mapping
+        # mapping
         if isinstance(mapping, list):
             self.mapping = mapping
         elif mapping is not None:
@@ -89,7 +90,7 @@ class Rule:
     def __str__(self):
         return "Rule"
 
-    def set_index(self,index):
+    def set_index(self, index):
         self.index = index
 
     def add_to_prosumer(self, prosumer):
@@ -114,9 +115,8 @@ class Rule:
             "new_value": self.new_value,
             "value_if_false": self.value_if_false
         }
-        #Todo : If the user modifies the prosumer (df), then modify the rule.
+        # Todo : If the user modifies the prosumer (df), then modify the rule.
         return index
-
 
     def evaluate(self, input):
         """
@@ -128,7 +128,7 @@ class Rule:
 
         return self.OPERATORS[self.operator_str](input[self.controlled_columns], self.threshold_value)
 
-    def evaluate_assert(self,new_value, stored_value, attr, is_max=True):
+    def evaluate_assert(self, new_value, stored_value, attr, is_max=True):
         if is_max and new_value > stored_value:
             raise ValueError(f"The new value {new_value} should not exceed the original {attr} value ({stored_value}).")
         elif not is_max and new_value < stored_value:

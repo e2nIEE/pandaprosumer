@@ -31,7 +31,7 @@ def run_control(prosumer, ctrl_variables=None, max_iter=30, **kwargs):
     Runs controller until each one converged or max_iter is hit.
 
     1. Call initialize_control() on each controller
-    2. Calculate an inital power flow (if it is enabled, i.e. setting the initial_run veriable to True)
+    2. Calculate an inital power flow (if it is enabled, i.e. setting the initial_run variable to True)
     3. Repeats the following steps in ascending order of controller_order until total convergence of all
        controllers for each level:
         a) Evaluate individual convergence for all controllers in the level

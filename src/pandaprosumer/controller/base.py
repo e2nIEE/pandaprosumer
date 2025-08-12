@@ -104,7 +104,7 @@ class BasicProsumerController(MappedController):
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return 0, 0, np.array([])
-        
+
         # Get the expected temperatures and mass flow of all the responders
         tfeed_tab_c, treturn_tab_c, mdot_tab_kg_per_s = np.array([]), np.array([]), np.array([])
         for responder in responders:
