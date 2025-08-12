@@ -31,10 +31,10 @@ classifiers = [
 dependencies = [
     "astral==3.2",
     "converter==1.0.0",
-    "matplotlib>=3.8.0",
+    "matplotlib>=3.9.0",
     "numpy>=1.25.0",
-    "pandapipes==0.11.0",
-    "pandapower==2.14.11",
+    "pandapipes>=0.11.0",
+    "pandapower>=2.14.11",
     "pandas==2.0.2",
     "savReaderWriter==3.4.2",
     "scipy>=1.11.0",
