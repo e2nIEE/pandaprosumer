@@ -143,17 +143,17 @@ def create_heat_pump(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_pump", index)
 
-    if not cond_fluid:
-        cond_fluid = prosumer.fluid.name
-    if not evap_fluid:
-        evap_fluid = prosumer.fluid.name
-
-    if cond_fluid is not None:
-        if isinstance(cond_fluid, Fluid):
-            cond_fluid = cond_fluid.name
-    if evap_fluid is not None:
-        if isinstance(evap_fluid, Fluid):
-            evap_fluid = evap_fluid.name
+    # if not cond_fluid:
+    #     cond_fluid = prosumer.fluid.name
+    # if not evap_fluid:
+    #     evap_fluid = prosumer.fluid.name
+    #
+    # if cond_fluid is not None:
+    #     if isinstance(cond_fluid, Fluid):
+    #         cond_fluid = cond_fluid.name
+    # if evap_fluid is not None:
+    #     if isinstance(evap_fluid, Fluid):
+    #         evap_fluid = evap_fluid.name
 
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
@@ -412,17 +412,17 @@ def create_heat_exchanger(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_exchanger", index)
 
-    if not primary_fluid:
-        primary_fluid = prosumer.fluid.name
-    if not secondary_fluid:
-        secondary_fluid = prosumer.fluid.name
-
-    if primary_fluid is not None:
-        if isinstance(primary_fluid, Fluid):
-            primary_fluid = primary_fluid.name
-    if secondary_fluid is not None:
-        if isinstance(secondary_fluid, Fluid):
-            secondary_fluid = secondary_fluid.name
+    # if not primary_fluid:
+    #     primary_fluid = prosumer.fluid.name
+    # if not secondary_fluid:
+    #     secondary_fluid = prosumer.fluid.name
+    #
+    # if primary_fluid is not None:
+    #     if isinstance(primary_fluid, Fluid):
+    #         primary_fluid = primary_fluid.name
+    # if secondary_fluid is not None:
+    #     if isinstance(secondary_fluid, Fluid):
+    #         secondary_fluid = secondary_fluid.name
 
     entries = dict(zip(["name", "t_1_in_nom_c", "t_1_out_nom_c", "t_2_in_nom_c", "t_2_out_nom_c", "mdot_2_nom_kg_per_s",
                         "delta_t_hot_default_c", "max_q_kw", "min_delta_t_1_c", "primary_fluid", "secondary_fluid",
