@@ -224,6 +224,7 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mappings
         """
+        # FixME: fix from ChatGPT
         if hasattr(container, "mapping"):
             return [item for item in container.mapping[container.mapping["initiator"] == self.index]
             .sort_values("order")[["object", "responder"]].itertuples()]
