@@ -270,10 +270,24 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped initiators
         """
-        list_initiators = [item.object.responder_net.controller.loc[item.initiator]["object"] for item in
-                           container.mapping[(container.mapping["responder"] == self.index) &
-                                             [r.no_chain == False for r in container.mapping.object]].sort_values("order")
-                           [["object", "initiator"]].itertuples()]
+        # Boolean mask for responders matching self.index
+        mask_responder = container.mapping["responder"] == self.index
+
+        # Boolean mask for objects where no_chain is False
+        mask_no_chain = ~container.mapping["object"].apply(lambda r: r.no_chain)
+
+        # Apply masks, sort, and select columns
+        filtered_mapping = (
+            container.mapping[mask_responder & mask_no_chain]
+            .sort_values("order")
+            [["object", "initiator"]]
+        )
+
+        # Build the list of initiators
+        list_initiators = [
+            obj.responder_net.controller.loc[initiator]["object"]
+            for obj, initiator in filtered_mapping.itertuples(index=False)
+        ]
 
         if remove_duplicate:
             return list(dict.fromkeys(list_initiators))
