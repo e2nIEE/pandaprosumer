@@ -257,11 +257,6 @@ class MappedController(Controller):
             obj.responder_net.controller.loc[responder]["object"]
             for obj, responder in filtered_mapping.itertuples(index=False)
         ]
-
-        list_responders = [item.object.responder_net.controller.loc[item.responder]["object"] for item in
-                           container.mapping[(container.mapping["initiator"] == self.index) &
-                                             [r.no_chain == False for r in container.mapping.object]].sort_values("order")
-                           [["object", "responder"]].itertuples()]
         
         if remove_duplicate:
             return list(dict.fromkeys(list_responders))
@@ -279,7 +274,6 @@ class MappedController(Controller):
                       prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
                       [["object", "responder"]].itertuples()]
         return [responder for responder in responders if not responder.is_supervisor()]
-
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
