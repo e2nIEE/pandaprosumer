@@ -117,7 +117,7 @@ class BasicProsumerController(MappedController):
             else:
                 for i, mapping_row in prosumer.mapping.iterrows():
                     if mapping_row.responder == responder.index:  # FixMe: not enough
-                        container = mapping_row.responder_net
+                        container = mapping_row.object.responder_net
                         tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)
             tfeed_tab_c = np.append(tfeed_tab_c, tfeed_i)
             treturn_tab_c = np.append(treturn_tab_c, treturn_i)
