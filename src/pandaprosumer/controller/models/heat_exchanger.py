@@ -341,7 +341,7 @@ class HeatExchangerController(BasicProsumerController):
                                                                                                        t_2_in_c)
 
                         # ToDo: Check that mdot_1_kg_per_s==self._mdot_1_provided_kg_per_s
-                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01
+                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01, f"Heat Exchanger {self.name} mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s}) for for timestep {self.time} in prosumer {prosumer.name}"
                     elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is lower than the one required by the Heat Exchanger,
                         # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
@@ -376,7 +376,7 @@ class HeatExchangerController(BasicProsumerController):
             for i in range(len(result_mdot_tab_kg_per_s)):
                 result_mdot_tab_kg_per_s[i] = result_mdot_tab_kg_per_s[i] + (mdot_2_kg_per_s - mdot_2_required_kg_per_s) / len(result_mdot_tab_kg_per_s)
 
-            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3
+            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3, f"Heat Exchanger {self.name} mdot_2_kg_per_s != sum(result_mdot_tab_kg_per_s) ({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)}) for for timestep {self.time} in prosumer {prosumer.name}"
 
         cp_1_kj_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2) / 1000
         q_exchanged_kw = mdot_1_kg_per_s * cp_1_kj_per_kg_k * (t_1_in_c - t_1_out_c)
