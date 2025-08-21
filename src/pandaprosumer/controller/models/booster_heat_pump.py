@@ -112,7 +112,7 @@ class BoosterHeatPumpController(BasicProsumerController):
         t_amb_k = self._t_amb_k
         t_source_k = self._t_source_k
         t_sink_k = self._t_sink_k
-        bhp_type = self._get_element_param(prosumer, "hp_type")
+        bhp_type = self._get_element_param(prosumer, "bhp_type")
         mode = self._mode
 
         t_source_k = t_source_k - 273.0  # in celsius
