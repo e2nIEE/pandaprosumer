@@ -70,7 +70,10 @@ class IceChpController(BasicProsumerController):
         self.h_ice_chp_m = self._get_element_param(prosumer, "altitude")
         #---------------------------------------------------------------
         
-        
+    @property
+    def _scaling_factor(self):
+        return self._get_input("scaling")
+
     # Defining the variable that represents the energy demand:
     def q_requested_kw(self, prosumer):
         """
@@ -126,7 +129,7 @@ class IceChpController(BasicProsumerController):
         cycle_type = self._get_input("cycle")
         t_ice_chp_k = self._get_input("t_intake_k")
         #
-        q_requested_kw = self.q_requested_kw(prosumer)
+        q_requested_kw = self.q_requested_kw(prosumer) * self._scaling_factor
 
         #
         # 2 - Calculations:

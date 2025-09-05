@@ -50,6 +50,10 @@ class BoosterHeatPumpController(BasicProsumerController):
     def _p_received_kw(self):
         return self._get_input("p_received_kw")
 
+    @property
+    def _scaling_factor(self):
+        return self._get_input("scaling")
+
     def q_to_receive_kw(self, prosumer):
         """
         Calculates the heat to receive in kW.
@@ -98,7 +102,7 @@ class BoosterHeatPumpController(BasicProsumerController):
             self.applied = True
             return
         super().control_step(prosumer)
-        demand_kw = self.q_requested_kw(prosumer)
+        demand_kw = self.q_requested_kw(prosumer) * self._scaling_factor
         p_el_kw = self._p_received_kw
         q_kw = self._q_received_kw
         t_source_k = self._t_source
@@ -229,7 +233,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                     else:
                         t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        q_max_kw = 5.8 + 0.21 * t_source_k
+                        # q_max_kw = 5.8 + 0.21 * t_source_k
+                        q_max_kw = 1000
 
                         q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
                             = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff)
