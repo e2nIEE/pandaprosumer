@@ -69,10 +69,7 @@ class IceChpController(BasicProsumerController):
         #
         self.h_ice_chp_m = self._get_element_param(prosumer, "altitude")
         #---------------------------------------------------------------
-        
-    @property
-    def _scaling_factor(self):
-        return self._get_input("scaling")
+
 
     # Defining the variable that represents the energy demand:
     def q_requested_kw(self, prosumer):
@@ -129,7 +126,8 @@ class IceChpController(BasicProsumerController):
         cycle_type = self._get_input("cycle")
         t_ice_chp_k = self._get_input("t_intake_k")
         #
-        q_requested_kw = self.q_requested_kw(prosumer) * self._scaling_factor
+        # q_requested_kw = self.q_requested_kw(prosumer)
+        q_requested_kw = self._get_input('p_requested_kw')
 
         #
         # 2 - Calculations:
@@ -151,9 +149,10 @@ class IceChpController(BasicProsumerController):
         m_co2_inst_kg = self.calculate_co2_instant_mass_flow(mdot_fuel_in_kg_per_s, self.fuel_type, self.fuel_data) * self.resol
         m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map) * self.resol
         # Calculate cumulative emissions
-        self.acc_m_co2_equiv_kg += m_co2_equiv_kg
-        self.acc_m_co2_inst_kg += m_co2_inst_kg
-        self.acc_m_nox_mg += m_nox_mg
+        if prosumer.rerun:
+            self.acc_m_co2_equiv_kg += m_co2_equiv_kg
+            self.acc_m_co2_inst_kg += m_co2_inst_kg
+            self.acc_m_nox_mg += m_nox_mg
         #
         # 3 - Determine the operational time of the ICE CHP
         if load == 0:
@@ -161,7 +160,8 @@ class IceChpController(BasicProsumerController):
         else:
             time_ice_chp_oper_s = self.resol
         #
-        self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
+        if prosumer.rerun:
+            self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
         #
         # 4 - Calculate the total efficiency:
         p_loss_kw = self.calculate_energy_flow_loss(p_in_kw, p_th_out_kw, p_el_out_kw)
@@ -182,6 +182,20 @@ class IceChpController(BasicProsumerController):
                   pd.Series(self.acc_m_nox_mg),
                   pd.Series(self.acc_time_ice_chp_oper_s)])
 
+        self.last_result = {
+            "load": load,
+            "p_in_kw": p_in_kw,
+            "p_el_out_kw": p_el_out_kw,
+            "p_th_out_kw": p_th_out_kw,
+            "p_rad_out_kw": p_rad_out_kw,
+            "efficiency": ice_chp_efficiency,
+            "mdot_fuel_in_kg_per_s": mdot_fuel_in_kg_per_s,
+            "acc_m_fuel_in_kg": self.acc_m_fuel_in_kg,
+            "acc_m_co2_equiv_kg": self.acc_m_co2_equiv_kg,
+            "acc_m_co2_inst_kg": self.acc_m_co2_inst_kg,
+            "acc_m_nox_mg": self.acc_m_nox_mg,
+            "acc_time_ice_chp_oper_s": self.acc_time_ice_chp_oper_s
+        }
         self.finalize(prosumer, result.T)
 
         self.applied = True

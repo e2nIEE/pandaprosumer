@@ -31,6 +31,7 @@ class HeatStorageController(BasicProsumerController):
         """
         super().__init__(prosumer, heat_storage_object, order=order, level=level, in_service=in_service, index=index, **kwargs)
         self._soc = float(init_soc)
+        self.last_soc = float(init_soc)
 
     def q_to_receive_kw(self, prosumer):
         """
@@ -39,10 +40,13 @@ class HeatStorageController(BasicProsumerController):
         :param prosumer: The prosumer object
         :return: Heat to receive in kW
         """
-        self.applied = False
+
+        # self.applied = False
         _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
         fill_level_kwh = min(self._soc, 1) * _q_capacity_kwh
-        q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
+        q_to_receive_kw = 0.0
+        if self.last_soc <= 0.9:
+            q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
         q_to_receive_kw += self.q_to_deliver_kw(prosumer)
         if not np.isnan(self._get_input('q_received_kw')):
             # If there is already some power in the input, don't require it again
@@ -69,6 +73,11 @@ class HeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if prosumer.rerun:
+            self._soc = self.last_soc
+        if not prosumer.rerun:
+            self.last_soc = self._soc
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
             self.obj.element_index[0]].in_service):
             self.applied = True
@@ -95,5 +104,9 @@ class HeatStorageController(BasicProsumerController):
         assert 0 <= self._soc <= 1, (f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name}"
                                      f"at timestep {self.time}")
         result = np.array([pd.Series(self._soc), pd.Series(demand_kw)])
+        self.last_result = {
+            "soc": self._soc,
+            "demand_kw": demand_kw
+        }
         self.finalize(prosumer, result.T)
         self.applied = True

@@ -181,6 +181,14 @@ class HeatDemandController(BasicProsumerController):
             q_received_kw = self._get_input('q_received_kw')
             q_uncovered_kw = self._q_demand_kw - q_received_kw
             result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
+            self.last_result = {
+                "q_received_kw": q_received_kw,
+                "q_uncovered_kw": q_uncovered_kw,
+                "mdot_received_kg_per_s": 0,
+                "t_in_c": 0,
+                "t_out_c": 0
+            }
+
             self.finalize(prosumer, result)
             self.applied = True
             return
@@ -208,6 +216,13 @@ class HeatDemandController(BasicProsumerController):
         # FixMe: Consider the temperature level in the output
         q_uncovered_kw = q_demand_kw - q_received_kw
         result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
+        self.last_result = {
+            "q_received_kw": q_received_kw,
+            "q_uncovered_kw": q_uncovered_kw,
+            "mdot_received_kg_per_s": mdot_received_kg_per_s,
+            "t_in_c": self._t_in_c,
+            "t_out_c": t_out_c
+        }
         if np.isnan(result).any():
             self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                               FluidMixMapping.MASS_FLOW_KEY: np.nan}
