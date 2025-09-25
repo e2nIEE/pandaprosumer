@@ -219,6 +219,10 @@ def check_results(prosumer):
 
     chp_map_2 = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == 700)
 
+    print(ts)
+    print(results_timestep[ts])
+    print(input)
+
     if node_balance != 0:
         results = model_optimization_chp_fit(
             heat_demand=input[0, 2],
@@ -238,7 +242,7 @@ def check_results(prosumer):
             rerun = True
         else:
             rerun = False
-        print(ts)
+        # print(ts)
         print(results)
 
     return rerun
@@ -387,7 +391,7 @@ def poly_expr(coeffs, x):
 
 
 def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
-                               resol=900, degree=1, storage_cap=10000, p_bhp_max=1000):
+                               resol=900, degree=1, storage_cap=10000, q_bhp_max=2000):
     fit = fit_chp_relations(chp_map, degree=degree)
 
     m = pyo.ConcreteModel()
@@ -396,7 +400,7 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
     m.heat_demand = pyo.Param(initialize=heat_demand)
     m.flex_demand = pyo.Param(initialize=flex_demand)
     m.cop_bhp     = pyo.Param(initialize=cop_bhp)
-    m.p_el_bhp_max   = pyo.Param(initialize=p_bhp_max)
+    m.q_th_bhp_max   = pyo.Param(initialize=q_bhp_max)
     m.soc         = pyo.Param(initialize=soc)
     m.storage_cap = pyo.Param(initialize=storage_cap)
     m.resol       = pyo.Param(initialize=resol)
@@ -407,6 +411,8 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
 
     # Binärvariable für BHKW-Betrieb
     m.y_chp = pyo.Var(domain=pyo.Binary)
+
+
 
     # Lastgrenzen
     p_el_min_chp = 0.2 * 700
@@ -422,38 +428,54 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
 
     # H_CHP als Expression in Abhängigkeit von E_CHP
     coeff_HE = fit["coeff_HE"]
-    m.q_th_chp = pyo.Expression(expr=poly_expr(coeff_HE, m.p_el_chp))
+    M_chp = 5000  # groß genug für Wärmebereich
 
-    H_max_chp = 611.56
-    # H_CHP darf nur >0 sein, wenn y_CHP = 1
-    # m.H_chp_max = pyo.Constraint(expr=m.H_CHP <= H_max_chp * m.y_CHP)
+    m.q_th_chp = pyo.Var(domain=pyo.NonNegativeReals)
+
+    # Nur aktiv, wenn y_chp = 1: q_th_chp ≈ poly(p_el_chp)
+    m.q_th_chp_upper = pyo.Constraint(
+        expr=m.q_th_chp <= poly_expr(coeff_HE, m.p_el_chp) + M_chp * (1 - m.y_chp)
+    )
+    m.q_th_chp_lower = pyo.Constraint(
+        expr=m.q_th_chp >= poly_expr(coeff_HE, m.p_el_chp) - M_chp * (1 - m.y_chp)
+    )
+
+    # Wenn y_chp = 0 → q_th_chp = 0
+    m.q_th_chp_off = pyo.Constraint(expr=m.q_th_chp <= M_chp * m.y_chp)
+
+    # q_th_max_chp = 611.56
+    # # H_CHP darf nur >0 sein, wenn y_CHP = 1
+    # m.q_th_chp_max = pyo.Constraint(expr=m.q_th_chp <= q_th_max_chp * m.y_chp)
 
     # Speicher-Variablen
     m.q_th_charge    = pyo.Var(domain=pyo.NonNegativeReals)
     m.q_th_discharge = pyo.Var(domain=pyo.NonNegativeReals)
 
-    m.q_th_charge_max    = pyo.Expression(expr=m.storage_cap * (1 - m.soc) * m.resol / 3600)
-    m.q_th_discharge_max = pyo.Expression(expr=m.storage_cap * m.soc * m.resol / 3600)
+    m.y_charge = pyo.Var(domain=pyo.Binary)
+    m.y_discharge = pyo.Var(domain=pyo.Binary)
+
+    m.charge_discharge = pyo.Constraint(expr=m.y_discharge + m.y_charge <= 1)
+
+    m.q_th_charge_max   = pyo.Constraint(expr=m.q_th_charge <= m.storage_cap * (1 - m.soc) * m.resol / 3600 * m.y_charge)
+    m.q_th_discharge_max = pyo.Constraint(expr=m.q_th_discharge <= m.storage_cap * m.soc * m.resol / 3600 * m.y_discharge)
+
 
     # Technologiebeziehungen
-    m.hp_conv = pyo.Constraint(expr=m.q_th_bhp == m.cop_bhp * m.p_el_bhp)
+    m.q_th_bhp = pyo.Expression(expr= m.cop_bhp * m.p_el_bhp)
 
     # Kapazitätsgrenzen
-    m.hp_cap       = pyo.Constraint(expr=m.p_el_bhp <= m.p_el_bhp_max)
-    m.charge_cap   = pyo.Constraint(expr=m.q_th_charge <= m.q_th_charge_max)
-    m.discharge_cap= pyo.Constraint(expr=m.q_th_discharge <= m.q_th_discharge_max)
+    m.hp_cap       = pyo.Constraint(expr=m.q_th_bhp <= m.q_th_bhp_max)
+    # m.charge_cap   = pyo.Constraint(expr=m.q_th_charge <= m.q_th_charge_max)
+    # m.discharge_cap= pyo.Constraint(expr=m.q_th_discharge <= m.q_th_discharge_max)
 
     # Bilanzen
     m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
-    m.el_bal   = pyo.Expression(expr=-m.p_el_bhp + m.p_el_chp + m.flex_demand)
+    m.el_bal   = pyo.Constraint(expr=-m.p_el_bhp + m.p_el_chp + m.flex_demand == 0)
 
-    alpha = 1.0  # Gewicht für Bilanzabweichung
-    beta = 0.001  # Gewicht für Minimierung von E_CHP
-
-    m.obj = pyo.Objective(expr=alpha * (m.el_bal ** 2) + beta * m.p_el_chp,
-                          sense=pyo.minimize)
-    # m.obj = pyo.Objective(expr=alpha * (m.el_bal ** 2),
-    #                       sense=pyo.minimize)
+    m.obj = pyo.Objective(
+        expr=m.p_el_bhp,
+        sense=pyo.minimize
+    )
 
     # Solver
     solver = pyo.SolverFactory('mindtpy')
@@ -464,8 +486,12 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
         return {
             "p_el_bhp": pyo.value(m.p_el_bhp),
             "p_el_chp": pyo.value(m.p_el_chp),
-            "Hq_th_bhp": pyo.value(m.q_th_bhp),
+            "q_th_bhp": pyo.value(m.q_th_bhp),
             "q_th_chp": pyo.value(m.q_th_chp),
+            "soc": pyo.value(m.soc),
+            "q_th_discharge": pyo.value(m.q_th_discharge),
+            "q_th_charge": pyo.value(m.q_th_charge),
+            "heat_demand": pyo.value(m.heat_demand),
             "y":pyo.value(m.y_chp),
             "el_balance": pyo.value(m.el_bal),
             "feasible": True
