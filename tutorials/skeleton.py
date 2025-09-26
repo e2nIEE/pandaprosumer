@@ -123,7 +123,7 @@ GenericMapping(
         initiator_id=cp_index,
         initiator_column=["cycle_cp", "t_intake_cp_k", "p_el_chp_cp"],
         responder_id=ice_chp_index,
-        responder_column=["cycle", "t_intake_k", "p_requested_kw"],
+        responder_column=["cycle", "t_intake_k", "p_received_kw"],
     )
 
 #General Controller -> Heat Demand
