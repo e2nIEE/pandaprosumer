@@ -110,11 +110,35 @@ class IceChpController(BasicProsumerController):
         """
         return self.applied
 
+    def _save_state(self):
+        """Backup aller relevanten Zustände vor dem ersten Run"""
+        self._backup_state = {
+            "acc_m_fuel_in_kg": self.acc_m_fuel_in_kg,
+            "acc_m_co2_equiv_kg": self.acc_m_co2_equiv_kg,
+            "acc_m_co2_inst_kg": self.acc_m_co2_inst_kg,
+            "acc_m_nox_mg": self.acc_m_nox_mg,
+            "acc_time_ice_chp_oper_s": self.acc_time_ice_chp_oper_s,
+        }
+
+    def _restore_state(self):
+        """Restore der Zustände beim Rerun"""
+        if hasattr(self, "_backup_state"):
+            for key, value in self._backup_state.items():
+                setattr(self, key, value)
+
+
 
     def control_step(self, prosumer):
         #       
         # ICE CHP CALCULATIONS:
         # =====================
+
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            # Beim Rerun: alten Zustand wiederherstellen
+            self._restore_state()
+
 
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
             self.obj.element_index[0]].in_service):
@@ -126,13 +150,17 @@ class IceChpController(BasicProsumerController):
         cycle_type = self._get_input("cycle")
         t_ice_chp_k = self._get_input("t_intake_k")
         #
-        # q_requested_kw = self.q_requested_kw(prosumer)
-        q_requested_kw = self._get_input('p_requested_kw')
+        q_requested_kw = self.q_requested_kw(prosumer)
+        p_received_kw = self._get_input("p_received_kw")
 
+        if not np.isnan(p_received_kw) and cycle_type == 1:
+            q_or_p_calculate_load = p_received_kw
+        else:
+            q_or_p_calculate_load = q_requested_kw
         #
         # 2 - Calculations:
         # 2a - Calculate CHP outputs:
-        loadList = self.calculate_load(cycle_type, q_requested_kw, t_ice_chp_k, self.h_ice_chp_m, self.ice_chp_map, self.time)
+        loadList = self.calculate_load(cycle_type, q_or_p_calculate_load, t_ice_chp_k, self.h_ice_chp_m, self.ice_chp_map, self.time)
         load = loadList[1]
         p_el_out_kw = self.calculate_electrical_power_out(load, self.ice_chp_map)
         p_th_out_kw = self.calculate_recovered_heat_flow(load, self.ice_chp_map)
@@ -149,10 +177,9 @@ class IceChpController(BasicProsumerController):
         m_co2_inst_kg = self.calculate_co2_instant_mass_flow(mdot_fuel_in_kg_per_s, self.fuel_type, self.fuel_data) * self.resol
         m_nox_mg = self.calculate_nox_mass_flow(load, self.ice_chp_map) * self.resol
         # Calculate cumulative emissions
-        if prosumer.rerun:
-            self.acc_m_co2_equiv_kg += m_co2_equiv_kg
-            self.acc_m_co2_inst_kg += m_co2_inst_kg
-            self.acc_m_nox_mg += m_nox_mg
+        self.acc_m_co2_equiv_kg += m_co2_equiv_kg
+        self.acc_m_co2_inst_kg += m_co2_inst_kg
+        self.acc_m_nox_mg += m_nox_mg
         #
         # 3 - Determine the operational time of the ICE CHP
         if load == 0:
@@ -160,8 +187,7 @@ class IceChpController(BasicProsumerController):
         else:
             time_ice_chp_oper_s = self.resol
         #
-        if prosumer.rerun:
-            self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
+        self.acc_time_ice_chp_oper_s += time_ice_chp_oper_s
         #
         # 4 - Calculate the total efficiency:
         p_loss_kw = self.calculate_energy_flow_loss(p_in_kw, p_th_out_kw, p_el_out_kw)
