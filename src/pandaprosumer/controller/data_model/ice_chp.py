@@ -27,5 +27,5 @@ class IceChpControllerData:
     element_index: List[int]
     period_index: int = None
     element_name: str = 'ice_chp'
-    input_columns: List[str] = field(default_factory=lambda: ['cycle', 't_intake_k', 'p_requested_kw'])
+    input_columns: List[str] = field(default_factory=lambda: ['cycle', 't_intake_k', 'p_received_kw'])
     result_columns: List[str] = field(default_factory=lambda: ['load', 'p_in_kw', 'p_el_out_kw', 'p_th_out_kw', 'p_rad_out_kw', 'ice_chp_efficiency', 'mdot_fuel_in_kg_per_s', 'acc_m_fuel_in_kg', 'acc_co2_equiv_kg', 'acc_co2_inst_kg', 'acc_nox_mg', 'acc_time_ice_chp_oper_s'])
