@@ -219,10 +219,6 @@ def check_results(prosumer):
 
     chp_map_2 = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == 700)
 
-    print(ts)
-    print(results_timestep[ts])
-    print(input)
-
     if node_balance != 0:
         results = model_optimization_chp_fit(
             heat_demand=input[0, 2],
@@ -242,124 +238,10 @@ def check_results(prosumer):
             rerun = True
         else:
             rerun = False
-        # print(ts)
-        print(results)
 
     return rerun
 
 import pyomo.environ as pyo
-# import bisect
-#
-# def interpolate_load_to_fuel(load_percent, load_pts, fuel_pts):
-#     """Linear interpolation of fuel input [kW_fuel] at a given load [%]."""
-#     # Ensure increasing load points for bisect
-#     if load_pts[0] > load_pts[-1]:
-#         load_pts = list(reversed(load_pts))
-#         fuel_pts = list(reversed(fuel_pts))
-#
-#     # Clamp
-#     if load_percent <= load_pts[0]:
-#         return float(fuel_pts[0])
-#     if load_percent >= load_pts[-1]:
-#         return float(fuel_pts[-1])
-#
-#     i = bisect.bisect_right(load_pts, load_percent)
-#     l0, l1 = load_pts[i-1], load_pts[i]
-#     f0, f1 = fuel_pts[i-1], fuel_pts[i]
-#     alpha = (load_percent - l0) / (l1 - l0)
-#     return float(f0 + alpha * (f1 - f0))
-#
-#
-# def model_optimization_chp(
-#     heat_demand,
-#     flex_demand,
-#     cop_bhp,
-#     c_el,
-#     c_gas,
-#     chp_map,
-#     p_hp_max=1000,
-# ):
-#     m = pyo.ConcreteModel()
-#
-#     # Variables
-#     m.E_HP  = pyo.Var(domain=pyo.NonNegativeReals)   # HP electric consumption [kW]
-#     m.H_HP  = pyo.Var(domain=pyo.NonNegativeReals)   # HP heat [kW_th]
-#     m.E_CHP = pyo.Var(domain=pyo.NonNegativeReals)   # CHP electric output [kW]
-#     m.H_CHP = pyo.Var(domain=pyo.NonNegativeReals)   # CHP recovered heat [kW_th]
-#
-#     # Heat pump conversion
-#     m.hp_conv = pyo.Constraint(expr = m.H_HP == cop_bhp * m.E_HP)
-#
-#     # CHP map data
-#     x_break = [float(x) for x in chp_map["energy_flow_input_kw"]]       # kW_fuel
-#     y_el    = [float(y) for y in chp_map["power_el_kw"]]                 # kW_el
-#     y_th    = [float(y) for y in chp_map["heat_flow_recovered_kw"]]      # kW_th
-#
-#     # Ensure domain points are non-decreasing (required by Piecewise)
-#     if x_break[0] > x_break[-1]:
-#         x_break = list(reversed(x_break))
-#         y_el    = list(reversed(y_el))
-#         y_th    = list(reversed(y_th))
-#
-#     # Load bounds → fuel bounds
-#     load_min, load_max = chp_map["load_limits_percent"]     # e.g., [20, 100]
-#     load_pts = chp_map["engine_load_percent"]               # e.g., [100, 75, 50, 25, 0]
-#     fuel_pts = chp_map["energy_flow_input_kw"]
-#
-#     F_min = interpolate_load_to_fuel(load_min, load_pts, fuel_pts)
-#     F_max = interpolate_load_to_fuel(load_max, load_pts, fuel_pts)
-#
-#     # Domain variable must have bounds for Piecewise
-#     # Use intersection of [min(x_break), max(x_break)] and [F_min, F_max]
-#     dom_lo = max(min(x_break), F_min)
-#     dom_hi = min(max(x_break), F_max)
-#     m.F_CHP = pyo.Var(bounds=(dom_lo, dom_hi))
-#
-#     # Capacity bounds (HP)
-#     m.hp_cap = pyo.Constraint(expr = m.E_HP <= p_hp_max)
-#
-#     # Piecewise mappings (fuel → electric, fuel → heat)
-#     m.el_piece = pyo.Piecewise(
-#         m.E_CHP, m.F_CHP,
-#         pw_pts=x_break,
-#         f_rule=y_el,                 # values corresponding to x_break
-#         pw_constr_type='EQ',
-#         pw_repn='SOS2'
-#     )
-#     m.th_piece = pyo.Piecewise(
-#         m.H_CHP, m.F_CHP,
-#         pw_pts=x_break,
-#         f_rule=y_th,
-#         pw_constr_type='EQ',
-#         pw_repn='SOS2'
-#     )
-#
-#     # Balances
-#     m.heat_bal = pyo.Constraint(expr = m.H_HP + m.H_CHP == heat_demand)
-#     m.el_bal   = pyo.Constraint(expr = -m.E_HP + m.E_CHP + flex_demand == 0)
-#
-#     # Objective
-#     m.obj = pyo.Objective(expr = c_el * m.E_HP + c_gas * m.F_CHP, sense=pyo.minimize)
-#
-#     solver = pyo.SolverFactory("cbc")
-#     results = solver.solve(m, tee=False, keepfiles=False)
-#
-#
-#     if (results.solver.status == SolverStatus.ok) and \
-#             (results.solver.termination_condition == TerminationCondition.optimal):
-#         # Optimale Lösung vorhanden
-#         return {
-#             "E_HP": pyo.value(m.E_HP),
-#             "E_CHP": pyo.value(m.E_CHP),
-#             "H_HP": pyo.value(m.H_HP),
-#             "H_CHP": pyo.value(m.H_CHP),
-#             "F_CHP": pyo.value(m.F_CHP),
-#             "feasible": True
-#         }
-#     else:
-#         # Keine Lösung gefunden
-#         return {"feasible": False}
-
 import numpy as np
 def fit_chp_relations(chp_map, degree=1):
     # Daten
