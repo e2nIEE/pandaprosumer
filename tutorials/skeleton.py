@@ -11,53 +11,16 @@ import numpy as np
 
 flex =  np.linspace(-200, 200, 96)
 
-
-# # CSV-Datei einlesen
-# dummy_data = pd.read_csv("C:\\Users\\carl\\Downloads\\strompreis.csv",
-#                           parse_dates=["Datetime"],
-#                           index_col="Datetime" )
-#
-# dummy_data.drop(columns="Stromhandelsbilanz", inplace=True)
-#
-# dummy_data.rename(columns={"Strompreis": "Strompreis EUR/MWh"}, inplace=True)
-#
-# dummy_data["Strompreis EUR/MWh"] += 100 # €/MWh :Kosten für Stronmsteuer, Netzentgelte etc. Auf den Börsenpreis addiert.
-#
-# dummy_data["Gaspreis EUR/MWh"] = 70
-#
-# n_sections = 12
-# n = len(dummy_data)
-#
-# # Zufallswerte für jede Sektion
-# random_values = np.random.randint(-500, 501, size=n_sections)
-#
-# # Spalte erstellen: np.repeat, dann ggf. Rest auffüllen
-# section_size = n // n_sections
-# repeated_values = np.repeat(random_values, section_size)
-#
-# # Restzeilen auffüllen, falls nötig
-# rest = n - len(repeated_values)
-# if rest > 0:
-#     repeated_values = np.concatenate([repeated_values, np.full(rest, random_values[-1])])
-#
-# dummy_data["Flexibility Demand kW"] = repeated_values
-#
-# print(dummy_data)
-
 prosumer = create_empty_prosumer_container()
 
-
-"""BHP"""
 bhp_type = 'water-water1'
 bhp_name = 'example_bhp'
 
-"""CHP"""
 name = 'example_chp'
 size_kw = 700
 fuel = 'ng'
 altitude_m = 0
 
-"""Storage"""
 q_capacity_kwh = 10000
 
 start = '2020-01-01 00:00:00'
@@ -65,7 +28,6 @@ end = '2020-01-01 23:59:59'
 time_resolution = 900        # 15 min
 frequency = '15min'
 
-scaling = [0, 0.2, 0.4, 0.6, 0.8, 1]
 
 time_series_data = pd.read_excel('data/heat_demand_input_chp_bhp.xlsx')
 time_series_data["c_electricity_eur_per_mw"] = np.random.randint(100, 251, size=len(time_series_data))
@@ -76,17 +38,6 @@ time_series_data["p_el_chp"] = 0
 time_series_data["mode"] = 2
 time_series_data["cycle"] = 1
 
-
-
-# supervisor_index = create_controlled_supervisor(prosumer, input_columns=["c_electricity_eur_per_mw", "c_gas_eur_per_mw"],
-#                                                 period=period, level=1, order=0)
-# supervisor_object = prosumer.controller.iloc[supervisor_index].object
-
-
-
-
-
-p_balance = pd.DataFrame()
 
 dur = pd.date_range(start=start, end=end, freq=frequency, tz='utc')
 time_series_data.index = dur
@@ -123,7 +74,7 @@ GenericMapping(
         initiator_id=cp_index,
         initiator_column=["cycle_cp", "t_intake_cp_k", "p_el_chp_cp"],
         responder_id=ice_chp_index,
-        responder_column=["cycle", "t_intake_k", "p_received_kw"],
+        responder_column=["cycle", "t_intake_k", "p_requested_kw"],
     )
 
 #General Controller -> Heat Demand
@@ -133,14 +84,6 @@ GenericMapping(prosumer,
         responder_id=heat_demand_index,
         responder_column="q_demand_kw",
     )
-
-    # GenericMapping(
-    #     prosumer,
-    #     initiator_id=cp_index,
-    #     initiator_column=["c_electricity_cp_eur_per_mw", "c_gas_cp_eur_per_mw"],
-    #     responder_id=supervisor_index,
-    #     responder_column=["c_electricity_eur_per_mw", "c_gas_eur_per_mw"],
-    # )
 
 
 #BHP -> Heat Demand
@@ -162,24 +105,6 @@ GenericMapping(
     order=1,
 )
 
-#BHP -> Heat Demand
-# GenericMapping(prosumer,
-#                     initiator_id=bhp_index,
-#                     initiator_column="q_floor",
-#                     responder_id=heat_demand_index,
-#                     responder_column="q_received_kw",
-#                     order=1,
-#     )
-#
-# # ICE CHP ---> HEAT DEMAND (consumer)
-# GenericMapping(
-#         prosumer,
-#         initiator_id=ice_chp_index,
-#         initiator_column="p_th_out_kw",
-#         responder_id=heat_demand_index,
-#         responder_column="q_received_kw",
-#         order=0,
-#     )
 
 GenericMapping(
     prosumer,
@@ -188,7 +113,6 @@ GenericMapping(
     responder_id=heat_demand_index,
     responder_column="q_received_kw",
 )
-
 
 
 
@@ -201,10 +125,10 @@ chp_p_th_out_kw = res_chp['p_th_out_kw']
 
 
 res_bhp = prosumer.time_series.data_source.iloc[0].df
-bhp_p_el_in_kw = res_bhp['p_el_floor'] #or radiator?
+bhp_p_el_in_kw = -res_bhp['p_el_floor'] #or radiator?
 
 
-p_el_balance = chp_p_el_out_kw - bhp_p_el_in_kw + flex
+p_el_balance = chp_p_el_out_kw + bhp_p_el_in_kw + flex
 
 df = pd.DataFrame({
     "chp_p_el": chp_p_el_out_kw.values,
@@ -213,3 +137,7 @@ df = pd.DataFrame({
     "p_el_balance": p_el_balance.values
 }, index=res_chp.index)  # falls du den Zeitindex behalten willst
 print(df)
+
+costs_bhp = sum(-df["bhp_p_el"] * time_series_data["c_electricity_eur_per_mw"]*1e-3)
+costs_chp = res_chp["acc_m_fuel_in_kg"][-1] * 13 * 70*1e-3
+costs_ges = costs_bhp + costs_chp
