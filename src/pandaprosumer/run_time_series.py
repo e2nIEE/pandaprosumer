@@ -82,6 +82,30 @@ def control_diagnostic_pandaprosumer(prosumer, start, end, resolution_s):
 
 
 def output_writer_fct(prosumer, time_step, pf_converged, ctrl_converged, ts_variables):
+    """
+    Collect and store controller results for a given timestep.
+
+    This function iterates over all controllers defined in the
+    timestep variable structure, extracts their most recent results
+    (if available), and writes them into the prosumer's
+    `controller_results` dictionary under the current timestep key.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer instance that holds controller objects and will be
+        extended with a `controller_results` attribute (dict) if it
+        does not already exist.
+    time_step : int or hashable
+        Identifier of the current simulation timestep.
+
+
+    Returns
+    -------
+    None
+        The function updates `prosumer.controller_results` in place.
+    """
+    ...
     if not hasattr(prosumer, 'controller_results'):
         prosumer.controller_results = {}
 
@@ -107,7 +131,7 @@ def init_time_series(prosumer, time_steps, verbose=True, **kwargs):
     creates the dict ts_variables, which includes necessary variables for the time series / control function
 
     INPUT:
-        **net** - The pandapower format network
+        **prosumer** - The pandaprosumer format network
 
         **time_steps** (list or tuple, None) - time_steps to calculate as list or tuple (start, stop)
         if None, all time steps from provided data source are simulated
@@ -131,11 +155,12 @@ def init_time_series(prosumer, time_steps, verbose=True, **kwargs):
 
 def run_loop(prosumer, ts_variables, run_control_fct=run_control, output_writer_fct=output_writer_fct, **kwargs):
     """
-    runs the time series loop which calls pp.runpp (or another run function) in each iteration
+    runs the time series loop which calls pp.runpp (or another run function) in each iteration.
+    After the initial run there is the option to rerun the timestep. Based on the result of the function check_results
 
     Parameters
     ----------
-    net - pandapower net
+    prosumer - pandaprosumer prosumer
     ts_variables - settings for time series
 
     """
@@ -146,7 +171,7 @@ def run_loop(prosumer, ts_variables, run_control_fct=run_control, output_writer_
         run_time_step(prosumer, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
         rerun_time_step = check_results(prosumer)
-
+        # rerun_time_step = False
         if rerun_time_step:
             prosumer.rerun = True
             run_time_step(prosumer, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
@@ -187,36 +212,62 @@ def run_time_step(prosumer, time_step, ts_variables, run_control_fct=run_control
 
     finalize_step(ts_variables['controller_order'], time_step)
 
+import json
+import os
 def check_results(prosumer):
+    """
+    Check the consistency of prosumer simulation results and, if necessary,
+    rerun a local CHP and BHP optimization to adjust setpoints.
+
+    This function inspects the most recent timestep of the prosumer's
+    controller results. If the node electrical balance is not satisfied,
+    it triggers a small Pyomo optimization model (`model_optimization_chp_fit`)
+    using a CHP performance map. If the optimization is feasible, the
+    corrected electrical outputs for BHP and CHP are written back into
+    the prosumer's dataframe.
+
+    Parameters
+    ----------
+    prosumer :
+        Prosumer object with attributes:
+        - controller_results : dict
+            Dictionary of timestep results.
+
+    Returns
+    -------
+    rerun : bool
+        True if a feasible optimization was found and results were updated,
+        False otherwise.
+    """
     rerun = False
+
+    #Results for the timestep
     results_timestep = prosumer.controller_results
+
+    #timestep
     ts = list(results_timestep.keys())[-1]
 
+    #DFData - DataSourceClass for the inut data
     df_data = prosumer.controller.object[0].df_data
 
-    col_p_el_bhp = prosumer.controller.object[0].input_columns[8]
-    col_p_el_chp = prosumer.controller.object[0].input_columns[9]
-
+    #input data for the const. profile for the timestep
     input = prosumer.controller.object[0].df_data.get_time_step_value(
         time_step=ts,
         profile_name=prosumer.controller.object[0].input_columns
     ).reshape(1, -1)
 
-    p_el_out = results_timestep[ts][2]["p_el_out_kw"]
-    p_el_floor = results_timestep[ts][1]["pel_floor_kw"]
-    node_balance = p_el_out - p_el_floor + input[0, 7]
+    #result data for el. power for the timestep (bhp - input, chp - output)
+    p_el_out_chp = results_timestep[ts][2]["p_el_out_kw"]
+    p_el_floor_bhp = results_timestep[ts][1]["pel_floor_kw"]
 
-    import json
-    import os
+    #node balance for the timestep
+    node_balance = p_el_out_chp - p_el_floor_bhp + input[0, 7]
 
+    #select the chp_map for the optimization
     here = os.path.dirname(os.path.abspath(__file__))
-
-    # Pfad zu deiner JSON-Datei
     path = os.path.join(here, "library", "chp_maps", "ice_chp_maps.json")
-
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-
     chp_map_2 = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == 700)
 
     if node_balance != 0:
@@ -226,11 +277,12 @@ def check_results(prosumer):
             cop_bhp=results_timestep[ts][1]["cop_floor"],
             soc=results_timestep[ts][3]["soc"],
             chp_map=chp_map_2,
-
-            # degree=1
         )
 
         if results["feasible"]:
+            #put the results of the optimization as input data for the const profile for the rerun of the timestep
+            col_p_el_bhp = prosumer.controller.object[0].input_columns[8]
+            col_p_el_chp = prosumer.controller.object[0].input_columns[9]
             df_data.df.loc[ts, col_p_el_bhp] = results["p_el_bhp"]
             df_data.df.loc[ts, col_p_el_chp] = results["p_el_chp"]
 
@@ -244,7 +296,36 @@ def check_results(prosumer):
 import pyomo.environ as pyo
 import numpy as np
 def fit_chp_relations(chp_map, degree=1):
-    # Daten
+    """
+    Fit a polynomial relation between CHP electrical power and recovered heat.
+
+    Given a CHP performance map (with arrays of electrical and thermal
+    outputs), this function performs a least-squares polynomial regression
+    of heat flow as a function of electrical power.
+
+    Parameters
+    ----------
+    chp_map : dict
+        Dictionary containing at least:
+        - "power_el_kw" : list of float
+            Electrical power values [kW].
+        - "heat_flow_recovered_kw" : list of float
+            Corresponding recovered heat values [kW].
+    degree : int, optional
+        Degree of the polynomial fit (default is 1, i.e. linear).
+
+    Returns
+    -------
+    dict
+        Dictionary with keys:
+        - "degree" : int
+            Polynomial degree used.
+        - "coeff_HE" : list of float
+            Polynomial coefficients for H(E).
+        - "bounds" : dict
+            Min/max bounds for E and H.
+    """
+    # data of the thermal (H) and electric (E) output
     E = np.array(chp_map["power_el_kw"], dtype=float)           # elektrische Leistung
     H = np.array(chp_map["heat_flow_recovered_kw"], dtype=float)# thermische Leistung
 
@@ -274,6 +355,63 @@ def poly_expr(coeffs, x):
 
 def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
                                resol=900, degree=1, storage_cap=10000, q_bhp_max=2000):
+    """
+    Build and solve a Pyomo MINLP for CHP + heat pump + storage dispatch.
+
+    The model decides on CHP electrical output, heat pump consumption,
+    and storage charging/discharging to satisfy heat and electrical
+    balances at minimum heat pump electricity use. The CHP thermal
+    output is approximated by a polynomial fit of electrical power.
+
+    Parameters
+    ----------
+    heat_demand : float
+        Heat demand at the current timestep [kW].
+    flex_demand : float
+        Flexible electrical demand (e.g. load to be balanced) [kW].
+    cop_bhp : float
+        Coefficient of performance of the heat pump [-].
+    soc : float
+        Current state of charge of the thermal storage [0–1].
+    chp_map : dict
+        CHP performance map with electrical and thermal outputs.
+    resol : int, optional
+        Timestep resolution in seconds (default 900).
+    degree : int, optional
+        Degree of polynomial fit for CHP relation (default 1).
+    storage_cap : float, optional
+        Thermal storage capacity [kWh] (default 10000).
+    q_bhp_max : float, optional
+        Maximum thermal output of the heat pump [kW] (default 2000).
+
+    Returns
+    -------
+    dict
+        If feasible:
+        - "p_el_bhp" : float
+            Heat pump electrical consumption [kW].
+        - "p_el_chp" : float
+            CHP electrical output [kW].
+        - "q_th_bhp" : float
+            Heat pump thermal output [kW].
+        - "q_th_chp" : float
+            CHP thermal output [kW].
+        - "soc" : float
+            State of charge (unchanged).
+        - "q_th_discharge" : float
+            Storage discharge [kW].
+        - "q_th_charge" : float
+            Storage charge [kW].
+        - "heat_demand" : float
+            Heat demand satisfied [kW].
+        - "y" : int
+            CHP on/off status.
+        - "el_balance" : float
+            Value of electrical balance constraint.
+        - "feasible" : bool
+            True if optimization succeeded.
+        Otherwise: {"feasible": False}.
+    """
     fit = fit_chp_relations(chp_map, degree=degree)
 
     m = pyo.ConcreteModel()
@@ -287,34 +425,31 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
     m.storage_cap = pyo.Param(initialize=storage_cap)
     m.resol       = pyo.Param(initialize=resol)
 
-    # Entscheidungsvariablen
+    # decision variables for electrical input (BHP) and output (CHP)
     m.p_el_bhp  = pyo.Var(domain=pyo.NonNegativeReals)  # WP Stromverbrauch
     m.p_el_chp = pyo.Var(domain=pyo.NonNegativeReals)  # BHKW Strom
 
-    # Binärvariable für BHKW-Betrieb
+    # binary Variable for chp. To turn the chp of ig´f the load is out of bounds
     m.y_chp = pyo.Var(domain=pyo.Binary)
 
-
-
-    # Lastgrenzen
+    # Bounds CHP
     p_el_min_chp = 0.2 * 700
     p_el_max_chp = 700
 
+    #Bound Constraints CHP
     m.p_el_chp_min = pyo.Constraint(expr=m.p_el_chp >= p_el_min_chp * m.y_chp)
     m.p_el_chp_max = pyo.Constraint(expr=m.p_el_chp <= p_el_max_chp * m.y_chp)
 
-
-
-    # Abgeleitete Variablen
+    # variables thermal output
     m.q_th_bhp  = pyo.Var(domain=pyo.NonNegativeReals)  # WP Wärme
-
-    # H_CHP als Expression in Abhängigkeit von E_CHP
-    coeff_HE = fit["coeff_HE"]
-    M_chp = 5000  # groß genug für Wärmebereich
-
     m.q_th_chp = pyo.Var(domain=pyo.NonNegativeReals)
 
-    # Nur aktiv, wenn y_chp = 1: q_th_chp ≈ poly(p_el_chp)
+    ## Relation between thermal and electric ouput CHP
+    # coefficient of the fit curve of thermal and electric output of the CHP
+    coeff_HE = fit["coeff_HE"]
+    M_chp = 5000  # Big-M
+
+    #  Link q_th_chp to polynomial of p_el_chp only if CHP is on (y_chp = 1), relaxed otherwise
     m.q_th_chp_upper = pyo.Constraint(
         expr=m.q_th_chp <= poly_expr(coeff_HE, m.p_el_chp) + M_chp * (1 - m.y_chp)
     )
@@ -322,38 +457,35 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
         expr=m.q_th_chp >= poly_expr(coeff_HE, m.p_el_chp) - M_chp * (1 - m.y_chp)
     )
 
-    # Wenn y_chp = 0 → q_th_chp = 0
+    # If the CHP is off (y=0) no thermal output is allowed.
     m.q_th_chp_off = pyo.Constraint(expr=m.q_th_chp <= M_chp * m.y_chp)
 
-    # q_th_max_chp = 611.56
-    # # H_CHP darf nur >0 sein, wenn y_CHP = 1
-    # m.q_th_chp_max = pyo.Constraint(expr=m.q_th_chp <= q_th_max_chp * m.y_chp)
+    ## Relation between thermal and electric ouput BHP
+    m.q_th_bhp = pyo.Expression(expr= m.cop_bhp * m.p_el_bhp)
 
-    # Speicher-Variablen
+    # capacity bound for the BHP
+    m.hp_cap = pyo.Constraint(expr=m.q_th_bhp <= m.q_th_bhp_max)
+
+    # stoage variables
     m.q_th_charge    = pyo.Var(domain=pyo.NonNegativeReals)
     m.q_th_discharge = pyo.Var(domain=pyo.NonNegativeReals)
 
+    # Binary-vriables storage
     m.y_charge = pyo.Var(domain=pyo.Binary)
     m.y_discharge = pyo.Var(domain=pyo.Binary)
 
+    #allows to only charge or discharge the storage. Not both at the same time.
     m.charge_discharge = pyo.Constraint(expr=m.y_discharge + m.y_charge <= 1)
 
+    #bounds for charging or discharging the storge dependend on the soc
     m.q_th_charge_max   = pyo.Constraint(expr=m.q_th_charge <= m.storage_cap * (1 - m.soc) * m.resol / 3600 * m.y_charge)
     m.q_th_discharge_max = pyo.Constraint(expr=m.q_th_discharge <= m.storage_cap * m.soc * m.resol / 3600 * m.y_discharge)
 
-
-    # Technologiebeziehungen
-    m.q_th_bhp = pyo.Expression(expr= m.cop_bhp * m.p_el_bhp)
-
-    # Kapazitätsgrenzen
-    m.hp_cap       = pyo.Constraint(expr=m.q_th_bhp <= m.q_th_bhp_max)
-    # m.charge_cap   = pyo.Constraint(expr=m.q_th_charge <= m.q_th_charge_max)
-    # m.discharge_cap= pyo.Constraint(expr=m.q_th_discharge <= m.q_th_discharge_max)
-
-    # Bilanzen
+    # balances
     m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
     m.el_bal   = pyo.Constraint(expr=-m.p_el_bhp + m.p_el_chp + m.flex_demand == 0)
 
+    # objective to minimize the electric power consumption of the whole system.
     m.obj = pyo.Objective(
         expr=m.p_el_bhp,
         sense=pyo.minimize
