@@ -151,10 +151,12 @@ class IceChpController(BasicProsumerController):
         t_ice_chp_k = self._get_input("t_intake_k")
         #
         q_requested_kw = self.q_requested_kw(prosumer)
-        p_received_kw = self._get_input("p_received_kw")
+        #new input variable
+        p_requested_kw = self._get_input("p_requested_kw")
 
-        if not np.isnan(p_received_kw) and cycle_type == 1:
-            q_or_p_calculate_load = p_received_kw
+        # decision if the chp is thermal or electric driven. variable to calculate the load
+        if not np.isnan(p_requested_kw) and cycle_type == 1:
+            q_or_p_calculate_load = p_requested_kw
         else:
             q_or_p_calculate_load = q_requested_kw
         #
