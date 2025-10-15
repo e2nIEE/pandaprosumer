@@ -10,8 +10,7 @@ from pandaprosumer.run_control import run_control, prepare_run_ctrl
 
 from pandapower.control.run_control import ControllerNotConverged
 
-import pyomo.environ as pyo
-from pyomo.opt import SolverStatus, TerminationCondition
+
 
 try:
     import pandaplan.core.pplog as pplog
@@ -22,7 +21,7 @@ logger = pplog.getLogger(__name__)
 logger.setLevel(level=pplog.WARNING)
 
 
-def run_timeseries(prosumer, period_index=0, verbose=True):
+def run_timeseries(prosumer, period_index=0, check_results_fct=None, verbose=True):
     start = prosumer.period.at[period_index, 'start']
     end = prosumer.period.at[period_index, 'end']
     resol = int(prosumer.period.at[period_index, 'resolution_s'])
@@ -32,7 +31,7 @@ def run_timeseries(prosumer, period_index=0, verbose=True):
     ts_variables = init_time_series(prosumer, dur, verbose)
     time_series_initialization(ts_variables['controller_order'])
     run_loop(prosumer, ts_variables, output_writer_fct=output_writer_fct, evaluate_net_fct=evaluate_prosumer_fct,
-             run_control_fct=run_control)
+             run_control_fct=run_control, check_results_fct=check_results_fct)
     time_series_finalization(ts_variables['controller_order'])
 
 
@@ -153,7 +152,8 @@ def init_time_series(prosumer, time_steps, verbose=True, **kwargs):
 
     return ts_variables
 
-def run_loop(prosumer, ts_variables, run_control_fct=run_control, output_writer_fct=output_writer_fct, **kwargs):
+def run_loop(prosumer, ts_variables, run_control_fct=run_control, output_writer_fct=output_writer_fct,
+             check_results_fct=None, **kwargs):
     """
     runs the time series loop which calls pp.runpp (or another run function) in each iteration.
     After the initial run there is the option to rerun the timestep. Based on the result of the function check_results
@@ -166,12 +166,15 @@ def run_loop(prosumer, ts_variables, run_control_fct=run_control, output_writer_
     """
     for i, time_step in enumerate(ts_variables["time_steps"]):
         print_progress(i, time_step, ts_variables["time_steps"], ts_variables["verbose"], ts_variables=ts_variables,
-                       **kwargs)
+                           **kwargs)
         prosumer.rerun = False
         run_time_step(prosumer, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
-        rerun_time_step = check_results(prosumer)
-        # rerun_time_step = False
+        if check_results_fct is not None:
+            rerun_time_step = check_results_fct(prosumer, time_step)
+        else:
+            rerun_time_step = False
+
         if rerun_time_step:
             prosumer.rerun = True
             run_time_step(prosumer, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
