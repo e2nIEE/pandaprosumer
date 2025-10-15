@@ -46,7 +46,6 @@ class GenericToFluidMixController(BasicProsumerController):
 
         t_supply_c = self._get_input("t_supply_c")
         t_required_out_c, t_required_in_c, mdot_required_tab_kg_per_s = self.t_m_to_deliver(prosumer)#, t_feed_c=t_supply_c)
-        #print(t_required_out_c, t_required_in_c, mdot_required_tab_kg_per_s)
         mdot_required_kg_per_s = np.sum(mdot_required_tab_kg_per_s)
         deltaT = t_supply_c - t_required_in_c
 

@@ -7,7 +7,7 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @dataclass
 class ConverterControllerData:
     """
-    Data class for heat demand controller.
+    Data class for converter controller.
 
     Attributes
     ----------
