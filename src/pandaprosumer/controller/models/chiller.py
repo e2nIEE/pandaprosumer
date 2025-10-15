@@ -88,6 +88,10 @@ class ChillerController(BasicProsumerController):
 
 
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         # @tecnalia: this is where you have to put the calculation of the time series dependent values in
         # try:  # why try except here? --> because there was the
