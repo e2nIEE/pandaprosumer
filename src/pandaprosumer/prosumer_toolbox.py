@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 import numpy as np
 import pandas as pd
 
@@ -30,30 +32,6 @@ def add_new_element(prosumer, element, overwrite=False):
         prosumer.update({name: element_input})
         if isinstance(prosumer[name], list):
             prosumer[name] = pd.DataFrame(np.zeros(0, dtype=prosumer[name]), index=[])
-
-
-def get_controller_index(container, controller_name):
-    """
-    Returns the controller identified by a name.
-
-    INPUT:
-      **container** - container (prosumer or network)
-
-      **name** - Name of the controller to match.
-
-    OUTPUT:
-      **index** - The index of the matching controller.
-    """
-    controller_id = None
-    for i, row in container.controller.iterrows():
-        if hasattr(row.object, 'name') and row.object.name == controller_name:
-            if controller_id is None:
-                controller_id = i
-            else:
-                raise NameError(f'Multiple controllers found with name {controller_name} in container {container.name}')
-    if controller_id is None:
-        raise NameError(f'No controller with name {controller_name} found in container {container.name}')
-    return controller_id
 
 
 def reshaping_profiles(profile, resolution, norm=True):
