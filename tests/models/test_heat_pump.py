@@ -1,7 +1,6 @@
-
 import pytest
-
 from pandaprosumer import *
+
 
 def _default_argument():
     return {'max_p_comp_kw': 500,
@@ -79,7 +78,7 @@ class TestHeatPump:
         """
         prosumer = create_empty_prosumer_container()
 
-        create_controlled_heat_pump(prosumer,order = 0, period = _default_period(prosumer),**_default_argument())
+        create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
 
 
         assert hasattr(prosumer, "controller")
@@ -91,7 +90,7 @@ class TestHeatPump:
         """
         prosumer = create_empty_prosumer_container()
 
-        hp_controller_idx = create_controlled_heat_pump(prosumer,order = 0, period = _default_period(prosumer),**_default_argument())
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
         input_columns_expected = ["t_load_in_c"]
