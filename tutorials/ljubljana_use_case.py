@@ -146,6 +146,9 @@ def check_results(prosumer, ts):
     """
     rerun = False
 
+    #previous timestep
+    ts_prev = ts - pd.Timedelta(seconds=900)
+
     #Results for the timestep
     results_timestep = prosumer.controller_results
 
@@ -172,12 +175,20 @@ def check_results(prosumer, ts):
         data = json.load(f)
     chp_map_2 = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == 700)
 
+    cop_bhp = results_timestep[ts][1]["cop_floor"]
+    if ts_prev in results_timestep:
+        # SOC aus dem vorherigen Zeitschritt
+        soc = results_timestep[ts_prev][3]["soc"]
+    else:
+        # erster Zeitschritt → SOC = 0
+        soc = 0.0
+
     if node_balance != 0:
         results = model_optimization_chp_fit(
             heat_demand=input[0, 2],
             flex_demand=input[0, 7],
-            cop_bhp=results_timestep[ts][1]["cop_floor"],
-            soc=results_timestep[ts][3]["soc"],
+            cop_bhp=cop_bhp,
+            soc=soc,
             chp_map=chp_map_2,
         )
 
