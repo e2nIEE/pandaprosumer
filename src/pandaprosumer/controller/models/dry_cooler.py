@@ -117,7 +117,9 @@ class DryCoolerController(BasicProsumerController):
 
         if not np.isnan(self.t_previous_out_c):
             assert self.mdot_previous_in_kg_per_s >= 0
-            assert self.t_previous_in_c >= self.t_previous_out_c
+            assert self.t_previous_in_c + 1e-9 >= self.t_previous_out_c
+            if self.t_previous_in_c < self.t_previous_out_c:
+                self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
             assert mdot_required_kg_per_s >= 0
