@@ -53,11 +53,10 @@ class HeatExchangerController(BasicProsumerController):
         """
         super().__init__(prosumer, stratified_heat_storage_object, order=order, level=level, in_service=in_service,
                          index=index, name=name, **kwargs)
-
-        self.primary_fluid = call_lib(self.element_instance.primary_fluid[self.element_index[0]]) \
-            if self.element_instance.primary_fluid[self.element_index[0]] else prosumer.fluid
-        self.secondary_fluid = call_lib(self.element_instance.secondary_fluid[self.element_index[0]]) \
-            if self.element_instance.secondary_fluid[self.element_index[0]] else prosumer.fluid
+        primary_fluid = self._get_element_param(prosumer, 'primary_fluid')
+        secondary_fluid = self._get_element_param(prosumer, 'secondary_fluid')
+        self.primary_fluid = call_lib(primary_fluid) if primary_fluid else prosumer.fluid
+        self.secondary_fluid = call_lib(secondary_fluid) if secondary_fluid else prosumer.fluid
 
         self.t_previous_1_out_c = np.nan
         self.t_previous_1_in_c = np.nan
@@ -258,7 +257,7 @@ class HeatExchangerController(BasicProsumerController):
         :param prosumer: The prosumer object
         """
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
-            self.obj.element_index[0]].in_service):
+            self.obj.element_index[0]].in_service):  # FixMe: use gettattr element
             self.applied = True
             return
 
