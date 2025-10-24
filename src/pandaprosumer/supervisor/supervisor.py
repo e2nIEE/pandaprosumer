@@ -65,7 +65,8 @@ class Supervisor(MappedController):
         if not isinstance(rule, (Rule, CombiningRules)):
             raise ValueError("Rule must be an instance of the Rule class.")
         self.rules.append(rule)
-        rule.add_to_prosumer(self.container)
+        index = rule.add_to_prosumer(self.container)
+        return index
 
     def add_assert_rule(self, controller, attr, value):
         if controller not in self.assert_rule:
