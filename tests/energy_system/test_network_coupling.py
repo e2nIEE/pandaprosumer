@@ -51,9 +51,9 @@ def _create_power_network():
     return net
 
 
-def _create_prosumer_prod(hp_level):
+def _create_prosumer_prod(hp_level, RESOL_S):
     prosumer = create_empty_prosumer_container(name='prosumer_prod', check_order=False)
-    period, data_source = define_and_get_period_and_data_source(prosumer)
+    period, data_source = define_and_get_period_and_data_source(prosumer, resol=RESOL_S)
 
     cp_input_columns = ["Tin,evap"]
     cp_result_columns = ["Tin,evap"]
@@ -78,9 +78,9 @@ def _create_prosumer_prod(hp_level):
     return prosumer
 
 
-def _create_prosumer_dmd(level):
+def _create_prosumer_dmd(level, RESOL_S):
     prosumer = create_empty_prosumer_container(name='prosumer_dmd', check_order=False)
-    period, data_source = define_and_get_period_and_data_source(prosumer)
+    period, data_source = define_and_get_period_and_data_source(prosumer, resol=RESOL_S)
 
     cp_input_columns = ["demand_1"]  # demand_4 is 10 times lower than demand_1, doesn't work with demand_1 ?
     cp_result_columns = ["demand_kw"]
@@ -177,8 +177,9 @@ class TestNetworkCoupling:
         """
         net_pipes = _create_pipes_network()
         net_power = _create_power_network()
-        prosumer_prod = _create_prosumer_prod(hp_level=2)
-        prosumer_dmd = _create_prosumer_dmd(level=3)
+        RESOL_S = 3600
+        prosumer_prod = _create_prosumer_prod(hp_level=2, RESOL_S=RESOL_S)
+        prosumer_dmd = _create_prosumer_dmd(level=3, RESOL_S=RESOL_S)
         energy_system = _create_energy_system([net_pipes, net_power], [prosumer_prod, prosumer_dmd],
                                               name="test_energy_system")
         assert energy_system.name == "test_energy_system"
@@ -195,8 +196,9 @@ class TestNetworkCoupling:
         Create 2 prosumers (1 producer and 1 heat consumer) connected to a district heating network
         """
         net = _create_pipes_network()
-        prosumer_prod = _create_prosumer_prod(hp_level=2)
-        prosumer_dmd = _create_prosumer_dmd(level=3)
+        RESOL_S = 3600
+        prosumer_prod = _create_prosumer_prod(hp_level=2, RESOL_S=RESOL_S)
+        prosumer_dmd = _create_prosumer_dmd(level=3, RESOL_S=RESOL_S)
         energy_system = _create_energy_system([net], [prosumer_prod, prosumer_dmd])
 
         sample_prosumer_period = prosumer_prod.period
@@ -295,7 +297,6 @@ class TestNetworkCoupling:
         # assert len(prosumer_dmd.mapping) == 3
 
         period = 0
-        RESOL_S = 10
         run_time_series_system(energy_system,
                                period_index=period, continue_on_divergence=False, verbose=True,
                                transient=True, dt=RESOL_S)

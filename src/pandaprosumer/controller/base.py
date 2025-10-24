@@ -2,8 +2,9 @@
 Module containing the BasicProsumerController class.
 """
 
-import numpy as np
 import logging as pplog
+
+import numpy as np
 
 from .mapped import MappedController
 from ..mapping import FluidMixMapping

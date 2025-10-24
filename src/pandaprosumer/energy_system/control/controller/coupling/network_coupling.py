@@ -15,10 +15,10 @@ class NetworkCouplingControl(BasicProsumerController):
     def name(cls):
         return "network_coupling_controller"
 
-    def __init__(self, net, load_ctrl_object, in_service=True, order=0, level=0,
+    def __init__(self, net, elmt_ctrl_object, in_service=True, order=0, level=0,
                  temp_fluid_map_input_col=None, mdot_fluid_map_input_col=None,
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
-        super().__init__(net, load_ctrl_object, in_service=in_service, order=order, level=level,
+        super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
@@ -39,9 +39,9 @@ class NetworkCouplingControl(BasicProsumerController):
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
         # FixMe
-        tfeed_required_c = 75  # np.array(net["res_" + self.element_name].loc[self.element_index, self.tfeed_required_k]) - CELSIUS_TO_K
-        treturn_required_c =  50  # np.array(net["res_" + self.element_name].loc[self.element_index, self.treturn_required_k]) - CELSIUS_TO_K
-        mdot_required_kg_per_s =  3  # np.array(net["res_" + self.element_name].loc[self.element_index, self.mdot_required_kg_per_s])
+        tfeed_required_c = np.array(net["res_" + self.element_name].loc[self.element_index, self.tfeed_required_k]) - CELSIUS_TO_K
+        treturn_required_c = np.array(net["res_" + self.element_name].loc[self.element_index, self.treturn_required_k]) - CELSIUS_TO_K
+        mdot_required_kg_per_s = np.array(net["res_" + self.element_name].loc[self.element_index, self.mdot_required_kg_per_s])
         return tfeed_required_c, treturn_required_c, mdot_required_kg_per_s
 
     def control_step(self, net):
