@@ -10,12 +10,13 @@ from pandaprosumer.controller.base import BasicProsumerController
 
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, efficiency_percent, max_p_kw):
-    # 1. Calculate power of condenser
+    # Calculate thermal power
     q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
+    # Calculate electric power
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
 
-    # 8. Check parameters
+    # Check parameters
     if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
         # If the consumed electrical power is too high, recalculate the output temperature
         p_el_consumed_kw = max_p_kw

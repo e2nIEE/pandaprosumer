@@ -51,7 +51,7 @@ class GasBoilerController(BasicProsumerController):
 
         mdot_gas_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
 
-        # 8. Check parameters
+        # Check parameters
         max_q_kw = self._get_element_param(prosumer, 'max_q_kw')
         if max_q_kw and q_fluid_kw > max_q_kw + 1e-3:
             # If the thermal power is too high, recalculate the output temperature
