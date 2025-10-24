@@ -196,16 +196,18 @@ class TestNetworkCoupling:
         Create 2 prosumers (1 producer and 1 heat consumer) connected to a district heating network
         """
         net = _create_pipes_network()
+        net_power = _create_power_network()
         RESOL_S = 3600
         prosumer_prod = _create_prosumer_prod(hp_level=2, RESOL_S=RESOL_S)
         prosumer_dmd = _create_prosumer_dmd(level=3, RESOL_S=RESOL_S)
-        energy_system = _create_energy_system([net], [prosumer_prod, prosumer_dmd])
+        energy_system = _create_energy_system([net, net_power], [prosumer_prod, prosumer_dmd])
 
         sample_prosumer_period = prosumer_prod.period
         ow_time_steps = pd.date_range(sample_prosumer_period.iloc[0]["start"], sample_prosumer_period.iloc[0]["end"],
                                       freq='%ss' % int(sample_prosumer_period.iloc[0]["resolution_s"]),
                                       tz=sample_prosumer_period.iloc[0]["timezone"])
         OutputWriter(net, ow_time_steps, log_variables=[])  # FixMe: should not be needed in last version of ppipes
+        OutputWriter(net_power, ow_time_steps, log_variables=[])
 
         pump_elmt_index = 0
         consumer_elmt_index = 0
@@ -291,6 +293,23 @@ class TestNetworkCoupling:
                                    responder_id=nc_write_dmd_index,
                                    responder_column='controlled_mdot_kg_per_s',
                                    order=1)
+
+        load_elmt_index = 0
+
+        nc_write_load_index = create_controlled_network_coupling(net_power,
+                                                                 load_elmt_index,
+                                                                 element_name='load',
+                                                                 input_columns=['p_mw'],
+                                                                 level=5, order=0)
+
+        GenericEnergySystemMapping(container=prosumer_prod,
+                                   initiator_id=hp_ctrl_index,
+                                   initiator_column='p_comp_kw',
+                                   responder_net=net_power,
+                                   responder_id=nc_write_load_index,
+                                   responder_column='p_mw',
+                                   order=0,
+                                   conversion_function=lambda p: p / 1000)
 
         # assert len(net.mapping) == 2
         # assert len(prosumer_prod.mapping) == 2

@@ -115,9 +115,15 @@ class BasicProsumerController(MappedController):
                 tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(prosumer)
             else:
                 for _, mapping_row in prosumer.mapping.iterrows():
-                    if mapping_row.responder == responder.index:  # FixMe: not enough
-                        container = mapping_row.object.responder_net
-                        tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)
+                    found_container = False
+                    if found_container:
+                        break
+                    for _, controller_row in mapping_row.object.responder_net.controller.iterrows():
+                        if controller_row.object == responder:
+                            found_container = True
+                            container = mapping_row.object.responder_net
+                            tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)
+                            break
             tfeed_tab_c = np.append(tfeed_tab_c, tfeed_i)
             treturn_tab_c = np.append(treturn_tab_c, treturn_i)
             mdot_tab_kg_per_s = np.append(mdot_tab_kg_per_s, mdot_i)
