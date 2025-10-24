@@ -612,8 +612,7 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0,
-                                        period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
                Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
 
@@ -644,32 +643,30 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
            """
     bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-                                                        element_index=[bhp_index],
-                                                        period_index=period
-                                                        )
+        element_index=[bhp_index],
+        period_index=period
+    )
     bhp = BoosterHeatPumpController(prosumer,
-                                    bhp_controller_data,
-                                    order=order,
-                                    level=level,
-                                    name=name)
+                                   bhp_controller_data,
+                                   order=order,
+                                   level=level,
+                                   name=name)
 
     return bhp.index
 
-
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0,
-                                               order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
     from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-                                                        element_index=[bhp_index],
-                                                        period_index=period
-                                                        )
+        element_index=[bhp_index],
+        period_index=period
+    )
     from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
     bhp = BoosterHeatPumpController(prosumer,
-                                    bhp_controller_data,
-                                    order=order,
-                                    level=level,
-                                    name=name)
+                                   bhp_controller_data,
+                                   order=order,
+                                   level=level,
+                                   name=name)
 
     return bhp.index
 

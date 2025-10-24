@@ -593,12 +593,12 @@ def create_gas_boiler(prosumer,
 
 
 def create_booster_heat_pump(
-        prosumer,
-        hp_type,
-        in_service=True,
-        name=None,
-        index=None,
-        **kwargs
+    prosumer,
+    hp_type,
+    in_service=True,
+    name=None,
+    index=None,
+    **kwargs
 ):
     """
     :param prosumer:
