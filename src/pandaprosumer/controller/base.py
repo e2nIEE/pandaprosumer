@@ -106,7 +106,17 @@ class BasicProsumerController(MappedController):
         # Get the expected temperatures and mass flow of all the responders
         tfeed_tab_c, treturn_tab_c, mdot_tab_kg_per_s = np.array([]), np.array([]), np.array([])
         for responder in responders:
-            tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(prosumer)
+            same_container = False
+            for controller_row  in prosumer.controller:
+                if controller_row.object == responder:
+                    same_container = True
+            if same_container:
+                tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(prosumer)
+            else:
+                for mapping_row in prosumer.mapping:
+                    if mapping_row.responder_id == responder.id:  # FixMe: not enough
+                        container = mapping_row.responder_net
+                        tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)
             tfeed_tab_c = np.append(tfeed_tab_c, tfeed_i)
             treturn_tab_c = np.append(treturn_tab_c, treturn_i)
             mdot_tab_kg_per_s = np.append(mdot_tab_kg_per_s, mdot_i)
