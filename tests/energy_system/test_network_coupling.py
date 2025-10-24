@@ -1,17 +1,16 @@
 import pandapower
 from pandapower.timeseries import OutputWriter
-import pandapipes
 
 from pandaprosumer.create_controlled import *
 from pandaprosumer.energy_system import create_empty_energy_system, add_net_to_energy_system, \
     add_pandaprosumer_to_energy_system
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
+from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import \
+    run_timeseries as run_time_series_system
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping, FluidMixEnergySystemMapping, \
     GenericEnergySystemMapping
 from tests.data_sources import define_and_get_period_and_data_source
-from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import \
-    run_timeseries as run_time_series_system
 
 
 def _create_pipes_network():
@@ -143,8 +142,7 @@ def create_controlled_network_coupling(net,
                                        temp_fluid_map_output_idx=None,
                                        mdot_fluid_map_output_idx=None,
                                        level=0,
-                                       order=0,
-                                       **kwargs):
+                                       order=0):
     if isinstance(element_index, (np.integer, int)):
         element_index = [int(element_index)]
     elif isinstance(element_index, np.ndarray):
@@ -181,7 +179,8 @@ class TestNetworkCoupling:
         net_power = _create_power_network()
         prosumer_prod = _create_prosumer_prod(hp_level=2)
         prosumer_dmd = _create_prosumer_dmd(level=3)
-        energy_system = _create_energy_system([net_pipes, net_power], [prosumer_prod, prosumer_dmd], name="test_energy_system")
+        energy_system = _create_energy_system([net_pipes, net_power], [prosumer_prod, prosumer_dmd],
+                                              name="test_energy_system")
         assert energy_system.name == "test_energy_system"
         assert len(energy_system.nets) == 2
         assert len(energy_system.prosumer) == 2
@@ -221,7 +220,8 @@ class TestNetworkCoupling:
                                                                  pump_elmt_index,
                                                                  element_name='circ_pump_pressure',
                                                                  temp_fluid_map_input_col=['t_flow_k'],
-                                                                 mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],  # FixMe: doesn't exist in circ_pump_pressure
+                                                                 mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
+                                                                 # FixMe: doesn't exist in circ_pump_pressure
                                                                  level=4,
                                                                  order=0)
 

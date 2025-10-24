@@ -107,15 +107,15 @@ class BasicProsumerController(MappedController):
         tfeed_tab_c, treturn_tab_c, mdot_tab_kg_per_s = np.array([]), np.array([]), np.array([])
         for responder in responders:
             same_container = False
-            for controller_row  in prosumer.controller:
+            for _, controller_row in prosumer.controller.iterrows():
                 if controller_row.object == responder:
                     same_container = True
             if same_container:
                 tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(prosumer)
             else:
-                for mapping_row in prosumer.mapping:
-                    if mapping_row.responder_id == responder.id:  # FixMe: not enough
-                        container = mapping_row.responder_net
+                for _, mapping_row in prosumer.mapping.iterrows():
+                    if mapping_row.responder == responder.index:  # FixMe: not enough
+                        container = mapping_row.object.responder_net
                         tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)
             tfeed_tab_c = np.append(tfeed_tab_c, tfeed_i)
             treturn_tab_c = np.append(treturn_tab_c, treturn_i)
