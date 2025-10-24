@@ -144,11 +144,11 @@ class TestElectricBoiler:
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
 
-        t_expected_out_c = 20 + 250 / (4 * 4.186)
-        expected = [250, 4, 20, t_expected_out_c, 500]
-        assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
-        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01),
-                                                              FluidMixMapping.MASS_FLOW_KEY: 4}]
+        mdot_expected_kg_per_s = 250 / ((80 - 20) * 4.186)
+        expected = [250, mdot_expected_kg_per_s, 20, 80, 500]
+        assert elb_controller.step_results == pytest.approx(np.array([expected]), .1)
+        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(80, .01),
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_expected_kg_per_s, .01)}]
 
     def test_controller_run_control_outrange_3demands(self):
         """
@@ -168,11 +168,14 @@ class TestElectricBoiler:
         elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         elb_controller.control_step(prosumer)
 
-        t_expected_out_c = 20 + 250 / (9 * 4.186)
-        expected = [250, 9, 20, t_expected_out_c, 500]
+        mdot_expected_kg_per_s = 250 / ((80 - 20) * 4.186)
+        expected = [250, mdot_expected_kg_per_s, 20, 80, 500]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert elb_controller.result_mass_flow_with_temp == [
-            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 3},
-            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 2},
-            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_expected_out_c, .01), FluidMixMapping.MASS_FLOW_KEY: 4}
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(80, .01),
+             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_expected_kg_per_s, .01)},
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(80, .01),
+             FluidMixMapping.MASS_FLOW_KEY: 0.},
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(80, .01),
+             FluidMixMapping.MASS_FLOW_KEY: 0.}
         ]

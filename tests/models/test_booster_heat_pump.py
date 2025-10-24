@@ -5,11 +5,10 @@ from pandaprosumer.create_controlled import *
 
 def _default_period(prosumer):
     return create_period(prosumer, 1,
-                         name="foo",
-                         start="2020-01-01 00:00:00",
-                         end="2020-01-01 11:59:59",
-                         timezone="utc")
-
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59",
+                               timezone="utc")
 
 class TestBoosterHeatPump:
 
@@ -70,8 +69,7 @@ class TestBoosterHeatPump:
         bhp_controller = prosumer.controller.iloc[bhp_controller_idx].object
 
         input_columns_expected = ["t_source_k", 'demand', 'mode', 'q_received_kw', 'p_received_kw']
-        result_columns_expected = ['cop_floor', 'cop_radiator', 'p_el_floor', 'p_el_radiator', 'q_remain', 'q_floor',
-                                   'q_radiator']
+        result_columns_expected = ['cop_floor', 'cop_radiator', 'p_el_floor', 'p_el_radiator', 'q_remain', 'q_floor', 'q_radiator']
 
         assert bhp_controller.input_columns == input_columns_expected
         assert bhp_controller.result_columns == result_columns_expected
@@ -88,6 +86,7 @@ class TestBoosterHeatPump:
 
         assert bhp_controller.element_instance.iloc[0]['t_source_k'] == pytest.approx(300.0)
 
+
     def test_controller_run_control_no_demand(self):
         """
         Test the Heat Pump controller without any demand
@@ -103,13 +102,15 @@ class TestBoosterHeatPump:
 
         bhp_controller.control_step(prosumer)
 
-        expected = [5.21054, 5.26054, 0.0, 0.0, 0.0, 0.0, 0.0]  # results
+        expected = [5.21054, 5.26054, 0.0, 0.0 ,0.0, 0.0, 0.0 ] # results
 
         assert bhp_controller.step_results[0, 0] >= 1 or bhp_controller.step_results[0, 0] == 0
         assert bhp_controller.step_results[0, 1] >= 1 or bhp_controller.step_results[0, 1] == 0
         assert bhp_controller.step_results[0, 2] <= bhp_controller.step_results[0, 5]
         assert bhp_controller.step_results[0, 3] <= bhp_controller.step_results[0, 6]
         assert bhp_controller.step_results == pytest.approx(np.array([expected]))
+
+
 
     def test_controller_run_control_demand(self):
         """
@@ -223,3 +224,15 @@ class TestBoosterHeatPump:
         assert second_result[0, 3] >= third_result[0, 3]
         assert second_result[0, 5] >= third_result[0, 5]
         assert second_result[0, 6] >= third_result[0, 6]
+
+
+
+
+
+
+
+
+
+
+
+

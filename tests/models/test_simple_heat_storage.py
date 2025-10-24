@@ -200,8 +200,8 @@ class TestSimpleHeatStorage:
         shs_controller_indx = create_controlled_heat_storage(prosumer, init_soc=init_soc, period=period, **shs_params)
         shs_controller = prosumer.controller.iloc[shs_controller_indx].object
 
-        q_to_fill_kwh = (1 - init_soc) * q_capacity_kwh
-        assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600 / shs_controller.resol)
+        q_to_fill_kwh = (1-init_soc) * q_capacity_kwh
+        assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol)
 
         q_in_kw = 1000
         q_out_kw = 100

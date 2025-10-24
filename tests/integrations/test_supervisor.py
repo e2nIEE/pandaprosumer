@@ -154,8 +154,8 @@ class TestSupervisor:
 
         run_timeseries(prosumer, period, True)
         expected_values_qw = [50.0, 200.0, 500.0, 0.]
-        expected_values_q_cond_kw = [0.0, 0., 0., 300.]
-        q_received_kw = [50.0, 200.0, 500.0, 300.]
+        expected_values_q_cond_kw = [0.0, 0., 300., 300.]
+        q_received_kw = [50.0, 200.0, 800.0, 300.]
 
         assert prosumer.time_series.loc[0, 'data_source'].df.q_kw.values.tolist() == expected_values_qw
         assert prosumer.time_series.loc[1, 'data_source'].df.q_cond_kw.values.tolist() == expected_values_q_cond_kw
@@ -488,7 +488,7 @@ class TestSupervisor:
 
         run_timeseries(prosumer, period, True)
 
-        expected_values = [50., 200., max_hp_qcond, 0., max_hp_qcond - 300.]
+        expected_values = [50., 200., max_hp_qcond, max_hp_qcond, 300.]
         actual_values = prosumer.time_series.loc[1, 'data_source'].df.q_received_kw.values.tolist()
 
         rounded_actual = np.round(actual_values, 3).tolist()
