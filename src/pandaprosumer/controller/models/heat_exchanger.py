@@ -181,7 +181,7 @@ class HeatExchangerController(BasicProsumerController):
         if min_x == 0:
             min_a = 1
         else:
-            min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1
+            min_a = -np.log(1 - min_x) / min_x  # FixMe: case where min_x == 1 or >= 1 ?
 
         if a < min_a:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s

@@ -33,7 +33,6 @@ class FluidMixMapping(BaseMapping):
         super().__init__(container, initiator_id, None, responder_id, None, order, no_chain, index)
         self.application_operation = application_operation
         self.weights = weights
-        self.initiator_net = container
         self.responder_net = container
         self.order = order
         self.initiator = initiator_id
