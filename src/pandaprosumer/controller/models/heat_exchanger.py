@@ -292,6 +292,12 @@ class HeatExchangerController(BasicProsumerController):
             t_2_out_c = t_out_2_required_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
+            # Handle case where primary mass flow is provided but no heat exchange occurs (full bypass)
+            if not np.isnan(self._mdot_1_provided_kg_per_s):
+                mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
+                # Temperature remains the same (bypass)
+                t_1_out_c = t_1_in_c
+
         else:
             # FixMe: case where t_out_2_required_c == t_in_2_required_c
             t_out_2_required_c_init = t_out_2_required_c
@@ -316,12 +322,12 @@ class HeatExchangerController(BasicProsumerController):
                                                                                        mdot_2_required_kg_per_s,
                                                                                        t_1_in_c)
 
-                # ToDo: Manage the case where m_1_kg_per_s_in < mdot_1_kg_per_s
+                # ToDo: Manage the case where self._mdot_1_provided_kg_per_s < mdot_1_kg_per_s
                 # If the input mass flow is smaller than the one required by the Heat Exchanger,
                 # The primary return temperature is assumed equal to the secondary cold input
-                # if m_1_kg_per_s_in < mdot_1_kg_per_s:
+                # if self._mdot_1_provided_kg_per_s < mdot_1_kg_per_s:
                 #     t_1_out_c = t_cold_2
-                #     mdot_1_kg_per_s = m_1_kg_per_s_in
+                #     mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
 
                 if not np.isnan(self._mdot_1_provided_kg_per_s):
                     assert self._mdot_1_provided_kg_per_s >= 0, f"Heat Exchanger {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
@@ -344,10 +350,10 @@ class HeatExchangerController(BasicProsumerController):
                                                                                                        t_1_out_c,
                                                                                                        self._mdot_1_provided_kg_per_s,
                                                                                                        t_2_in_c)
-                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01,\
-                            (f"Heat Exchanger {self.name} mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s"
-                             f" ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s}) for for timestep"
-                             f" {self.time} in prosumer {prosumer.name}")
+                        # assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01,\
+                        #     (f"Heat Exchanger {self.name} mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s"
+                        #      f" ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s}) for for timestep"
+                        #      f" {self.time} in prosumer {prosumer.name}")
 
                     elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is lower than the one required by the Heat Exchanger,

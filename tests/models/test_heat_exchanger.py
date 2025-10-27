@@ -382,3 +382,30 @@ class TestHeatExchanger:
         assert hx_controller.result_mass_flow_with_temp == [
             {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(88.68328, .001),
              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.077384, .001)}]
+
+
+    def test_controller_run_control_demand_paris(self):
+        """
+        Test the control step of a Heat Exchanger controller with downstream demand at the nominal conditions.
+        Expect the mass flow and temperatures at the primary and secondary to be the same as the nominal.
+        """
+        prosumer = create_empty_prosumer_container()
+        hx_params = {'t_1_in_nom_c': 45,
+                     't_1_out_nom_c': 30,
+                     't_2_in_nom_c': 20,
+                     't_2_out_nom_c': 40,
+                     'mdot_2_nom_kg_per_s': 3.58}
+        hx_controller_idx = create_controlled_heat_exchanger(prosumer, order=0, period=_default_period(prosumer),
+                                                             **hx_params)
+        hx_controller = prosumer.controller.iloc[hx_controller_idx].object
+        hx_controller.inputs = np.array([[]])
+        hx_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 70
+        hx_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 0.04780220531778556
+        hx_controller.t_m_to_deliver = lambda x: (65, 55, [3.99061359])
+        hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hx_controller.control_step(prosumer)
+
+        expected = [16.693, 0.15916, 90., 65., .4, 50., 60.]
+        assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
+        assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 60.,
+                                                             FluidMixMapping.MASS_FLOW_KEY: .4}]
