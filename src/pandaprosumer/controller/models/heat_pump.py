@@ -1,6 +1,7 @@
 """
 Module containing the HeatPumpController class.
 """
+import warnings
 
 import numpy as np
 from math import log
@@ -316,6 +317,15 @@ class HeatPumpController(BasicProsumerController):
         assert not np.isnan(self._t_load_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         # assert t_src_out_required_c >= t_src_in_required_c and self.is_heating_mode(prosumer), f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_src_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_src_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+
+        if t_src_out_required_c < 0: warnings.warn(f"Heat Pump {self.name} t_cond_out_required_c < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
+        if t_src_in_required_c < 0: warnings.warn(f"Heat Pump {self.name} t_cond_in_required_c < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
+        if mdot_src_required_kg_per_s < 0: warnings.warn(f"Heat Pump {self.name} mdot_cond_kg_per_s < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
+        if self._t_load_in_c:
+            if self._t_load_in_c < 0: warnings.warn(f"Heat Pump {self.name} t_evap_in_c < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
+        else:
+            if self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] < 0: warnings.warn(f"Heat Pump {self.name} t_cond_in_required_c < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
+            if self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] < 0: warnings.warn(f"Heat Pump {self.name} mdot_cond_kg_per_s < 0 for timestep {self.time} in prosumer {prosumer.name}", category=RuntimeWarning)
 
         rerun = True
         nb_runs = 0
