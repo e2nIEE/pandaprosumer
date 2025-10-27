@@ -5,7 +5,7 @@ Module containing the ElectricBoilerController class.
 import numpy as np
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K
+from pandaprosumer.constants import CELSIUS_TO_K, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
 
 
@@ -103,8 +103,8 @@ class ElectricBoilerController(BasicProsumerController):
         nb_runs = 0
         while rerun:
             nb_runs += 1
-            if nb_runs > 20:
-                raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+            if nb_runs > MAX_RERUN:
+                raise Exception(f"Electric Boiler calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
             q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
                                                                                                    mdot_required_kg_per_s,
                                                                                                    t_out_required_c,

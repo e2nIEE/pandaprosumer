@@ -7,7 +7,7 @@ import numpy as np
 from pandapipes import call_lib
 
 from pandaprosumer.controller.base import BasicProsumerController
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
@@ -313,8 +313,8 @@ class HeatExchangerController(BasicProsumerController):
             nb_runs = 0
             while rerun:
                 nb_runs += 1
-                if nb_runs > 20:
-                    raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+                if nb_runs > MAX_RERUN:
+                    raise Exception(f"Heat Exchanger calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
                 (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
                  mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
                                                                                        t_out_2_required_c,

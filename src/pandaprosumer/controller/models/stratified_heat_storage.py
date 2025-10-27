@@ -7,7 +7,7 @@ from numba import njit
 
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 
 
 @njit
@@ -559,7 +559,11 @@ class StratifiedHeatStorageController(BasicProsumerController):
         layer_temp_init_c = self._layer_temps_c.copy()
 
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
+            if nb_runs > MAX_RERUN:
+                raise Exception(f"Stratified Heat Storage calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
             self._layer_temps_c = layer_temp_init_c.copy()
 
             (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,

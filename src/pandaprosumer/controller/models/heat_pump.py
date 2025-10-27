@@ -8,7 +8,7 @@ import pandas as pd
 
 from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
 
 
@@ -318,7 +318,11 @@ class HeatPumpController(BasicProsumerController):
         assert mdot_src_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_src_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
+            if nb_runs > MAX_RERUN:
+                raise Exception(f"Heat Pump calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
             pinch_c = self._get_element_param(prosumer, 'pinch_c')
 
             if self.is_heating_mode(prosumer):
