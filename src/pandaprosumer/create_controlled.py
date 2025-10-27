@@ -15,7 +15,8 @@ def create_controlled_network_coupling(net,
                                        temp_fluid_map_output_idx=None,
                                        mdot_fluid_map_output_idx=None,
                                        level=0,
-                                       order=0):
+                                       order=0,
+                                       name=None):
     if isinstance(element_index, (np.integer, int)):
         element_index = [int(element_index)]
     elif isinstance(element_index, np.ndarray):
@@ -34,7 +35,7 @@ def create_controlled_network_coupling(net,
                                mdot_fluid_map_input_col=mdot_fluid_map_input_col,
                                temp_fluid_map_output_idx=temp_fluid_map_output_idx,
                                mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
-                               level=level, order=order)
+                               level=level, order=order, name=name)
 
     return n.index
 
