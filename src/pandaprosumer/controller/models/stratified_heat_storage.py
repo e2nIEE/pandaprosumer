@@ -613,6 +613,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                             t_discharge_out_c,
                             q_discharge_kw,
                             e_stored_kwh]])
+        print(result)
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
