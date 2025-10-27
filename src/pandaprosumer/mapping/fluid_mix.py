@@ -58,7 +58,8 @@ class FluidMixMapping(BaseMapping):
         :param responder_controller: The responding controller
         """
         # FixMe: Will break if the order are not 0, 1, 2, ...
-        if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
+        if self._check_order():
+            self.check_controllers_orders(initiator_controller, responder_controller)
 
         initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[self.order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]

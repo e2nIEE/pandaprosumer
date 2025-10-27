@@ -348,7 +348,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         mdot_charge_kg_per_s = nb_cold_layers * m_layer_kg / self.resol
 
         mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
-        t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
+        if mdot_required_kg_per_s == 0:
+            t_required_out_c = t_required_in_c
+        else:
+            t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         if not np.isnan(self.t_previous_out_charge_c):
             mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
