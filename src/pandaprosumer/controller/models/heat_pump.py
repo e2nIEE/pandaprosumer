@@ -37,8 +37,14 @@ class HeatPumpController(BasicProsumerController):
 
         cond_fluid = self._get_element_param(prosumer, 'cond_fluid')
         evap_fluid = self._get_element_param(prosumer, 'evap_fluid')
-        self.cond_fluid = call_lib(cond_fluid) if cond_fluid else prosumer.fluid
-        self.evap_fluid = call_lib(evap_fluid) if evap_fluid else prosumer.fluid
+        if cond_fluid and cond_fluid != prosumer.fluid.name:
+            self.cond_fluid = call_lib(cond_fluid)
+        else:
+            self.cond_fluid = prosumer.fluid
+        if evap_fluid and evap_fluid != prosumer.fluid.name:
+            self.evap_fluid = call_lib(evap_fluid)
+        else:
+            self.evap_fluid = prosumer.fluid
         # FixMe: Does it works when evap fluid is a gas (e.g. air) ?
         # ToDo: Add power ramp up/down constrain
         self.t_previous_evap_out_c = np.nan

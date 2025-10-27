@@ -55,8 +55,14 @@ class HeatExchangerController(BasicProsumerController):
                          index=index, name=name, **kwargs)
         primary_fluid = self._get_element_param(prosumer, 'primary_fluid')
         secondary_fluid = self._get_element_param(prosumer, 'secondary_fluid')
-        self.primary_fluid = call_lib(primary_fluid) if primary_fluid else prosumer.fluid
-        self.secondary_fluid = call_lib(secondary_fluid) if secondary_fluid else prosumer.fluid
+        if primary_fluid and primary_fluid != prosumer.fluid.name:
+            self.primary_fluid = call_lib(primary_fluid)
+        else:
+            self.primary_fluid = prosumer.fluid
+        if secondary_fluid and secondary_fluid != prosumer.fluid.name:
+            self.secondary_fluid = call_lib(secondary_fluid)
+        else:
+            self.secondary_fluid = prosumer.fluid
 
         self.t_previous_1_out_c = np.nan
         self.t_previous_1_in_c = np.nan

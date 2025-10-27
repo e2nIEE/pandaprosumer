@@ -637,8 +637,7 @@ def create_controlled_dry_cooler(prosumer,
     dry_cooler_controller_data = DryCoolerControllerData(
         element_name='dry_cooler',
         element_index=[dry_cooler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     dry_cooler_controller = DryCoolerController(prosumer,
                                                 dry_cooler_controller_data,
