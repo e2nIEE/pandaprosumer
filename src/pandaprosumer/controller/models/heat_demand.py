@@ -49,8 +49,8 @@ class HeatDemandController(BasicProsumerController):
     def _mdot_demand_kg_per_s(self):
         return self._get_input('mdot_demand_kg_per_s')
 
-    def _t_feed_demand_c(self, prosumer):
-        return self._get_input('t_feed_demand_c', prosumer)
+    def _t_feed_demand_c(self,prosumer):
+        return self._get_input('t_feed_demand_c',prosumer)
 
     @property
     def _t_return_demand_c(self):
@@ -74,6 +74,9 @@ class HeatDemandController(BasicProsumerController):
         #     return np.nan
         # return self.inputs[:, self.input_columns.index("fluid_mix")][0][FluidMixMapping.MASS_FLOW_KEY]
 
+    def is_heating_mode(self, prosumer):
+        return True  # FixMe: self._get_element_param(prosumer, 'heating')
+
     def q_to_receive_kw(self, prosumer):
         """
         Calculates the heat to receive in kW.
@@ -86,7 +89,7 @@ class HeatDemandController(BasicProsumerController):
         for responder in self._get_generic_mapped_responders(prosumer):
             # The demand is normally not mapped to anything
             q_to_receive_kw += responder.q_to_receive_kw(prosumer)
-        q_to_receive_kw += self._q_demand_kw  # The actual demand
+        q_to_receive_kw += self._q_demand_kw # The actual demand
         if not np.isnan(self._get_input('q_received_kw')):
             # If there is already some power in the input, don't require it again
             q_received_kw = self._get_input('q_received_kw')
@@ -95,50 +98,82 @@ class HeatDemandController(BasicProsumerController):
         return q_to_receive_kw
 
     def _demand_q_tf_tr_m(self, prosumer):
-        if not (np.isnan(self._t_feed_demand_c(prosumer)) or np.isnan(self._t_return_demand_c)
-                or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s)):
+        if all(not np.isnan(val) for val in (
+        self._t_feed_demand_c(prosumer), self._t_return_demand_c, self._q_demand_kw, self._mdot_demand_kg_per_s)):
             raise ValueError("Should not provide a value for all Heat Demand inputs")
 
-        if np.isnan(self._t_feed_demand_c(prosumer)):
-            if np.isnan(self._t_return_demand_c) or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                # TODO : error if t_in_set_c do not exists
-                t_feed_demand_c = self.element_instance.t_in_set_c[self.element_index[0]]
+        t_feed_demand_c = (self._t_feed_demand_c(prosumer)
+                           if not np.isnan(self._t_feed_demand_c(prosumer))
+                           else self._calc_t_feed(prosumer))
+        t_return_demand_c = (self._t_return_demand_c
+                             if not np.isnan(self._t_return_demand_c)
+                             else self._calc_t_return(prosumer))
+
+        mdot_demand_kg_per_s = (self._mdot_demand_kg_per_s
+                                if not np.isnan(self._mdot_demand_kg_per_s)
+                                else self._calc_mdot(prosumer, t_feed_demand_c, t_return_demand_c))
+
+        q_demand = (self._q_demand_kw
+                    if not np.isnan(self._q_demand_kw)
+                    else self._calc_q(prosumer, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s))
+
+        return q_demand, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
+
+    def _calc_t_feed(self, prosumer):
+        if any(np.isnan(val) for val in (self._t_return_demand_c, self._q_demand_kw, self._mdot_demand_kg_per_s)):
+            if self.is_heating_mode(prosumer):
+                if not hasattr(self.element_instance, 't_in_set_c'):
+                    raise ValueError("t_feed_demand_c (t_in_set_c) needs to be defined")
+                return self.element_instance.t_in_set_c[self.element_index[0]]
             else:
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + self._t_return_demand_c)) / 1000
-                t_feed_demand_c = self._t_return_demand_c + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
+                if not hasattr(self.element_instance, 't_out_set_c'):
+                    raise ValueError("t_feed_demand_c (t_out_set_c) needs to be defined")
+                return self.element_instance.t_out_set_c[self.element_index[0]]
+        cp = prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + self._t_return_demand_c) / 1000
+        if  self.is_heating_mode(prosumer):
+            t_feed = self._t_return_demand_c + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
         else:
-            t_feed_demand_c = self._t_feed_demand_c(prosumer)
-        if np.isnan(self._t_return_demand_c):
-            if np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                # TODO : error if t_out_set_c do not exists
-                t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
+            t_feed = self._t_return_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
+        return t_feed
+
+    def _calc_t_return(self, prosumer):
+        if any(val is None or np.isnan(val) for val in (self._q_demand_kw, self._mdot_demand_kg_per_s)):
+            if self.is_heating_mode(prosumer):
+                if not hasattr(self.element_instance, 't_out_set_c'):
+                    raise ValueError("t_return_demand_c (t_out_set_c) needs to be defined")
+                return self.element_instance.t_out_set_c[self.element_index[0]]
             else:
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
-                t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
+                if not hasattr(self.element_instance, 't_in_set_c'):
+                    raise ValueError("t_return_demand_c (t_in_set_c) needs to be defined")
+                return self.element_instance.t_in_set_c[self.element_index[0]]
+
+        t_feed = self._t_feed_demand_c(prosumer)
+        cp = prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed) / 1000
+        assert cp > 0 and not np.isnan(cp), "Invalid heat capacity"
+        if self.is_heating_mode(prosumer):
+            t_return = t_feed - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
         else:
-            t_return_demand_c = self._t_return_demand_c
-        if np.isnan(self._mdot_demand_kg_per_s):
-            if np.isnan(self._q_demand_kw):
-                raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
-            else:
-                t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-                if abs(t_feed_demand_c - t_return_demand_c) < 1e-12:
-                    mdot_demand_kg_per_s = 0
-                else:
-                    mdot_demand_kg_per_s = self._q_demand_kw / (cp * (t_feed_demand_c - t_return_demand_c))
-        else:
-            mdot_demand_kg_per_s = self._mdot_demand_kg_per_s
+            t_return = t_feed + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
+        return t_return
+
+    def _calc_mdot(self, prosumer, t_feed, t_return):
         if np.isnan(self._q_demand_kw):
-            t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
-            cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-            q_demand_kw = mdot_demand_kg_per_s * cp * (t_feed_demand_c - t_return_demand_c)
+            raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
+        t_mean = (t_feed + t_return) / 2
+        cp = prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean) / 1000
+        if self.is_heating_mode(prosumer):
+            dT = (t_feed - t_return)
+        else : dT = (t_return - t_feed)
+        return self._q_demand_kw / (cp * dT) if abs(dT) >= 1e-12 else 0
+
+    def _calc_q(self, prosumer, t_feed, t_return, mdot_demand_kg_per_s):
+        t_mean_c = (t_feed + t_return) / 2
+        cp = prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c) / 1000
+        if self.is_heating_mode(prosumer):
+            q = mdot_demand_kg_per_s * cp * (t_feed- t_return)
         else:
-            q_demand_kw = self._q_demand_kw
-        # if mdot_demand_kg_per_s < 1e-3:
-        #     mdot_demand_kg_per_s = 0
-        #     t_return_demand_c = t_feed_demand_c
-        return q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
+            q = mdot_demand_kg_per_s * cp * (t_return - t_feed)
+        return q
 
     def _t_m_to_receive_init(self, prosumer):
         """
@@ -151,14 +186,18 @@ class HeatDemandController(BasicProsumerController):
         if not np.isnan(self.t_previous_out_c):
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
-            if t_feed_demand_c <= t_return_demand_c or mdot_demand_kg_per_s < 1e-12:
+            if self.is_heating_mode(prosumer) and (t_feed_demand_c <= t_return_demand_c or mdot_demand_kg_per_s < 1e-12):
                 t_feed_demand_c = t_return_demand_c
+                mdot_demand_kg_per_s = 0
+            elif not self.is_heating_mode(prosumer) and (
+                    t_feed_demand_c >= t_return_demand_c or mdot_demand_kg_per_s < 1e-12):
+                t_return_demand_c = t_feed_demand_c
                 mdot_demand_kg_per_s = 0
             assert not np.isnan(t_feed_demand_c)
             assert not np.isnan(t_return_demand_c)
             assert not np.isnan(mdot_demand_kg_per_s)
             assert mdot_demand_kg_per_s >= 0
-            assert t_feed_demand_c >= t_return_demand_c
+            # assert t_feed_demand_c >= t_return_demand_c
             return t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
 
     def control_step(self, prosumer):
@@ -167,12 +206,10 @@ class HeatDemandController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
+        if not(self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
-
         super().control_step(prosumer)
-
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)
@@ -197,15 +234,25 @@ class HeatDemandController(BasicProsumerController):
         assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        if not self.is_heating_mode(prosumer):
+            t_mean_c = (self._t_in_c + t_return_demand_c) / 2
+            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
 
-        t_mean_c = (self._t_in_c + t_return_demand_c) / 2
-        cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-        if np.isnan(self._mdot_received_kg_per_s):
-            q_received_kw = q_demand_kw
-            mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            if np.isnan(self._mdot_received_kg_per_s):
+                q_received_kw = q_demand_kw
+                mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (t_return_demand_c - self._t_in_c))
+            else:
+                mdot_received_kg_per_s = self._mdot_received_kg_per_s
+                q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (t_return_demand_c - self._t_in_c)
         else:
-            mdot_received_kg_per_s = self._mdot_received_kg_per_s
-            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
+            t_mean_c = (self._t_in_c + t_return_demand_c) / 2
+            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
+            if np.isnan(self._mdot_received_kg_per_s):
+                q_received_kw = q_demand_kw
+                mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            else:
+                mdot_received_kg_per_s = self._mdot_received_kg_per_s
+                q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
         t_out_c = t_return_demand_c
         # Calculate the difference between the received and the required power, wo considering the temperature level
         # FixMe: Consider the temperature level in the output
