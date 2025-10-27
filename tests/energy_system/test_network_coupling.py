@@ -132,40 +132,6 @@ def _create_energy_system(nets, prosumers, name="test_energy_system"):
     return energy_system
 
 
-def create_controlled_network_coupling(net,
-                                       element_index,
-                                       element_name='heat_consumer',
-                                       input_columns=[],
-                                       result_columns=[],
-                                       temp_fluid_map_input_col=[],
-                                       mdot_fluid_map_input_col=[],
-                                       temp_fluid_map_output_idx=None,
-                                       mdot_fluid_map_output_idx=None,
-                                       level=0,
-                                       order=0):
-    if isinstance(element_index, (np.integer, int)):
-        element_index = [int(element_index)]
-    elif isinstance(element_index, np.ndarray):
-        element_index = [int(i) for i in element_index.tolist()]
-    elif isinstance(element_index, list):
-        element_index = [int(i) for i in element_index]
-
-    networkcoupling = NetworkCouplingData(element_index=element_index,
-                                          element_name=element_name,
-                                          input_columns=input_columns,
-                                          result_columns=result_columns)
-
-    n = NetworkCouplingControl(net,
-                               networkcoupling,
-                               temp_fluid_map_input_col=temp_fluid_map_input_col,
-                               mdot_fluid_map_input_col=mdot_fluid_map_input_col,
-                               temp_fluid_map_output_idx=temp_fluid_map_output_idx,
-                               mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
-                               level=level, order=order)
-
-    return n.index
-
-
 class TestNetworkCoupling:
     """
     In this example, an energy system is created with multiple prosumers and couplings with networks.

@@ -1,6 +1,42 @@
 from pandaprosumer.create import *
 from pandaprosumer.controller import *
 from pandaprosumer.supervisor import *
+from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
+
+
+def create_controlled_network_coupling(net,
+                                       element_index,
+                                       element_name='heat_consumer',
+                                       input_columns=[],
+                                       result_columns=[],
+                                       temp_fluid_map_input_col=[],
+                                       mdot_fluid_map_input_col=[],
+                                       temp_fluid_map_output_idx=None,
+                                       mdot_fluid_map_output_idx=None,
+                                       level=0,
+                                       order=0):
+    if isinstance(element_index, (np.integer, int)):
+        element_index = [int(element_index)]
+    elif isinstance(element_index, np.ndarray):
+        element_index = [int(i) for i in element_index.tolist()]
+    elif isinstance(element_index, list):
+        element_index = [int(i) for i in element_index]
+
+    networkcoupling = NetworkCouplingData(element_index=element_index,
+                                          element_name=element_name,
+                                          input_columns=input_columns,
+                                          result_columns=result_columns)
+
+    n = NetworkCouplingControl(net,
+                               networkcoupling,
+                               temp_fluid_map_input_col=temp_fluid_map_input_col,
+                               mdot_fluid_map_input_col=mdot_fluid_map_input_col,
+                               temp_fluid_map_output_idx=temp_fluid_map_output_idx,
+                               mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
+                               level=level, order=order)
+
+    return n.index
 
 
 def create_controlled_const_profile(prosumer,
