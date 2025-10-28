@@ -393,6 +393,11 @@ class HeatPumpController(BasicProsumerController):
                     t_src_in_required_c = t_cond_in_new_c
                     rerun = True
 
+        if q_cond_kw < 1e-9:
+            q_cond_kw = 0
+            mdot_cond_kg_per_s = 0
+            t_cond_out_c = t_cond_in_c
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,
