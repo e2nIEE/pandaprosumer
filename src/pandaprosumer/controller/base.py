@@ -46,7 +46,6 @@ class BasicProsumerController(MappedController):
 
         :param prosumer: The prosumer object
         """
-        print(f"control_step {self.name}")
         super().control_step(prosumer)
 
     def get_treturn_tab_c(self, prosumer):

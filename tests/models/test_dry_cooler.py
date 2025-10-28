@@ -95,7 +95,6 @@ class TestDryCooler:
         dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
                                                          **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
-        print(dc_controller)
 
         input_columns_expected = ["mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_air_in_c", "phi_air_in_percent"]
         result_columns_expected = ['q_exchanged_kw', 'p_fans_kw', 'n_rpm', 'mdot_air_m3_per_h',
