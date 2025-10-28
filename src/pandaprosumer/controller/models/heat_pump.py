@@ -305,7 +305,9 @@ class HeatPumpController(BasicProsumerController):
 
         t_src_out_required_c, t_src_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         if self.is_heating_mode(prosumer):
-            assert t_src_out_required_c >= t_src_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
+            if not t_src_out_required_c >= t_src_in_required_c:
+                warnings.warn(f"Heat Pump {self.name} t_cond_out_required_c {t_src_out_required_c} < t_cond_in_required_c {t_src_in_required_c} for timestep {self.time} in prosumer {prosumer.name}")
+                t_src_out_required_c = t_src_in_required_c
         elif not self.is_heating_mode(prosumer):
             assert t_src_out_required_c <= t_src_in_required_c, f"Heat Pump {self.name} t_evap_out_required_c > t_evap_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
