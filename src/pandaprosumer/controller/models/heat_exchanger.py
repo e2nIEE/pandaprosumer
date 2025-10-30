@@ -190,7 +190,8 @@ class HeatExchangerController(BasicProsumerController):
             # a higher t_1_out_c
             # ToDo: create test for this case
             min_delta_t_cold_c = 3  # ToDo: constant
-            t_1_out_c = t_2_out_c + min_delta_t_cold_c
+            t_1_out_c = t_2_in_c + min_delta_t_cold_c
+            assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name}: t_1_out_c ({t_1_out_c}) is greater than t_1_in_c ({t_1_in_c})"
             x = 1 - min_delta_t_cold_c / delta_t_hot_c
             a = -np.log(1 - x) / x
             q_exchanged_w = (delta_t_hot_c * q_exchanged_nom_w) / (a * lmtd_nom)
