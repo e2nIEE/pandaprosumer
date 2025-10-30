@@ -21,6 +21,14 @@ def _subtract_mapping(initiator_controller, responder_controller, initiator_colu
     previous_value = responder_controller.inputs[:, resp_col_idx]
     responder_controller.inputs[:, resp_col_idx] = np.nan_to_num(previous_value, nan=0.) - mapped_value
 
+# FixMe: temporary fix for controller reexecute
+def _last_mapping(initiator_controller, responder_controller, initiator_column, responder_column, conversion_function = lambda x : x):
+    init_col_idx = initiator_controller.result_columns.index(initiator_column)  # ToDo: add detailed error if IndexError
+    resp_col_idx = responder_controller.input_columns.index(responder_column)
+    initiator_result = initiator_controller.step_results[:, init_col_idx]
+    mapped_value = conversion_function(initiator_result)
+    responder_controller.inputs[:, resp_col_idx] = mapped_value
+
 
 class GenericMapping(BaseMapping):
     """
@@ -103,6 +111,17 @@ class GenericMapping(BaseMapping):
                 _subtract_mapping(initiator_controller, responder_controller,
                                   self.initiator_column, self.responder_column,
                                   self.conversion_function)
+        if self.application_operation == 'last':
+            # if initiator_controller.has_elements and initiator_controller._nb_elements >= 2:
+            if isinstance(self.initiator_column, list):
+                for initiator_column, responder_column in zip(self.initiator_column, self.responder_column):
+                    _last_mapping(initiator_controller, responder_controller,
+                                 initiator_column, responder_column,
+                                 self.conversion_function)
+            else:
+                _last_mapping(initiator_controller, responder_controller,
+                             self.initiator_column, self.responder_column,
+                             self.conversion_function)
         else:
             raise ValueError(f"Application operation '{self.application_operation}' not supported for GenericMapping"
                              f"from controller '{initiator_controller.name}' on column '{self.initiator_column}' "
