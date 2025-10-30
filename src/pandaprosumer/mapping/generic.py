@@ -111,7 +111,7 @@ class GenericMapping(BaseMapping):
                 _subtract_mapping(initiator_controller, responder_controller,
                                   self.initiator_column, self.responder_column,
                                   self.conversion_function)
-        if self.application_operation == 'last':
+        elif self.application_operation == 'last':
             # if initiator_controller.has_elements and initiator_controller._nb_elements >= 2:
             if isinstance(self.initiator_column, list):
                 for initiator_column, responder_column in zip(self.initiator_column, self.responder_column):
