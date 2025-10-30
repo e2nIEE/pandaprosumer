@@ -27,12 +27,14 @@ class HeatExchangerController(BasicProsumerController):
     The temperature on the primary side must be higher than on the secondary (t_in_1 > t_out_2 and t_out_1 > t_in_2).
 
     Primary:
-    t_in_1 = t_hot_1 = t_feed_1
-    t_out_1 = t_cold_1 = t_return_1 (result of _compute_temp)
+
+    - t_in_1 = t_hot_1 = t_feed_1
+    - t_out_1 = t_cold_1 = t_return_1 (result of _compute_temp)
 
     Secondary:
-    t_in_2 = t_cold_2 = t_return_2
-    t_out_2 = t_hot_2 = t_feed_2
+
+    - t_in_2 = t_cold_2 = t_return_2
+    - t_out_2 = t_hot_2 = t_feed_2
 
     :param prosumer: The prosumer object
     :param heat_exchanger_object: The heat exchanger object
@@ -183,23 +185,38 @@ class HeatExchangerController(BasicProsumerController):
         max_t_1_out_c = t_1_in_c - min_delta_t_1_c
         min_x = 1 - (max_t_1_out_c - t_2_in_c) / delta_t_hot_c
 
-        min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1  # FixMe: case where min_x == 1 or >= 1 ?
-
-        if a < min_a:
-            # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
-            # else t_1_out_c would be hotter than t_1_in_c
-            a = min_a
-            q_ratio = delta_t_hot_c / (min_a * lmtd_nom)
-            q_exchanged_w = q_ratio * q_exchanged_nom_w
+        if min_x >= 1 :
+            # If t_2_in_c >= max_t_1_out, ignore min_delta_t_1_c but calculate which q_exchanged will give
+            # a higher t_1_out_c
+            # ToDo: create test for this case
+            min_delta_t_cold_c = 3  # ToDo: constant
+            t_1_out_c = t_2_out_c + min_delta_t_cold_c
+            x = 1 - min_delta_t_cold_c / delta_t_hot_c
+            a = -np.log(1 - x) / x
+            q_exchanged_w = (delta_t_hot_c * q_exchanged_nom_w) / (a * lmtd_nom)
             mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kgk * delta_t_2_c)
-            # delta_t_cold = _calculate_cold_temperature_difference(a, delta_t_hot_c)
-            t_1_out_c = max_t_1_out_c
             t_mean_1_c = CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2
-            mdot_1_kg_per_s = q_exchanged_w / (self.primary_fluid.get_heat_capacity(t_mean_1_c) * (t_1_in_c - t_1_out_c))
+            cp_1_j_per_kgk = self.primary_fluid.get_heat_capacity(t_mean_1_c)
+            mdot_1_kg_per_s = q_exchanged_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
+
         else:
-            t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
-                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
-                                                      heat_consumer=False)
+            min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1
+
+            if a < min_a:
+                # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
+                # else t_1_out_c would be hotter than t_1_in_c
+                a = min_a
+                q_ratio = delta_t_hot_c / (min_a * lmtd_nom)
+                q_exchanged_w = q_ratio * q_exchanged_nom_w
+                mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kgk * delta_t_2_c)
+                # delta_t_cold = _calculate_cold_temperature_difference(a, delta_t_hot_c)
+                t_1_out_c = max_t_1_out_c
+                t_mean_1_c = CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2
+                mdot_1_kg_per_s = q_exchanged_w / (self.primary_fluid.get_heat_capacity(t_mean_1_c) * (t_1_in_c - t_1_out_c))
+            else:
+                t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
+                                                          delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
+                                                          heat_consumer=False)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
         # if mdot_1_kg_per_s < 1e-6:
