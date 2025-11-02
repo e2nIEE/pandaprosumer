@@ -612,6 +612,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         result = np.array([[mdot_discharge_kg_per_s,
                             t_discharge_out_c,
                             q_discharge_kw,
+                            mdot_received_kg_per_s,
+                            t_received_in_c,
+                            q_received_kw,
+                            q_charge_kw,
                             e_stored_kwh]])
 
         result_fluid_mix = []

@@ -40,4 +40,8 @@ class StratifiedHeatStorageControllerData:
     result_columns: List[str] = field(default_factory=lambda: ["mdot_discharge_kg_per_s",
                                                                "t_discharge_c",
                                                                "q_delivered_kw",
+                                                               "mdot_in_kg_per_s",
+                                                               "t_in_c",
+                                                               "q_received_kw",
+                                                               "q_charge_kw",
                                                                "e_stored_kwh"])
