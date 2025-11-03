@@ -153,7 +153,7 @@ class TestIceChp:
     
         assert np.isnan(ice_chp_controller._get_input('cycle'))
         
-        ice_chp_controller.inputs = np.array([[1, 297]])
+        ice_chp_controller.inputs = np.array([[1, 297, np.nan]])
         assert ice_chp_controller._get_input('cycle', prosumer) == pytest.approx(1)
     
         with pytest.raises(KeyError):
@@ -187,7 +187,7 @@ class TestIceChp:
         
         # time series input:
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[1, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
 
         ice_chp_controller.control_step(prosumer)
@@ -210,7 +210,7 @@ class TestIceChp:
         
         # time series input:
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[1, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         # demand:
         ice_chp_controller.q_requested_kw = lambda x: 1000
 
@@ -245,7 +245,7 @@ class TestIceChp:
             
         # time series input:
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[1, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         # demand:
         ice_chp_controller.q_requested_kw = lambda x: 1000
 
@@ -278,7 +278,7 @@ class TestIceChp:
             
         # time series input:
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[1, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         # demand
         ice_chp_controller.q_requested_kw = lambda x: demand
 
@@ -311,7 +311,7 @@ class TestIceChp:
             
         # time series input:
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[1, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         # demand
         ice_chp_controller.q_requested_kw = lambda x: demand
 
@@ -361,7 +361,7 @@ class TestIceChp:
 
         # dynamic input:                                                        
         # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[cycle_test, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
+        ice_chp_controller.inputs = np.array([[cycle_test, 293.15, np.nan]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
         ice_chp_controller.q_requested_kw = lambda x: 1000
 
         ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
