@@ -21,7 +21,7 @@ logger = pplog.getLogger(__name__)
 logger.setLevel(level=pplog.WARNING)
 
 
-def run_timeseries(prosumer, period_index=0, check_results_fct=None, verbose=True):
+def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=None):
     start = prosumer.period.at[period_index, 'start']
     end = prosumer.period.at[period_index, 'end']
     resol = int(prosumer.period.at[period_index, 'resolution_s'])
