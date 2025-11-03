@@ -127,7 +127,7 @@ class TestIceChp:
         ice_chp_controller_idx = create_controlled_ice_chp(prosumer, index=None, in_service=True, level=0, order=0, period=_default_period(prosumer), **_default_arguments())
         ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
 
-        input_columns_expected = ['cycle', 't_intake_k']
+        input_columns_expected = ['cycle', 't_intake_k', 'p_requested_kw']
         result_columns_expected = ['load', 'p_in_kw', 'p_el_out_kw', 'p_th_out_kw', 'p_rad_out_kw', 'ice_chp_efficiency', 'mdot_fuel_in_kg_per_s', 'acc_m_fuel_in_kg', 'acc_co2_equiv_kg', 'acc_co2_inst_kg', 'acc_nox_mg', 'acc_time_ice_chp_oper_s']
 
         assert ice_chp_controller.input_columns == input_columns_expected
