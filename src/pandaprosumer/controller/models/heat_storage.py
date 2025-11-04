@@ -44,9 +44,7 @@ class HeatStorageController(BasicProsumerController):
         # self.applied = False
         _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
         fill_level_kwh = min(self._soc, 1) * _q_capacity_kwh
-        q_to_receive_kw = 0.0
-        if self.last_soc <= 0.9:
-            q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
+        q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
         q_to_receive_kw += self.q_to_deliver_kw(prosumer)
         if not np.isnan(self._get_input('q_received_kw')):
             # If there is already some power in the input, don't require it again
