@@ -66,14 +66,13 @@ heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh,lev
 
 heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
-
 GenericMapping(prosumer,
         initiator_id=cp_index,
         initiator_column=["t_source_cp_k", "mode_cp","p_el_bhp_cp"],
         responder_id=bhp_index,
         responder_column=["t_source_k", "mode", "p_received_kw"],
     )
-#GENERAL CONTROLLER ---> ICE CHP
+
 GenericMapping(
         prosumer,
         initiator_id=cp_index,
@@ -82,7 +81,7 @@ GenericMapping(
         responder_column=["cycle", "t_intake_k", "p_requested_kw"],
     )
 
-#General Controller -> Heat Demand
+
 GenericMapping(prosumer,
         initiator_id=cp_index,
         initiator_column="q_demand_cp_kw",
@@ -90,8 +89,6 @@ GenericMapping(prosumer,
         responder_column="q_demand_kw",
     )
 
-
-#BHP -> Heat Demand
 GenericMapping(prosumer,
                 initiator_id=bhp_index,
                 initiator_column="q_floor",
@@ -100,7 +97,6 @@ GenericMapping(prosumer,
                 order=0,
 )
 
-# ICE CHP ---> HEAT DEMAND (consumer)
 GenericMapping(
     prosumer,
     initiator_id=ice_chp_index,
@@ -177,10 +173,9 @@ def check_results(prosumer, ts):
 
     cop_bhp = results_timestep[ts][1]["cop_floor"]
     if ts_prev in results_timestep:
-        # SOC aus dem vorherigen Zeitschritt
         soc = results_timestep[ts_prev][3]["soc"]
     else:
-        # erster Zeitschritt → SOC = 0
+        # first timestep → SOC = 0
         soc = 0.0
 
     if node_balance != 0:
@@ -238,14 +233,12 @@ def fit_chp_relations(chp_map, degree=1):
             Min/max bounds for E and H.
     """
     # data of the thermal (H) and electric (E) output
-    E = np.array(chp_map["power_el_kw"], dtype=float)           # elektrische Leistung
-    H = np.array(chp_map["heat_flow_recovered_kw"], dtype=float)# thermische Leistung
+    E = np.array(chp_map["power_el_kw"], dtype=float)
+    H = np.array(chp_map["heat_flow_recovered_kw"], dtype=float)
 
-    # Sortieren nach E
     idx = np.argsort(E)
     E, H = E[idx], H[idx]
 
-    # Vandermonde-Matrix für Regression: [1, E, E^2, ...]
     X = np.vander(E, N=degree+1, increasing=True)
 
     # Least Squares Fit: H = f(E)
@@ -316,7 +309,7 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
             Storage charge [kW].
         - "heat_demand" : float
             Heat demand satisfied [kW].
-        - "y" : int
+        - "y_chp" : int
             CHP on/off status.
         - "el_balance" : float
             Value of electrical balance constraint.
@@ -447,8 +440,6 @@ df = pd.DataFrame({
 }, index=res_chp.index)  # falls du den Zeitindex behalten willst
 print(df)
 
-costs_bhp = sum(-df["bhp_p_el"] * time_series_data["c_electricity_eur_per_mw"]*1e-3)
-costs_chp = res_chp["acc_m_fuel_in_kg"][-1] * 13 * 70*1e-3
-costs_ges = costs_bhp + costs_chp
+
 
 
