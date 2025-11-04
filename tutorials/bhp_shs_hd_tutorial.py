@@ -52,10 +52,10 @@ demand_data = pd.read_excel('data/input_bhp.xlsx')
 demand_data['t_feed_demand_c'] = 60
 demand_data['t_return_demand_c'] = 20
 demand_data["mode"] = 3
-demand_data["t_supply_c"] = 60
+demand_data["t_supply_c"] = 70
 
 demand_data["q_demand_kw"] *= 5
-demand_data["q_demand_kw"][0] = 10
+# demand_data["q_demand_kw"][0] = 10
 
 dur = pd.date_range(start=start, end=end, freq=frequency, tz='utc')
 demand_data.index = dur
@@ -133,33 +133,6 @@ FluidMixMapping(
     responder_id=heat_demand_index,
     order=0,
 )
-
-#GenericMapping(
-#    prosumer,
-#    initiator_id=bhp_index,
-#    initiator_column="q_floor",
-#    responder_id=shs_controller_index,
-#    responder_column="q_requested_limit",
-#    #order=0,
-#)
-
-
-
-#GenericMapping(
-#    prosumer,
-#    initiator_id=shs_controller_index,
-#    initiator_column="q_delivered_kw",
-#    responder_id=heat_demand_index,
-#    responder_column="q_received_kw",
-#    #order=1,
-#)
-
-print(prosumer.mapping[
-    (prosumer.mapping["initiator"] == shs_controller_index) |
-    (prosumer.mapping["responder"] == shs_controller_index)
-])
-
-
 
 run_timeseries(prosumer, period, True)
 
