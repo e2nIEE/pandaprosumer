@@ -404,13 +404,6 @@ class StratifiedHeatStorageController(BasicProsumerController):
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
 
-        t_required_in_c, t_required_out_c, mdot_required_kg_per_s =  self._t_m_to_receive_init(prosumer)
-        cp_received = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c - t_required_out_c) / 2)
-        cp_demand = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_demand_out_c - t_demand_in_c) / 2)
-
-        q_received_kw = mdot_received_kg_per_s * cp_received * (t_received_in_c - t_required_out_c) / 1e3
-        q_demand_kw = mdot_demand_kg_per_s * cp_demand * (t_demand_out_c - t_demand_in_c) / 1e3
-
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
             mdot_discharge_kg_per_s = mdot_demand_kg_per_s
@@ -420,9 +413,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
             # mass flow to provide at self._t_charge_c to provide the same energy to the demand
             if t_received_in_c - t_demand_out_c > 0:
                 delta_t_demand_c = t_demand_out_c - t_demand_in_c
-                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (
-                        t_received_in_c - t_demand_in_c)  # is this the right delta_T?
-                # mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
+                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
             else:
                 mdot_toprovide_kg_per_s = mdot_demand_kg_per_s
             if mdot_toprovide_kg_per_s > mdot_received_kg_per_s:
@@ -443,11 +434,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                     # (considering that the return temperature would be the same)
                     e_demand = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
                     e_bypass = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c)
-                    # mdot_discharge_kg_per_s = (e_demand - e_bypass) / (t_discharge_out_c - t_demand_in_c)
-                    cp_discharge_j_per_kgk = float(
-                        self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_discharge_out_c + t_demand_in_c) / 2))
-                    mdot_discharge_kg_per_s = (q_demand_kw - q_received_kw) * 1e3 / (
-                                cp_discharge_j_per_kgk * (t_discharge_out_c - t_demand_in_c))
+                    mdot_discharge_kg_per_s = (e_demand - e_bypass) / (t_discharge_out_c - t_demand_in_c)
             else:
                 # If this energy can be provided, charging with the extra mass flow
                 mdot_bypass_kg_per_s = mdot_toprovide_kg_per_s
