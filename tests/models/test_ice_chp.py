@@ -1,377 +1,278 @@
+# from pandaprosumer.pv_module.source.pv_production import PvProduction
 import pytest
-from pandaprosumer.create import *
-from pandaprosumer.create_controlled import *
+import pandas as pd
+import numpy as np
+import joblib
+from pandapower.timeseries.data_sources.frame_data import DFData
 
 
-"""
-TESTS:
 
-1. Creation of an ICE CHP element  
-
-2. Creation of an ICE CHP element with custom parameter values 
-
-3. Creation of an ICE CHP controller 
-
-4. Test the input and result columns of an ICE CHP controller 
-
-5. Getting input values ---> static input
-
-6. Getting controller data ---> dynamic input
-
-7. Run the controller without a demand
-
-8. Run the controller with a single demand
-
-9. Test the ICE CHP size selection
-
-10. Test ICE CHP interpolation
-
-11. Test ICE CHP load limits
-
-12. Test the fuel input type 
-
-13. Test the cycle
-
+"""Enter the environment. Comment init. Run
+python -m pytest --cov=pandaprosumer2/controller tests/models/test_combined_heat_and_power.py 
 """
 
-# parameter values (static input)
-def _default_arguments():
-    return {'size': 350,
-            'fuel': 'ng', 
-            'altitude': 0,
-            'name': 'example_ice_chp'
-            }
 
-# definition of the time period
+def _default_argument():
+    """Default test values based on actual data ranges"""
+    return {
+        'Size': 10,  # Range: 10-200
+        'Heat_demand': 4,  # Range: 4-375
+        'Return_water_temperature': 40,  # Range: 40-55
+        'Supply_water_temperature': 78,  # Range: 78-99
+        'p_th_mw': 8,  # Range: 8-810
+        'p_el_mw': 2.0  # Range: 2.0-200
+    }
+
+
+def _max_argument():
+    """Maximum values from actual data ranges"""
+    return {
+        'Size': 200,
+        'Heat_demand': 375,
+        'Return_water_temperature': 55,
+        'Supply_water_temperature': 99,
+        'p_th_mw': 810,
+        'p_el_mw': 200.0
+    }
+
+
+def test_chp_validation():
+    """Test CHP input validation with actual data ranges"""
+    inputs = _default_argument()
+
+    # Test minimum values
+    with pytest.raises(ValueError):
+        inputs["Size"] = 9  # Below minimum 10
+        chp_ulj(**inputs)
+
+    # Test maximum values
+    inputs = _max_argument()
+    with pytest.raises(ValueError):
+        inputs["Size"] = 201  # Above maximum 200
+        chp_ulj(**inputs)
+
+
+def test_chp_input_validation():
+    """Test CHP input parameter validation with actual ranges"""
+    inputs = {
+        "Size": 10,
+        "Return_water_temperature": 40,
+        "Supply_water_temperature": 78,
+        "Heat_demand": 4,
+        "period_start": "2020-01-01 00:00:00",
+        "period_end": "2020-01-01 01:00:00",
+        "cycle": "topping",
+        "location_lat": 37.8882,
+        "location_long": 4.7794
+    }
+
+    with pytest.raises(ValueError):
+        del inputs["Size"]
+        chp_ulj(**inputs)
+
+
+def test_prepare_data():
+    """Test data preparation with actual data ranges"""
+    test_data = pd.DataFrame({
+        "Size": [10, 100, 200],
+        "Return_water_temperature": [40, 45, 55],
+        "Supply_water_temperature": [78, 85, 99],
+        "Heat_demand": [4, 200, 375]
+    })
+
+    test_file = "test_chp_data.xlsx"
+    test_data.to_excel(test_file, index=False)
+
+    processed_data = prepare_data(
+        test_file,
+        "2020-01-01 00:00:00",
+        "2020-01-01 02:00:00",
+        3600,
+        10
+    )
+
+    assert isinstance(processed_data, pd.DataFrame)
+    assert len(processed_data) == 3
+    assert all(40 <= temp <= 55 for temp in processed_data["Return_water_temperature"])
+    assert all(78 <= temp <= 99 for temp in processed_data["Supply_water_temperature"])
+    assert all(4 <= demand <= 375 for demand in processed_data["Heat_demand"])
+
+
+def test_model_prediction():
+    """Test model prediction with actual data ranges"""
+    input_data = np.array([
+        [10, 40, 78, 4],  # Minimum values
+        [200, 55, 99, 375]  # Maximum values
+    ])
+
+    try:
+        model = load_model("model_weights.pkl")
+        scalers = joblib.load("scalers.pkl")
+
+        predictions = predict_with_model(
+            model,
+            input_data,
+            scalers['input_scaler'],
+            scalers['target_scaler']
+        )
+
+        # Verify predictions are within expected ranges
+        assert all(8 <= heat <= 810 for heat in predictions[:, 0])  # Total heat of steam
+        assert all(2.0 <= power <= 200.0 for power in predictions[:, 1])  # Electricity generation
+
+    except FileNotFoundError:
+        pytest.skip("Model files not found, skipping test")
+
+
+def test_chp_simulation():
+    """Test CHP simulation with actual data ranges"""
+    test_data = pd.DataFrame({
+        "Size": [10, 200],
+        "Return water temperature": [40, 55],
+        "Supply water temperature": [78, 99],
+        "Heat demand": [4, 375]
+    })
+
+    data_source = DFData(test_data)
+
+    try:
+        prosumer = chp_ulj(
+            data_source=data_source,
+            cycle="topping",
+            size=10,
+            profile_name_demand=[
+                "Size",
+                "Return water temperature",
+                "Supply water temperature",
+                "Heat demand"
+            ],
+            period_start="2020-01-01 00:00:00",
+            period_end="2020-01-01 01:00:00"
+        )
+
+        assert prosumer is not None
+
+    except Exception as e:
+        pytest.fail(f"Simulation process failed: {str(e)}")
+
+
 def _default_period(prosumer):
-    time_step_s = 900          # duration of a single time step in seconds
-    return create_period(prosumer, 
-                         time_step_s,
+    return create_period(prosumer, 1,
                          name="foo",
                          start="2020-01-01 00:00:00",
                          end="2020-01-01 11:59:59",
                          timezone="utc")
 
 
-class TestIceChp:
-    """
-    Tests the basic functionalities of an ICE CHP element and controller
-    """
-    
-#========================| STANDARD TESTS |====================================
-    # TEST 1
-    def test_define_element(self):    
-        """
-        Test the creation of an ICE CHP element with default parameters values
-        """
+class TestCombinedHeatAndPower:
+    """Tests the functionalities of a CHP element and controller"""
+
+    def test_define_element(self):
+        """Test the creation of a CHP element with default parameters values"""
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
-        create_ice_chp(prosumer, 350.0, "ng")    
 
-        assert hasattr(prosumer, "ice_chp")
-        assert len(prosumer.ice_chp) == 1
+        create_chp(prosumer, **_default_argument())
+        assert hasattr(prosumer, "chp")
+        assert len(prosumer.chp) == 1
 
-        expected_columns = ["size", "fuel", "altitude", "in_service", "name"]
-        expected_values = [350.0, "ng", 0.0, True, None]
-        
-        assert list(prosumer.ice_chp.columns) == expected_columns
-        assert list(prosumer.ice_chp.iloc[0]) == expected_values
+        expected_columns = ["Size", "Heat_demand", "Return_water_temperature",
+                            "Supply_water_temperature", "Tp_th_mw",
+                            "p_el_mw", "in_service"]
+        expected_values = [10, 4, 40, 78, 8, 2.0, True]
 
-    
-    # TEST 2
-    def test_define_element_with_parameters(self):    
-        """
-        Test the creation of an ICE CHP element with custom parameters values
-        """
+        assert sorted(prosumer.chp.columns) == sorted(expected_columns)
+        assert prosumer.chp.iloc[0].values == pytest.approx(expected_values)
+
+    def test_define_element_with_parameters(self):
+        """Test the creation of a CHP element with custom parameters values"""
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
-        ice_chp_idx = create_ice_chp(prosumer, 350.0, "ng", 0.0, True, "example_ice_chp")
 
-        assert hasattr(prosumer, 'ice_chp')
-        assert len(prosumer.ice_chp) == 1
-        assert prosumer.ice_chp.index[0] == ice_chp_idx
-        
-        # Checks names of columns (all string!):
-        assert isinstance(prosumer.ice_chp.columns[0], str)       # size 
-        assert isinstance(prosumer.ice_chp.columns[1], str)       # fuel type
-        assert isinstance(prosumer.ice_chp.columns[2], str)       # altitude  
-        assert isinstance(prosumer.ice_chp.columns[3], str)       # in_service 
-        assert isinstance(prosumer.ice_chp.columns[4], str)       # name
-        # Checks input types:
-        assert isinstance(prosumer.ice_chp.iloc[0].values[0], float)     # size
-        assert isinstance(prosumer.ice_chp.iloc[0].values[1], str)       # fuel type
-        assert isinstance(prosumer.ice_chp.iloc[0].values[2], float)     # altitude
-        assert bool(prosumer.ice_chp.iloc[0].values[3])                  # in_service 
-        assert isinstance(prosumer.ice_chp.iloc[0].values[4], str)       # name
-        
-        
-    # TEST 3    
-    def test_define_controller(self):      # OK WITH THE -s ARGUMENT WHEN RUNNING THE TEST (FOR THE PROMPT)
-        """
-        Test the creation of an ICE CHP controller in a prosumer container
-        """
+        params = {
+            'Size': 200,
+            'Heat_demand': 375,
+            'Return_water_temperature': 55,
+            'Supply_water_temperature': 99,
+            'p_th_mw': 810,
+            'p_el_mw': 2.0
+        }
+
+        chp_idx = create_chp(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
+        assert hasattr(prosumer, "chp")
+        assert len(prosumer.chp) == 1
+        assert chp_idx == 4
+        assert prosumer.chp.index[0] == chp_idx
+
+        expected_columns = ["name", "Size", "Heat_demand", "Return_water_temperature",
+                            "Supply_water_temperature", "p_th_mw",
+                            "p_el_mw", "in_service", "custom"]
+        expected_values = ['foo', 200, 375, 55, 99, 810, 2.0, False, 'test']
+
+        assert sorted(prosumer.chp.columns) == sorted(expected_columns)
+        assert prosumer.chp.iloc[0].values == pytest.approx(expected_values)
+
+    def test_define_controller(self):
+        """Test the creation of a CHP controller in a prosumer container"""
         prosumer = create_empty_prosumer_container()
-        create_controlled_ice_chp(prosumer, index=None, in_service=True, level=0, order=0, period=_default_period(prosumer), **_default_arguments())
+        create_controlled_chp(prosumer, period=_default_period(prosumer), **_default_argument())
 
         assert hasattr(prosumer, "controller")
-        assert len(prosumer.controller) == 1 
-        
-    
-    # TEST 4
-    def test_controller_columns_default(self):      
-        """
-        Test the input and result columns of an ICE CHP controller
-        """
+        assert len(prosumer.controller) == 1
+
+    def test_controller_columns_default(self):
+        """Test the input and result columns of the CHP controller"""
         prosumer = create_empty_prosumer_container()
+        chp_controller_index = create_controlled_chp(prosumer, period=_default_period(prosumer), **_default_argument())
+        chp_controller = prosumer.controller.iloc[chp_controller_index].object
 
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, index=None, in_service=True, level=0, order=0, period=_default_period(prosumer), **_default_arguments())
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
+        input_columns_expected = ['Size', 'Heat_demand', 'Return_water_temperature', 'Supply_water_temperature']
+        result_columns_expected = ['p_th_mw', 'p_el_mw']
 
-        input_columns_expected = ['cycle', 't_intake_k']
-        result_columns_expected = ['load', 'p_in_kw', 'p_el_out_kw', 'p_th_out_kw', 'p_rad_out_kw', 'ice_chp_efficiency', 'mdot_fuel_in_kg_per_s', 'acc_m_fuel_in_kg', 'acc_co2_equiv_kg', 'acc_co2_inst_kg', 'acc_nox_mg', 'acc_time_ice_chp_oper_s']
+        assert chp_controller.input_columns == input_columns_expected
+        assert chp_controller.result_columns == result_columns_expected
 
-        assert ice_chp_controller.input_columns == input_columns_expected
-        assert ice_chp_controller.result_columns == result_columns_expected
-     
-      
-    # TEST 5     
-    def test_controller_get_input(self):     
-        """
-        Test the method to get the input values of an ICE CHP controller
-    
-        """
+    def test_controller_run_control_no_demand(self):
+        """Test the CHP run control method with no demand"""
         prosumer = create_empty_prosumer_container()
+        chp_controller_index = create_controlled_chp(prosumer, period=_default_period(prosumer), **_default_argument())
+        chp_controller = prosumer.controller.iloc[chp_controller_index].object
 
-        params = {'size': 350,
-                  'fuel': 'ng',
-                  'altitude': 0,
-                  'name': 'example_ice_chp'}
-        
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), **params)
-    
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-    
-        assert np.isnan(ice_chp_controller._get_input('cycle'))
-        
-        ice_chp_controller.inputs = np.array([[1, 297]])
-        assert ice_chp_controller._get_input('cycle', prosumer) == pytest.approx(1)
-    
-        with pytest.raises(KeyError):
-            ice_chp_controller._get_input('size', prosumer)
-        
-        
-    # TEST 6
-    def test_controller_get_param(self):      
-        """
-        Test the method to get the input values of an ICE CHP controller
-        """
+        chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chp_controller.control_step(prosumer)
+
+        expected = [0, 0]  # No heat and electricity generation when no demand
+        assert chp_controller.step_results == pytest.approx(np.array([expected]))
+
+    def test_controller_run_control_demand(self):
+        """Test the CHP run control method with a typical demand"""
         prosumer = create_empty_prosumer_container()
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), **_default_arguments())
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
+        chp_controller_index = create_controlled_chp(prosumer, period=_default_period(prosumer), **_default_argument())
+        chp_controller = prosumer.controller.iloc[chp_controller_index].object
 
-        assert ice_chp_controller._get_element_param(prosumer, 'size') == pytest.approx(350.) 
-        assert ice_chp_controller._get_element_param(prosumer, 'fuel') == 'ng'        
-        assert ice_chp_controller._get_element_param(prosumer, 'p_in_kw') is None
-        #assert ice_chp_controller._get_element_param(prosumer, 'p_in_kw') == pytest.approx(0.0)  # this shouldn't pass
-            
-          
-    # TEST 7
-    def test_controller_run_control_no_demand(self):    
-        """
-        Test the ICE CHP controller without any demand
-        Expect the ICE CHP to be off
-        """
+        chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chp_controller.control_step(prosumer)
+
+        expected = [8, 2.0]  # Expected heat and electricity generation
+        assert chp_controller.step_results == pytest.approx(np.array([expected]))
+
+    def test_controller_run_control_max_demand(self):
+        """Test the CHP run control method with maximum demand"""
+        params = _default_argument()
+        params['Size'] = 200
+        params['Heat_demand'] = 375
+        params['Return_water_temperature'] = 55
+        params['Supply_water_temperature'] = 99
+
         prosumer = create_empty_prosumer_container()
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), **_default_arguments())
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-        
-        # time series input:
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chp_controller_index = create_controlled_chp(prosumer, period=_default_period(prosumer), **params)
+        chp_controller = prosumer.controller.iloc[chp_controller_index].object
 
-        ice_chp_controller.control_step(prosumer)
+        chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chp_controller.control_step(prosumer)
 
-        # output:
-        # 'load', 'p_in_kw', 'p_el_out_kw', 'p_th_out_kw', 'p_rad_out_kw', 'ice_chp_efficiency', 'mdot_fuel_in_kg_per_s', 'acc_m_fuel_in_kg', 'acc_co2_equiv_kg', 'acc_co2_inst_kg', 'acc_nox_mg', 'acc_time_ice_chp_oper_s'        
-        expected = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # results ---> dynamic output for 1 time step
+        expected = [810, 200.0]  # Maximum heat and electricity generation
+        assert chp_controller.step_results == pytest.approx(np.array([expected]))
 
-        assert ice_chp_controller.step_results == pytest.approx(np.array([expected]))
-        
-        
-    # TEST 8
-    def test_controller_run_control_demand(self):    
-        """
-        Test the ICE CHP controller with a demand
-        """
-        prosumer = create_empty_prosumer_container()
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), **_default_arguments())
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-        
-        # time series input:
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        # demand:
-        ice_chp_controller.q_requested_kw = lambda x: 1000
 
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
-        ice_chp_controller.control_step(prosumer)
 
-        # output:
-        #    0        1           2              3              4                   5                    6                         7                  8                 9                10                11              
-        # 'load', 'p_in_kw', 'p_el_out_kw', 'p_th_out_kw', 'p_rad_out_kw', 'ice_chp_efficiency', 'mdot_fuel_in_kg_per_s', 'acc_m_fuel_in_kg', 'acc_co2_equiv_kg', 'acc_co2_inst_kg', 'acc_nox_mg', 'acc_time_ice_chp_oper_s'        
-        #            0     1      2       3      4        5             6            7        8         9         10     11    
-        expected = [100, 875.0, 350.0, 305.78, 54.64, 74.946286, 0.0171165884, 15.40492956, 50.75, 44.05809852, 193725, 900.0] # results ---> dynamic output for 1 time step
-
-        assert ice_chp_controller.step_results == pytest.approx(np.array([expected]), rel=1e-6)
-        
-        
-#======================| ICE CHP SPECIFIC TESTS |==============================
-
-    # TEST 9
-    def test_ice_chp_size_selection(self):   
-        """
-        Test the ICE CHP size selection for sizes not in list
-        """
-        prosumer = create_empty_prosumer_container()
-        
-        params = {'size': 500,     # this CHP size not in the list ---> should give results for 700 kW
-                  'fuel': 'ng',
-                  'altitude': 0,
-                  'name': 'new_ice_chp'} 
-
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), **params)
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-            
-        # time series input:
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        # demand:
-        ice_chp_controller.q_requested_kw = lambda x: 1000
-
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
-        ice_chp_controller.control_step(prosumer)
-
-        expected_p_in = 1750.00
-
-        assert ice_chp_controller.step_results[0,1] == pytest.approx(np.array(expected_p_in), rel=1e-4)    
-    
-    
-    # TEST 10
-    def test_controller_interpolation(self):     
-        """
-        Test the ICE CHP interpolation
-        """
-        test_level_percent = 80
-        
-        params = {'fuel': 'ng',
-                  'altitude': 0,
-                  'name': 'new_ice_chp'} 
-        
-        size_val = 350
-        
-        demand = size_val * test_level_percent / 100
-        
-        prosumer = create_empty_prosumer_container()
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), size=size_val, **params)
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-            
-        # time series input:
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        # demand
-        ice_chp_controller.q_requested_kw = lambda x: demand
-
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
-        ice_chp_controller.control_step(prosumer)
-
-        expected_p_el = 280.008
-        
-        assert ice_chp_controller.step_results[0,2] == pytest.approx(np.array(expected_p_el), rel=1e-3)
-
-    
-    # TEST 11
-    def test_controller_lower_limit(self):     
-        """
-        Test the ICE CHP limits for the load - lower limit = 20%
-        """
-        test_level_percent = 10
-        
-        params = {'fuel': 'ng',
-                  'altitude': 0,
-                  'name': 'new_ice_chp'} 
-        
-        size_val = 350
-        
-        demand = size_val * test_level_percent / 100
-        
-        prosumer = create_empty_prosumer_container()
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), size=size_val, **params)
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-            
-        # time series input:
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[1, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        # demand
-        ice_chp_controller.q_requested_kw = lambda x: demand
-
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
-        ice_chp_controller.control_step(prosumer)
-
-        expected_p_el = 0        
-        expected_load = 0
-        
-        assert ice_chp_controller.step_results[0,4] == pytest.approx(np.array(expected_p_el), rel=1e-4)
-        assert ice_chp_controller.step_results[0,0] == pytest.approx(np.array(expected_load), rel=1e-4)
-        
-    
-    # TEST 12:
-    def test_ice_chp_input_type(self):    
-        """
-        Checks the correct input for the ICE CHP parameters - version 2
-        """
-        prosumer = create_empty_prosumer_container()
-
-        params = {'size': 350, 
-                  'altitude': 0,
-                  'name': 'example_ice_chp'} 
-        
-        fuel_val = 10
-        
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), fuel=fuel_val, **params)
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-        
-        stored_fuel = ice_chp_controller._get_element_param(prosumer, "fuel")
-        
-        assert not isinstance(stored_fuel, str) 
-
-  
-    # TEST 13
-    def test_ice_chp_cycle(self):
-        """
-        Test the ICE CHP cycle (switching between topping and bottoming) in the input 
-        """
-        prosumer = create_empty_prosumer_container()
-
-        ice_chp_controller_idx = create_controlled_ice_chp(
-            prosumer, order=0, period=_default_period(prosumer), **_default_arguments())
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-            
-        cycle_test = 2         # output preference: heat (for electricity, use value: 1)
-
-        # dynamic input:                                                        
-        # 'cycle', 't_intake_k'
-        ice_chp_controller.inputs = np.array([[cycle_test, 293.15]])  # dynamic input (data_model/ice_chp.py) ---> for 1 time step
-        ice_chp_controller.q_requested_kw = lambda x: 1000
-
-        ice_chp_controller.time_step(prosumer, "2020-01-01 00:00:00")
-        ice_chp_controller.control_step(prosumer)
-
-        expected_p_th_out_1 = 350.00
-        expected_p_th_out_2 = 305.78
-
-        if cycle_test == 1:
-            assert ice_chp_controller.step_results[0,3] == pytest.approx(np.array(expected_p_th_out_1))
-        elif cycle_test == 2:
-            assert ice_chp_controller.step_results[0,3] == pytest.approx(np.array(expected_p_th_out_2))
-            

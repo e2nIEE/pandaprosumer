@@ -20,10 +20,9 @@ class IceChpElementData():
     #
     name: str = "ice_chp"
 
-    input: List = field(default_factory = lambda: [
+    input: List[tuple] = field(default_factory=lambda: [
         ('size', 'f8'),
-        ('fuel', 'str'),
-        ('altitude', 'f8'),
-        ('in_service', 'bool'),
-        ('name', dtype(object))
+        ('return_water_temp', 'f8'),
+        ('supply_water_temp', 'f8'),
+        ('heat_demand', 'f8')
     ])
