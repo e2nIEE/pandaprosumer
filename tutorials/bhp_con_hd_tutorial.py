@@ -112,25 +112,12 @@ res_df.set_index('name', inplace=True)
 # Erstes Plot-Fenster und erste Y-Achse (linke Seite)
 fig, ax1 = plt.subplots()
 
-# Plots auf der ersten Achse (Leistung in kW)
-#res_df.data_source.loc['tank_heat_storage'].df.q_discharge_kw.plot(ax=ax1, legend=True, label='q_discharge_kw')
-# res_df.data_source.loc['tank_heat_storage'].df.q_delivered_kw.plot(ax=ax1, legend=True, label='q_delivered_kw')
 res_df.data_source.loc['example_bhp'].df.q_floor.plot(ax=ax1, legend=True, label='q_floor', linestyle=':')
 res_df.data_source.loc['heat_demand'].df.q_received_kw.plot(ax=ax1, legend=True, label='q_received_kw', linestyle='--')
 res_df.data_source.loc['heat_demand'].df.q_uncovered_kw.plot(ax=ax1, legend=True, label='q_uncovered_kw', linestyle='--')
 
 ax1.set_ylabel("Thermal power (kW)")
 ax1.set_title("Heat Storage")
-
-# Zweite Achse (rechte Seite)
-# ax2 = ax1.twinx()
-# res_df.data_source.loc['tank_heat_storage'].df.e_stored_kwh.plot(ax=ax2, legend=True, color='black', label='e_stored_kwh', linestyle='-')
-# ax2.set_ylabel("Stored energy (kWh)")
-
-# Legenden zusammenführen (optional)
-# lines_1, labels_1 = ax1.get_legend_handles_labels()
-# lines_2, labels_2 = ax2.get_legend_handles_labels()
-# ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc='upper left')
 
 plt.show()
 
