@@ -1,35 +1,81 @@
-from pandaprosumer.controller.models.heat_pump import HeatPumpController
 from pandaprosumer.create import *
-from pandaprosumer.controller.models import *
-from pandaprosumer.controller.data_model import *
 from pandaprosumer.controller import *
-import numpy as np
 from pandaprosumer.supervisor import *
+from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
-def create_controlled_const_profile(prosumer, input_columns, result_columns, data_source, period = 0, level=0, order=0,
+def create_controlled_network_coupling(net,
+                                       element_index,
+                                       element_name='heat_consumer',
+                                       input_columns=[],
+                                       result_columns=[],
+                                       temp_fluid_map_input_col=[],
+                                       mdot_fluid_map_input_col=[],
+                                       temp_fluid_map_output_idx=None,
+                                       mdot_fluid_map_output_idx=None,
+                                       level=0,
+                                       order=0,
+                                       name=None):
+    if isinstance(element_index, (np.integer, int)):
+        element_index = [int(element_index)]
+    elif isinstance(element_index, np.ndarray):
+        element_index = [int(i) for i in element_index.tolist()]
+    elif isinstance(element_index, list):
+        element_index = [int(i) for i in element_index]
+
+    networkcoupling = NetworkCouplingData(element_index=element_index,
+                                          element_name=element_name,
+                                          input_columns=input_columns,
+                                          result_columns=result_columns)
+
+    n = NetworkCouplingControl(net,
+                               networkcoupling,
+                               temp_fluid_map_input_col=temp_fluid_map_input_col,
+                               mdot_fluid_map_input_col=mdot_fluid_map_input_col,
+                               temp_fluid_map_output_idx=temp_fluid_map_output_idx,
+                               mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
+                               level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_const_profile(prosumer,
+                                    input_columns,
+                                    result_columns,
+                                    data_source,
+                                    period=0,
+                                    level=0,
+                                    order=0,
+                                    name=None,
+                                    in_service=True,
                                     temp_fluid_map_idx=None,
                                     mdot_fluid_map_idx=None):
     const_controller_data = ConstProfileControllerData(
         input_columns=input_columns,
         result_columns=result_columns,
-        period_index=period,
+        period_index=period
     )
     const_profile = ConstProfileController(prosumer,
                                            const_object=const_controller_data,
                                            df_data=data_source,
-                                           order=order,
+                                           name=name,
+                                           in_service=in_service,
                                            level=level,
+                                           order=order,
                                            temp_fluid_map_idx=temp_fluid_map_idx,
                                            mdot_fluid_map_idx=mdot_fluid_map_idx)
     return const_profile.index
 
 
-
-def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, order= 0):
+def create_controlled_supervisor(prosumer,
+                                 input_columns,
+                                 period=0,
+                                 level=0,
+                                 order=0):
     spdata = SupervisorData(
         input_columns=input_columns,
-        result_columns = input_columns
+        result_columns=input_columns
     )
     supervisor = Supervisor(prosumer,
                             supervisor_object=spdata,
@@ -38,7 +84,6 @@ def create_controlled_supervisor(prosumer, input_columns, period = 0, level=0, o
                             order=order)
 
     return supervisor.index
-
 
 
 def create_controlled_heat_pump(prosumer,
@@ -385,8 +430,7 @@ def create_controlled_heat_exchanger(prosumer,
     heat_exchanger_controller_data = HeatExchangerControllerData(
         element_name='heat_exchanger',
         element_index=[heat_exchanger_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     heat_exchanger_controller = HeatExchangerController(prosumer,
                                                         heat_exchanger_controller_data,
@@ -444,8 +488,7 @@ def create_controlled_electric_boiler(prosumer,
     electric_boiler_controller_data = ElectricBoilerControllerData(
         element_name='electric_boiler',
         element_index=[electric_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     electric_boiler_controller = ElectricBoilerController(prosumer,
                                                           electric_boiler_controller_data,
@@ -507,8 +550,7 @@ def create_controlled_gas_boiler(prosumer,
     gas_boiler_controller_data = GasBoilerControllerData(
         element_name='gas_boiler',
         element_index=[gas_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     gas_boiler_controller = GasBoilerController(prosumer,
                                                 gas_boiler_controller_data,
@@ -596,8 +638,7 @@ def create_controlled_dry_cooler(prosumer,
     dry_cooler_controller_data = DryCoolerControllerData(
         element_name='dry_cooler',
         element_index=[dry_cooler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     dry_cooler_controller = DryCoolerController(prosumer,
                                                 dry_cooler_controller_data,
@@ -665,6 +706,7 @@ def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, ind
 
     return bhp.index
 
+
 def create_controlled_ice_chp(prosumer,
                               size,
                               fuel,
@@ -722,7 +764,7 @@ def create_controlled_ice_chp(prosumer,
     return ice_chp.index
 
 
-def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_cond=5.0,
+def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_cond=5.0,
                               pp_evap=5.0, plf_cc=0.9,
                               w_evap_pump=200.0, w_cond_pump=200.0,
                               eng_eff=1.0, n_ref="R410A",
@@ -773,8 +815,7 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_c
     chiller_controller_data = ChillerControllerData(
         element_name='sn_chiller',
         element_index=[chiller_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
 
     chiller_controller = ChillerController(prosumer,
@@ -795,7 +836,6 @@ def create_controlled_heat_storage(prosumer,
                                    init_soc=0.,
                                    period=0,
                                    **kwargs):
-
     """
     Creates a heat storage element in the prosumer and a heat storage controller.
 
@@ -836,8 +876,7 @@ def create_controlled_heat_storage(prosumer,
     heat_storage_controller_data = HeatStorageControllerData(
         element_name='heat_storage',
         element_index=[heat_storage_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     hs = HeatStorageController(
         prosumer,

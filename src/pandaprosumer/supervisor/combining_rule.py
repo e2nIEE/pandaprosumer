@@ -21,11 +21,11 @@ class CombiningRules:
         if self.logical_operator not in ["AND", "OR"]:
             raise ValueError("Logical operator must be 'AND' or 'OR'.")
 
-    def add_to_prosumer(self,prosumer):
+    def add_to_prosumer(self, prosumer):
         n = len(self.rules)
         if prosumer["rules"].empty:
             index_list = list(range(n))
-        else :
+        else:
             max_id = prosumer["rules"].index.max()
             index_list = list(range(max_id + 1, max_id + 1 + n))
 
@@ -45,7 +45,8 @@ class CombiningRules:
             }
             for k, v in fill_dict.items():
                 prosumer["rules"].at[index, k] = v
-        #Todo : If the user modifies the prosumer (df), then modify the rule ?
+        # Todo : If the user modifies the prosumer (df), then modify the rule ?
+        return index
 
     def __str__(self):
         return "CombiningRule"
@@ -75,6 +76,6 @@ class CombiningRules:
         for rule in self.rules:
             rule.execute_action(prosumer, supervisor)
 
-    def execute_opposite(self,prosumer,supervisor):
+    def execute_opposite(self, prosumer, supervisor):
         for rule in self.rules:
-            rule.execute_opposite(prosumer,supervisor)
+            rule.execute_opposite(prosumer, supervisor)

@@ -1,8 +1,7 @@
 import numpy as np
 import pandapipes
-from pandapower import control
 
-from pandaprosumer.controller import MappedController, BasicProsumerController
+from pandaprosumer.controller import BasicProsumerController
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.mapping import FluidMixMapping
 

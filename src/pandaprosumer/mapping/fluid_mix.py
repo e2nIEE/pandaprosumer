@@ -17,8 +17,7 @@ class FluidMixMapping(BaseMapping):
     TEMPERATURE_KEY = 't_c'
     MASS_FLOW_KEY = 'mdot_kg_per_s'
 
-    def __init__(self, container=None, initiator_id=None, responder_id=None,
-                 order=None, application_operation="add", weights=None, no_chain=False, index=None):
+    def __init__(self, container, initiator_id, responder_id, order=0, no_chain=False, index=None):
         """
         Initializes the GenericWiseMapping.
 
@@ -26,13 +25,9 @@ class FluidMixMapping(BaseMapping):
         :param initiator_id: The initiating controller
         :param responder_id: The responding controller
         :param order: The order of mapping application
-        :param application_operation: The operation to apply (default: "add")
-        :param weights: Weights for the mapping
         :param index: The index of the mapping
         """
         super().__init__(container, initiator_id, None, responder_id, None, order, no_chain, index)
-        self.application_operation = application_operation
-        self.weights = weights
         self.initiator_net = container
         self.responder_net = container
         self.order = order
@@ -41,7 +36,6 @@ class FluidMixMapping(BaseMapping):
 
     def __str__(self):
         return "FluidMixMapping"
-
 
     @property
     def name(self):
@@ -64,10 +58,10 @@ class FluidMixMapping(BaseMapping):
         :param responder_controller: The responding controller
         """
         # FixMe: Will break if the order are not 0, 1, 2, ...
-        if self._check_order(): self.check_controllers_orders(initiator_controller, responder_controller)
+        if self._check_order():
+            self.check_controllers_orders(initiator_controller, responder_controller)
 
-        order = int(self.initiator_net.mapping.at[self.index, 'order'])
-        initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[order]
+        initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[self.order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]
         initiator_mass_flow = initiator_mapped_results[self.MASS_FLOW_KEY]
 
@@ -80,7 +74,7 @@ class FluidMixMapping(BaseMapping):
             responder_mass_flow = responder_controller.input_mass_flow_with_temp[self.MASS_FLOW_KEY]
             mix_mass_flow = responder_mass_flow + initiator_mass_flow
             if mix_mass_flow == 0:
-                # If it happens that both mass flow are null, the temperature value doesn't matter
+                # If it happens that both mass flows are null, the temperature value doesn't matter
                 mix_temp = (responder_temperature + initiator_temperature) / 2
             else:
                 mix_temp = (responder_temperature * responder_mass_flow + initiator_temperature * initiator_mass_flow) / mix_mass_flow

@@ -1,12 +1,10 @@
 import logging
-
 import numpy as np
 import pandas as pd
 from pandapipes import Fluid, create_fluid_from_lib
-
-from pandapower.create import _get_index_with_check, _set_entries, _add_to_entries_if_not_nan
-from pandaprosumer.element import *
 from pandapower.create import _get_index_with_check, _set_entries
+
+from pandaprosumer.element import *
 from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
      HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData, ConverterElementData
 from pandaprosumer.location_period import Period
@@ -17,7 +15,7 @@ from pandaprosumer.time_series.time_series import TimeSeries
 logger = logging.getLogger()
 
 
-def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water",check_order = True):
+def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", check_order=True):
     """
     This function initializes the prosumer datastructure
 
@@ -550,13 +548,13 @@ def create_electric_boiler(prosumer,
 
 
 def create_gas_boiler(prosumer,
-                           max_q_kw,
-                           heating_value_kj_per_kg=50e3,
-                           efficiency_percent=100,
-                           name=None,
-                           index=None,
-                           in_service=True,
-                           **kwargs):
+                      max_q_kw,
+                      heating_value_kj_per_kg=50e3,
+                      efficiency_percent=100,
+                      name=None,
+                      index=None,
+                      in_service=True,
+                      **kwargs):
     """
         Creates an gas boiler element in prosumer["gas_boiler"]
 
@@ -631,6 +629,7 @@ def create_booster_heat_pump(
     _set_entries(prosumer, "booster_heat_pump", index, **entries, **kwargs)
     return int(index)
 
+
 def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None, index=None, **kwargs):
     add_new_element(prosumer, IceChpElementData)
 
@@ -658,13 +657,13 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
     _set_entries(prosumer, "ice_chp", index, **entries, **kwargs)
     return int(index)
 
+
 def create_heat_storage(prosumer,
                         q_capacity_kwh=0.,
                         in_service=True,
                         index=None,
                         name=None,
                         **kwargs):
-
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
@@ -673,6 +672,7 @@ def create_heat_storage(prosumer,
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
     return int(index)
+
 
 def create_chiller(
         prosumer,
@@ -690,7 +690,6 @@ def create_chiller(
         index=None,
         name=None,
         **kwargs):
-
     """Adds a new chiller to the list of prosumer elements and defines its datasheet values
 
     :param prosumer: Empty prosumer container

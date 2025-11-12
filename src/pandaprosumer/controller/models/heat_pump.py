@@ -4,9 +4,9 @@ Module containing the HeatPumpController class.
 
 import numpy as np
 from math import log
-import pandas as pd
 
-from pandapipes import create_fluid_from_lib, call_lib
+from pandapipes import call_lib
+
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
@@ -37,8 +37,14 @@ class HeatPumpController(BasicProsumerController):
 
         cond_fluid = self._get_element_param(prosumer, 'cond_fluid')
         evap_fluid = self._get_element_param(prosumer, 'evap_fluid')
-        self.cond_fluid = call_lib(cond_fluid) if cond_fluid else prosumer.fluid
-        self.evap_fluid = call_lib(evap_fluid) if evap_fluid else prosumer.fluid
+        if cond_fluid and cond_fluid != prosumer.fluid.name:
+            self.cond_fluid = call_lib(cond_fluid)
+        else:
+            self.cond_fluid = prosumer.fluid
+        if evap_fluid and evap_fluid != prosumer.fluid.name:
+            self.evap_fluid = call_lib(evap_fluid)
+        else:
+            self.evap_fluid = prosumer.fluid
         # FixMe: Does it works when evap fluid is a gas (e.g. air) ?
         # ToDo: Add power ramp up/down constrain
         self.t_previous_evap_out_c = np.nan
@@ -229,11 +235,12 @@ class HeatPumpController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
-            self.obj.element_index[0]].in_service):
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
+
         super().control_step(prosumer)
+
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)
@@ -290,7 +297,6 @@ class HeatPumpController(BasicProsumerController):
                     t_bypass_c = t_evap_in_c
                     t_evap_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_evap_out_c * mdot_evap_kg_per_s) / self._mdot_evap_in_kg_per_s
                     mdot_evap_kg_per_s = self._mdot_evap_in_kg_per_s
-
 
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_cond_kg_per_s,
