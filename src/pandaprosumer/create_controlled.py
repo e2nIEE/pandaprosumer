@@ -887,3 +887,66 @@ def create_controlled_heat_storage(prosumer,
         name=name
     )
     return hs.index
+
+
+def create_controlled_converter(prosumer, cp_water=4180,
+                              name=None,
+                              index=None,
+                              in_service=True,
+                              period=0,
+                              level=0,
+                              order=0,
+                              **kwargs):
+    """
+    Creates a chiller element in prosumer["chiller"] and a chiller controller.
+
+    INPUT:
+        **prosumer** - The prosumer within which this chiller should be created.
+
+        **max_q_kw** (float) - Maximal cooling power of the chiller [kW].
+
+    OPTIONAL:
+        **cooling_value_kj_per_kg** (float, default 200e3) - Cooling Value of the refrigerant [kJ/kg].
+
+        **efficiency_percent** (float, default 100) - Chiller Efficiency [%].
+
+        **name** (string, default None) - The name for this chiller.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **level** (int, default 0) - The level of the controller.
+
+        **order** (int, default 0) - The order of the controller.
+
+        **period** (int, default 0) - Index of the period, default is 0.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created chiller.
+
+    EXAMPLE:
+        create_controlled_chiller(prosumer, "chiller_1")
+    """
+
+    converter_index = create_generic_to_fluidmix(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs)
+
+    converter_controller_data = ConverterControllerData(
+        element_name='converter',
+        element_index=[converter_index],
+        period_index=period,
+        **kwargs
+    )
+
+    converter_controller = GenericToFluidMixController(prosumer,
+                                                       converter_controller_data,
+                                                       order=order,
+                                                       level=level,
+                                                       name=name,
+                                                       index=index,
+                                                       in_service=in_service,
+                                                      )
+    return converter_controller.index
