@@ -140,13 +140,15 @@ class IceChpController(BasicProsumerController):
             self._restore_state()
 
 
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
-            self.obj.element_index[0]].in_service):
+
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
 
+        super().control_step(prosumer)
+
         # New CHP instance:
-    # 1 - Read time step input data:
+        # 1 - Read time step input data:
         cycle_type = self._get_input("cycle")
         t_ice_chp_k = self._get_input("t_intake_k")
         #

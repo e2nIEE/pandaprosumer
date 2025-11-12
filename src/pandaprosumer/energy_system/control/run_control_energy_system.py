@@ -4,23 +4,54 @@
 
 import numpy as np
 import pandas as pd
+from pandapipes.timeseries.run_time_series import pf_not_converged
+from pandapower.timeseries.run_time_series import controller_not_converged, finalize_step, output_writer_routine
 
 import pandaprosumer as ppros
 from pandapipes.multinet.control.run_control_multinet import prepare_ctrl_variables_for_net, _evaluate_multinet, \
     net_initialization_multinet
 from pandapower.control.run_control import control_initialization, \
     control_finalization, \
-    control_implementation, get_controller_order, NetCalculationNotConverged
+    control_implementation, get_controller_order, NetCalculationNotConverged, ControllerNotConverged
 from pandaprosumer.run_control import prepare_run_ctrl as prepare_run_ctrl_ppros
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
-
 
 try:
     import pandaplan.core.pplog as logging
 except ImportError:
     import logging
 
+try:
+    import pandaplan.core.pplog as pplog
+except ImportError:
+    import logging as pplog
+
 logger = logging.getLogger(__name__)
+
+
+def control_time_step(controller_order, time_step):
+    for levelorder in controller_order:
+        for ctrl, net in levelorder:
+            ctrl.time_step(net, time_step)
+
+
+def _call_output_writer(net, time_step, pf_converged, ctrl_converged, ts_variables):
+    output_writer_routine(net, time_step, pf_converged, ctrl_converged, ts_variables['recycle_options'])
+
+
+def print_progress(i, time_step, time_steps, verbose, **kwargs):
+    # simple status print in each time step.
+    if logger.level != 10 and verbose:
+        kwargs['ts_variables']["progress_bar"].update(1)
+
+    # print debug info
+    if logger.level == pplog.DEBUG and verbose:
+        logger.debug("run time step %i" % time_step)
+
+    # call a custom progress function
+    if "progress_function" in kwargs:
+        func = kwargs["progress_function"]
+        func(i, time_step, time_steps, **kwargs)
 
 
 def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
@@ -183,3 +214,56 @@ def prepare_run_ctrl(energy_system, ctrl_variables, **kwargs):
     ctrl_variables['level'], ctrl_variables['controller_order'] = get_controller_order_energy_system(energy_system)
 
     return ctrl_variables
+
+
+def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
+    """
+    runs the time series loop which calls pp.runpp (or another run function) in each iteration
+
+    Parameters
+    ----------
+    net - pandapower net
+    ts_variables - settings for time series
+
+    """
+    for i, time_step in enumerate(ts_variables["time_steps"]):
+        print_progress(i, time_step, ts_variables["time_steps"], ts_variables["verbose"], ts_variables=ts_variables, **kwargs)
+        if "transient" in kwargs:
+            kwargs["simulation_time_step"] = i
+        run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
+
+
+def run_time_step(energy_system, time_step, ts_variables, run_control_fct=run_control,
+                  output_writer_fct=_call_output_writer, **kwargs):
+    """
+    Time Series step function
+    Is called to run the PANDAPOWER AC power flows with the timeseries module
+
+    INPUT:
+        **energy_system** - The energy system
+
+        **time_step** (int) - time_step to be calculated
+
+        **ts_variables** (dict) - contains settings for controller and time series simulation. See init_time_series()
+    """
+    ctrl_converged = True
+    pf_converged = True
+    # run time step function for each controller
+
+    control_time_step(ts_variables['controller_order'], time_step)
+
+    try:
+        # calls controller init, control steps and run function (runpp usually is called in here)
+        run_control_fct(energy_system, ctrl_variables=ts_variables, **kwargs)
+    except ControllerNotConverged:
+        ctrl_converged = False
+        # If controller did not converge do some stuff
+        controller_not_converged(time_step, ts_variables)
+    except ts_variables['errors']:
+        # If power flow did not converge simulation aborts or continues if continue_on_divergence is True
+        pf_converged = False
+        pf_not_converged(time_step, ts_variables)
+
+    output_writer_fct(energy_system, time_step, pf_converged, ctrl_converged, ts_variables)
+
+    finalize_step(ts_variables['controller_order'], time_step)

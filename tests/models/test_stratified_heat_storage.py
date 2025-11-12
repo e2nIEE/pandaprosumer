@@ -1,15 +1,18 @@
 import pytest
 from pandaprosumer import *
 
+
 def _default_argument():
     return {'tank_height_m': 12, 'tank_internal_radius_m': 4.}
 
+
 def _default_period(prosumer):
     return create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
+                         name="foo",
+                         start="2020-01-01 00:00:00",
+                         end="2020-01-01 11:59:59",
+                         timezone="utc")
+
 
 class TestStratifiedHeatStorage:
     """
@@ -171,8 +174,8 @@ class TestStratifiedHeatStorage:
         """
         prosumer = create_empty_prosumer_container()
         create_controlled_stratified_heat_storage(prosumer,
-                                                  order = 0,
-                                                  period = _default_period(prosumer),
+                                                  order=0,
+                                                  period=_default_period(prosumer),
                                                   **_default_argument())
 
         assert hasattr(prosumer, "controller")
@@ -184,9 +187,9 @@ class TestStratifiedHeatStorage:
         """
         prosumer = create_empty_prosumer_container()
         shs_controller_idx = create_controlled_stratified_heat_storage(prosumer,
-                                                  order = 0,
-                                                  period = _default_period(prosumer),
-                                                  **_default_argument())
+                                                                       order=0,
+                                                                       period=_default_period(prosumer),
+                                                                       **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
         input_columns_expected = []
@@ -222,16 +225,16 @@ class TestStratifiedHeatStorage:
         resol = 3600
 
         period = create_period(prosumer, resol,
-                      name="foo",
-                      start="2020-01-01 00:00:00",
-                      end="2020-01-01 11:59:59",
-                      timezone="utc")
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59",
+                               timezone="utc")
 
         # Create a SHS with no heat losses to the environment
         shs_controller_idx = create_controlled_stratified_heat_storage(prosumer,
                                                                        order=0,
-                                                                        h_ext_w_per_m2k = 0,
-                                                                        min_useful_temp_c = 22.5,
+                                                                       h_ext_w_per_m2k=0,
+                                                                       min_useful_temp_c=22.5,
                                                                        period=period,
                                                                        **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
@@ -247,7 +250,6 @@ class TestStratifiedHeatStorage:
         expected = [0., 22.5, 0., e_in_kwh]
         assert shs_controller.step_results == pytest.approx(np.array([expected]), .03)
         assert shs_controller._get_stored_energy_kwh(22.5) == pytest.approx(e_in_kwh, .03)
-
 
     def test_controller_run_control_2_layers(self):
         """
@@ -275,13 +277,15 @@ class TestStratifiedHeatStorage:
 
         t_layers_init_c = [20., 30.]
 
-        shs_controller_indx = create_controlled_stratified_heat_storage(prosumer, period = period, init_layer_temps_c=t_layers_init_c,**shs_params)
+        shs_controller_indx = create_controlled_stratified_heat_storage(prosumer, period=period,
+                                                                        init_layer_temps_c=t_layers_init_c,
+                                                                        **shs_params)
         shs_controller = prosumer.controller.iloc[shs_controller_indx].object
 
         assert shs_controller._layer_temps_c == pytest.approx(np.array(t_layers_init_c))
 
         layer_volume_m3 = shs_controller.A_m2 * shs_controller.dz_m
-        layer_mass_kg = prosumer.fluid.get_density(273.15+25) * layer_volume_m3  # Each layer is about 1m^3
+        layer_mass_kg = prosumer.fluid.get_density(273.15 + 25) * layer_volume_m3  # Each layer is about 1m^3
 
         # Test with no charge nor discharge
         shs_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 0
@@ -303,7 +307,7 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        res_expected = [0., 30., 0., (30-20)*layer_mass_kg*4.186*1/3600]
+        res_expected = [0., 30., 0., (30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [30., 30.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
@@ -337,7 +341,7 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        res_expected = [layer_mass_kg, 30., (30-20)*layer_mass_kg*4186/1000, 0.]
+        res_expected = [layer_mass_kg, 30., (30 - 20) * layer_mass_kg * 4186 / 1000, 0.]
         layers_expected = [20., 30.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.1)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
@@ -350,7 +354,7 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        res_expected = [0., 30., 0., (30-20)*layer_mass_kg*4.186*1/3600]
+        res_expected = [0., 30., 0., (30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [30., 30.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
@@ -363,10 +367,9 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-
-        res_expected = [0.,20.,0.,-0.01359]
-#        res_expected = [0., 20., 0., -1.155657] should be equal to that ?
-        #layers_expected = [20., 29.]
+        res_expected = [0., 20., 0., -0.01359]
+        #        res_expected = [0., 20., 0., -1.155657] should be equal to that ?
+        # layers_expected = [20., 29.]
         layers_expected = [20., 30.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
@@ -379,9 +382,9 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        res_expected = [layer_mass_kg, 30., (30 - 20) * layer_mass_kg * 4186/1000, -0.016]
-        #res_expected = [layer_mass_kg, 30., (30-20)*layer_mass_kg*4186, 0.]
-        #layers_expected = [19., 30.]
+        res_expected = [layer_mass_kg, 30., (30 - 20) * layer_mass_kg * 4186 / 1000, -0.016]
+        # res_expected = [layer_mass_kg, 30., (30-20)*layer_mass_kg*4186, 0.]
+        # layers_expected = [19., 30.]
         layers_expected = [20., 30.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .1, 0.1)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
@@ -394,11 +397,10 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        res_expected = [0., 20., 0., -(30-20)*layer_mass_kg*4.186*1/3600]
+        res_expected = [0., 20., 0., -(30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [20., 20.]
         assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
-
 
     def test_controller_t_m_to_receive(self):
         prosumer = create_empty_prosumer_container()
@@ -421,7 +423,9 @@ class TestStratifiedHeatStorage:
                       "t_ext_c": 20}
 
         t_layers_init_c = [40., 80.]
-        shs_controller_indx = create_controlled_stratified_heat_storage(prosumer, period = period, init_layer_temps_c=t_layers_init_c,**shs_params)
+        shs_controller_indx = create_controlled_stratified_heat_storage(prosumer, period=period,
+                                                                        init_layer_temps_c=t_layers_init_c,
+                                                                        **shs_params)
         shs_controller = prosumer.controller.iloc[shs_controller_indx].object
 
         min_useful_temp_c = shs_params['min_useful_temp_c']

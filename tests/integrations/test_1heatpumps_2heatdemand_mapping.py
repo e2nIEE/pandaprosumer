@@ -5,6 +5,7 @@ from pandaprosumer.mapping import GenericMapping
 
 from pandaprosumer import *
 
+
 class Test1HeatPump2HeatDemandsMapping:
     """
     In this example, a single ConstProsumer is mapped to 1 Heat Pumps and which is mapped to 2 different Heat Demands
@@ -14,8 +15,8 @@ class Test1HeatPump2HeatDemandsMapping:
         prosumer = create_empty_prosumer_container()
         max_hp_qcond = 337.512054
         data = pd.DataFrame({"Tin_evap": [25., 25., 25.],
-                             "demand_1": [50., 200., max_hp_qcond+30.],
-                             "demand_2": [100., max_hp_qcond-200+40., 70.]})
+                             "demand_1": [50., 200., max_hp_qcond + 30.],
+                             "demand_2": [100., max_hp_qcond - 200 + 40., 70.]})
 
         start = '2020-01-01 00:00:00'
         resol = 3600
@@ -47,8 +48,6 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
         hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
 
-
-
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
                        initiator_column="t_evap_in_c",
@@ -62,7 +61,7 @@ class Test1HeatPump2HeatDemandsMapping:
                        responder_id=hd_controller_index_1,
                        responder_column="q_demand_kw",
                        order=1)
-        
+
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
                        initiator_column="qdemand2_kw",
@@ -159,8 +158,10 @@ class Test1HeatPump2HeatDemandsMapping:
         data.index = dur
         data_source = DFData(data)
 
-        cp_input_columns = ["Tin_evap", "demand_1", "demand_2", "demand_1_t_in_c", "demand_1_t_out_c", "demand_2_t_in_c", "demand_2_t_out_c"]
-        cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c", "t_feed_demand2_c", "t_return_demand2_c"]
+        cp_input_columns = ["Tin_evap", "demand_1", "demand_2", "demand_1_t_in_c", "demand_1_t_out_c",
+                            "demand_2_t_in_c", "demand_2_t_out_c"]
+        cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
+                             "t_feed_demand2_c", "t_return_demand2_c"]
         hp_params = {'carnot_efficiency': .5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
@@ -175,7 +176,6 @@ class Test1HeatPump2HeatDemandsMapping:
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
         hd_controller_index_2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
 
-
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
                        initiator_column="t_evap_in_c",
@@ -183,21 +183,25 @@ class Test1HeatPump2HeatDemandsMapping:
                        responder_column="t_evap_in_c",
                        order=0)
 
-        for order, init_col, resp_col in zip([1, 2, 3], ["qdemand1_kw", "t_feed_demand1_c", "t_return_demand1_c"], ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
+        for order, init_col, resp_col in zip([1, 2, 3],
+                                             ["qdemand1_kw", "t_feed_demand1_c", "t_return_demand1_c"],
+                                             ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
             GenericMapping(container=prosumer,
-                        initiator_id=cp_controller_index,
-                        initiator_column=init_col,
-                        responder_id=hd_controller_index_1,
-                        responder_column=resp_col,
-                        order=order)
-        
-        for order, init_col, resp_col in zip([4, 5, 6], ["qdemand2_kw", "t_feed_demand2_c", "t_return_demand2_c"], ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
+                           initiator_id=cp_controller_index,
+                           initiator_column=init_col,
+                           responder_id=hd_controller_index_1,
+                           responder_column=resp_col,
+                           order=order)
+
+        for order, init_col, resp_col in zip([4, 5, 6],
+                                             ["qdemand2_kw", "t_feed_demand2_c", "t_return_demand2_c"],
+                                             ["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"]):
             GenericMapping(container=prosumer,
-                        initiator_id=cp_controller_index,
-                        initiator_column=init_col,
-                        responder_id=hd_controller_index_2,
-                        responder_column=resp_col,
-                        order=order)
+                           initiator_id=cp_controller_index,
+                           initiator_column=init_col,
+                           responder_id=hd_controller_index_2,
+                           responder_column=resp_col,
+                           order=order)
 
         FluidMixMapping(container=prosumer,
                         initiator_id=hp_controller_index,
@@ -302,12 +306,12 @@ class Test1HeatPump2HeatDemandsMapping:
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100,
-                     'name':'heat pump'}
+                     'name': 'heat pump'}
 
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              data_source, period,0, 0)
+                                                              data_source, period, 0, 0)
         hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
 
         hd_controller_index_1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)

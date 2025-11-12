@@ -3,7 +3,6 @@ from tests.data_sources.define_period import define_and_get_period_and_data_sour
 from pandaprosumer import *
 
 
-
 class TestFluid:
     """
     Test the fluid property of a prosumer
@@ -23,7 +22,7 @@ class TestFluid:
         # Adding new physical property to the fluid
         # source: https://www.engineeringtoolbox.com/water-liquid-gas-thermal-conductivity-temperature-pressure-d_2012.html
         prosumer.fluid.add_property('thermal_conductivity_1_bar',
-                                    pandapipes.FluidPropertyPolynominal([t+273.15 for t in range(10, 100, 10)],
+                                    pandapipes.FluidPropertyPolynominal([t + 273.15 for t in range(10, 100, 10)],
                                                                         [.57875, .59803, .61450, .62856, .64060,
                                                                          .65091, .65969, .66702, .67288],
                                                                         2),

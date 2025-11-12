@@ -6,7 +6,7 @@ from pandaprosumer import *
 from tests.data_sources.define_period import define_and_get_period_and_data_source
 
 
-def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, name = "", **kwargs):
+def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, order=0, name=""):
     dummy_controller_data = BaseControllerData(
         input_columns=input_columns,
         result_columns=result_columns
@@ -15,7 +15,7 @@ def _init_dummy_controller(prosumer, input_columns, result_columns, level=0, ord
                             dummy_controller_data,
                             order=order,
                             level=level,
-                            name = name)
+                            name=name)
     return prosumer.controller.index[-1]
 
 
@@ -166,7 +166,7 @@ class TestMapping:
         Default 'application_operation' of a Generic Mapping is 'add'
         Which means that mapping 2 outputs to the same input will result in summing the outputs
         """
-        prosumer = create_empty_prosumer_container(check_order = False)
+        prosumer = create_empty_prosumer_container(check_order=False)
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         initiator_controller1_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
@@ -265,8 +265,8 @@ class TestMapping:
         prosumer = create_empty_prosumer_container()
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
-        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'],level=0,order=0)
-        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [],level=0,order=0)
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0)
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=0, order=0)
 
         initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
         responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
@@ -292,8 +292,8 @@ class TestMapping:
         prosumer = create_empty_prosumer_container()
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
-        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0,name = 'test2')
-        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=1, order=0,name = 'test1')
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'], level=0, order=0, name='test2')
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], level=1, order=0, name='test1')
 
         initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
         responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
@@ -315,5 +315,33 @@ class TestMapping:
         with pytest.raises(ValueError, match=re.escape(
                 "Level error: Not all controllers have the same level. Found levels: {0, 1}.")):
             initiator_controller.initialize_control(prosumer)
+
+    def test_conversion_function(self):
+        """
+        Check that the output of a controller can be successfully mapped to the input of another controller
+        """
+        prosumer = create_empty_prosumer_container(check_order=False)
+        period, data_source = define_and_get_period_and_data_source(prosumer)
+
+        initiator_controller_index = _init_dummy_controller(prosumer, [], ['ctrl_out', 'ctrl_out2'])
+        responder_controller_index = _init_dummy_controller(prosumer, ['ctrl_in'], [])
+
+        initiator_controller = prosumer.controller.loc[initiator_controller_index, 'object']
+        responder_controller = prosumer.controller.loc[responder_controller_index, 'object']
+
+        GenericMapping(container=prosumer,
+                       initiator_id=initiator_controller_index,
+                       initiator_column="ctrl_out",
+                       responder_id=responder_controller_index,
+                       responder_column="ctrl_in",
+                       order=0,
+                       conversion_function=lambda x: x * 1000 + 273.15)
+
+        mapped_values = [10, 2]
+        initiator_controller.step_results = np.array([mapped_values])
+
+        self._map(prosumer, initiator_controller)
+
+        assert responder_controller.inputs[0][0] == mapped_values[0] * 1000 + 273.15
 
 # ToDO: Test merit order (both ways)

@@ -98,7 +98,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                           221.05],
             'cop': [3.21] * 13,
             'mdot_cond_kg_per_s': [1.28, 1.28, 1.28, 2.70, 2.70, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28],
-            't_cond_in_c': [20., 20., 20.,79.58, 79.80, 20., 20., 20., 20., 20., 20., 20., 20.],
+            't_cond_in_c': [20., 20., 20., 79.58, 79.80, 20., 20., 20., 20., 20., 20., 20., 20.],
             't_cond_out_c': [80.] * 13,
             'mdot_evap_kg_per_s': [10.57, 10.57, 10.57, 0.15, 0.07, 10.57, 10.57, 10.57, 10.57, 10.57, 10.57, 10.57,
                                    10.57],
@@ -109,17 +109,17 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         shs_data = {
             'mdot_discharge_kg_per_s': [0.0, 0.0, 0.0, 0.0, 0.0, 0.71, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            't_discharge_c': [20.0] + [80]*5 + [79.75,79.63,79.48,79.31,79.15,78.98,78.81],
-            'q_delivered_kw': [0., 0., 0., 0., 0., 178.95]+ [0.] * 7,
-            'e_stored_kwh': [169.68, 169.68, 169.68, 352.92, 352.92]+[0.] * 8,
+            't_discharge_c': [20.0] + [80] * 5 + [79.75, 79.63, 79.48, 79.31, 79.15, 78.98, 78.81],
+            'q_delivered_kw': [0., 0., 0., 0., 0., 178.95] + [0.] * 7,
+            'e_stored_kwh': [169.68, 169.68, 169.68, 352.92, 352.92] + [0.] * 8,
 
         }
         shs_expected = pd.DataFrame(shs_data, index=data.index)
 
         dmd_data = {
-             'q_received_kw': [0., 0., 0., 0., 0., 500., 321.05, 321.05, 321., 321., 321.05, 321.05, 321.05],
+            'q_received_kw': [0., 0., 0., 0., 0., 500., 321.05, 321.05, 321., 321., 321.05, 321.05, 321.05],
             'q_uncovered_kw': [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 178.95, 178.95, 0.0, 0.0, 478.95, 478.95, 478.95],
-            'mdot_kg_per_s': 5 * [0.] + [1.99]+ 7 * [1.28],
+            'mdot_kg_per_s': 5 * [0.] + [1.99] + 7 * [1.28],
             't_in_c': [20.0] + [80.] * 12,
             't_out_c': [20.] * 13
         }
@@ -135,7 +135,6 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         assert_frame_equal(hp_res_df.sort_index(axis=1), hp_expected.sort_index(axis=1), check_dtype=False, atol=.01)
         assert_frame_equal(shs_res_df.sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01)
         assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, atol=.01)
-
 
     def test_mapping_bypass(self):
         """
