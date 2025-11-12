@@ -9,6 +9,7 @@ from pandaprosumer.create import create_empty_prosumer_container, create_period
 
 from ..data_sources import FROM_CLAUDIA
 
+
 def _define_and_get_period_and_data_source(prosumer):
     data = pd.read_excel(FROM_CLAUDIA)
     start = '2020-01-01 00:00:00'
@@ -19,10 +20,10 @@ def _define_and_get_period_and_data_source(prosumer):
     data_source = DFData(data)
     period = create_period(prosumer,
                            3600,
-                        '2020-01-01 00:00:00',
-                        '2020-01-01 11:59:59',
-                        'utc',
-                        'default')
+                           '2020-01-01 00:00:00',
+                           '2020-01-01 11:59:59',
+                           'utc',
+                           'default')
     return period, data_source
 
 
@@ -41,14 +42,13 @@ def _init_const_profile_controller():
     result_columns = ["Tin_cond", "Tout_cond", "Mass-flow-cond", "Tin,evap"]
     prosumer = create_empty_prosumer_container()
     period, data_source = _define_and_get_period_and_data_source(prosumer)
-    create_controlled_const_profile(prosumer,input_columns,result_columns,data_source,period)
+    create_controlled_const_profile(prosumer, input_columns, result_columns, data_source, period)
     return prosumer
 
 
 class TestConstProfile:
 
     def test_create(self):
-
         """
         """
 
@@ -59,7 +59,6 @@ class TestConstProfile:
         assert prosumer.controller.iloc[0].level == 0
 
     def test_time(self):
-
         """
         """
 
@@ -68,7 +67,6 @@ class TestConstProfile:
         assert const_profile_controller.time is None
 
     def test_dfdata_columns(self):
-
         """
         """
 
@@ -78,7 +76,6 @@ class TestConstProfile:
         assert expected == sorted(_get_all_columns_from_data_source())
 
     def test_step_results(self):
-
         """
         """
 
@@ -88,7 +85,6 @@ class TestConstProfile:
         assert np.array_equal(const_profile_controller.step_results, expected, equal_nan=True)
 
     def test_res(self):
-
         """
         """
 
@@ -98,7 +94,6 @@ class TestConstProfile:
         assert np.array_equal(const_profile_controller.res, expected, equal_nan=True)
 
     def test_time_index(self):
-
         """
         """
 
@@ -110,10 +105,10 @@ class TestConstProfile:
         assert const_profile_controller.df_data.df.iloc[0].name == pd.Timestamp(period.start, tz='utc')
 
         # Final time step should be exactly the period.end, plus the resolution minus 1 second
-        assert const_profile_controller.df_data.df.iloc[-1].name + pd.Timedelta(seconds=period.resolution_s - 1) == pd.Timestamp(period.end, tz='utc')
+        assert const_profile_controller.df_data.df.iloc[-1].name + pd.Timedelta(
+            seconds=period.resolution_s - 1) == pd.Timestamp(period.end, tz='utc')
 
     def test_time_step(self):
-
         """
         Tests that execution of the `time_step` method has the intended effect, which is to set the time instance
         variable and updates step_results.
@@ -131,7 +126,6 @@ class TestConstProfile:
         assert np.array_equal(const_profile_controller.step_results, expected_step_results, equal_nan=True)
 
     def test_control_step(self):
-
         """
         Tests that execution of the `control_step` method has the intended effect, which is to read the contents of the
         appropriate row of the excel and write it into the first row of .res, and into .step_results. Then it should set
@@ -147,11 +141,11 @@ class TestConstProfile:
         # Test that the first row of res is populated with this time step's contents in the excel
         first_row = _get_first_row_from_data_source()
         expected = np.array((first_row["Tin_cond"],
-                            first_row["Tout_cond"],
-                            first_row["Mass-flow-cond"],
-                            first_row["Tin,evap"]),
+                             first_row["Tout_cond"],
+                             first_row["Mass-flow-cond"],
+                             first_row["Tin,evap"]),
                             dtype=np.float64)
-        assert np.array_equal(const_profile_controller.res[0,0], expected)
+        assert np.array_equal(const_profile_controller.res[0, 0], expected)
 
         # Test that the step results contain what was read from the excel during this time step
         assert np.array_equal(const_profile_controller.step_results[0], expected)
@@ -160,7 +154,6 @@ class TestConstProfile:
         assert const_profile_controller.applied
 
     def test_is_converged(self):
-
         """
         Tests that the .is_converged method accurately returns the convergence state
         """

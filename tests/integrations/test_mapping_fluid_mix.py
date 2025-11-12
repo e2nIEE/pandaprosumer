@@ -305,9 +305,9 @@ class TestMapping:
         period, data_source = define_and_get_period_and_data_source(prosumer)
 
         # Create some controllers and mapping
-        dummy_controller_prod_index = _init_dummy_controller(prosumer, [], [],order = 0,level=1)
-        dummy_controller_mid_index = _init_dummy_controller(prosumer, [], [],order = 1,level=1)
-        dummy_controller_dmd_index = _init_dummy_controller(prosumer, [], [],order = 2,level=1)
+        dummy_controller_prod_index = _init_dummy_controller(prosumer, [], [], order=0, level=1)
+        dummy_controller_mid_index = _init_dummy_controller(prosumer, [], [], order=1, level=1)
+        dummy_controller_dmd_index = _init_dummy_controller(prosumer, [], [], order=2, level=1)
 
         dummy_controller_prod = prosumer.controller.loc[dummy_controller_prod_index, 'object']
         dummy_controller_mid = prosumer.controller.loc[dummy_controller_mid_index, 'object']
@@ -331,5 +331,5 @@ class TestMapping:
             mass_flow_with_temp.append({FluidMixMapping.MASS_FLOW_KEY: m, FluidMixMapping.TEMPERATURE_KEY: tfeed_c})
 
         with pytest.raises(ValueError, match=re.escape(
-                    "Mapping order error: For initiator 'None', the mapping orders [0, 0] are not consecutive integers starting at 0 (expected: [0, 1]).")):
+                "Mapping order error: For initiator 'None', the mapping orders [0, 0] are not consecutive integers starting at 0 (expected: [0, 1]).")):
             dummy_controller_prod.finalize(prosumer, np.array([[]]), mass_flow_with_temp)

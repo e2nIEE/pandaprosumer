@@ -4,7 +4,7 @@ import tqdm
 from pandapower.control import get_controller_order
 from pandapower.create import _get_multiple_index_with_check
 from pandapower.timeseries import DFData
-from pandapower.timeseries.run_time_series import run_loop
+from pandapower.timeseries.run_time_series import print_progress, run_time_step, _call_output_writer
 from pandaprosumer.run_control import run_control, prepare_run_ctrl
 
 try:
@@ -14,6 +14,23 @@ except ImportError:
 
 logger = pplog.getLogger(__name__)
 logger.setLevel(level=pplog.WARNING)
+
+
+def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_call_output_writer, **kwargs):
+    """
+    runs the time series loop which calls runpp (or another run function) in each iteration
+
+    Parameters
+    ----------
+    net - pandapower net
+    ts_variables - settings for time series
+
+    """
+    for i, time_step in enumerate(ts_variables["time_steps"]):
+        print_progress(i, time_step, ts_variables["time_steps"], ts_variables["verbose"], ts_variables=ts_variables, **kwargs)
+        if "transient" in kwargs:
+            kwargs["simulation_time_step"] = i
+        run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
 def run_timeseries(prosumer, period_index=0, verbose=True):

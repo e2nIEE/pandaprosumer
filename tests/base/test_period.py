@@ -2,7 +2,6 @@ from pandaprosumer.create import create_empty_prosumer_container, create_period
 
 
 class TestPeriod:
-
     """
     Tests the period functionality of a prosumer object
     """
