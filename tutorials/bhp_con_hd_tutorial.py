@@ -122,7 +122,7 @@ res_df.data_source.loc['heat_demand'].df.q_received_kw.plot(ax=ax1, legend=True,
 res_df.data_source.loc['heat_demand'].df.q_uncovered_kw.plot(ax=ax1, legend=True, label='q_uncovered_kw', linestyle='--')
 
 ax1.set_ylabel("Thermal power (kW)")
-ax1.set_title("Heat Storage")
+
 
 plt.show()
 
