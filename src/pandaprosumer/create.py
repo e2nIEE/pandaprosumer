@@ -768,27 +768,22 @@ def create_chiller(
     _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)
 
-def create_generic_to_fluidmix(prosumer,
+def create_converter(prosumer,
                        cp_water = 4180,
                        name=None,
                        index=None,
                        in_service=True,
                        **kwargs):
     """
-    Creates a heat demand element in prosumer["heat_demand"]
+    Creates a converter element in prosumer["converter"]
 
     INPUT:
-        **prosumer** - The prosumer within this heat demand should be created
+        **prosumer** - The prosumer within this converter should be created
 
     OPTIONAL:
-        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
-        Multiply the demanded power by this factor
+        **cp_water** (float) - specific heat capacity, units J/kgK, by default 4180.
 
-        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
-
-        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
-
-        **name** (string, default None) - A custom name for this heat demand
+        **name** (string, default None) - A custom name for this converter
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
             higher than the highest already existing index is selected.
@@ -799,7 +794,7 @@ def create_generic_to_fluidmix(prosumer,
         **index** (int) - The unique ID of the created heat demand
 
     EXAMPLE:
-        create_heat_demand(prosumer, "heat_demand1")
+        create_converter(prosumer, "heat_demand1")
     """
     add_new_element(prosumer, ConverterElementData)
 
