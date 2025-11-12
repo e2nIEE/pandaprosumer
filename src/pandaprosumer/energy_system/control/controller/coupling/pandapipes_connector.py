@@ -3,11 +3,9 @@ Module containing the PandaPipesFeedConnectorController class.
 """
 
 import numpy as np
-import pandas as pd
-from pandapipes import create_fluid_from_lib, call_lib
+
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
-
 from pandaprosumer.controller.base import BasicProsumerController
 
 

@@ -1,17 +1,20 @@
 import pytest
 from pandaprosumer import *
 
+
 def _default_argument():
     return {'n_nom_rpm': 730,
-                   'p_fan_nom_kw': 9.38,
-                   'qair_nom_m3_per_h': 138200}
+            'p_fan_nom_kw': 9.38,
+            'qair_nom_m3_per_h': 138200}
+
 
 def _default_period(prosumer):
     return create_period(prosumer, 1,
-                               name="foo",
-                               start="2020-01-01 00:00:00",
-                               end="2020-01-01 11:59:59",
-                               timezone="utc")
+                         name="foo",
+                         start="2020-01-01 00:00:00",
+                         end="2020-01-01 11:59:59",
+                         timezone="utc")
+
 
 class TestDryCooler:
     """
@@ -25,9 +28,7 @@ class TestDryCooler:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-
-
-        create_dry_cooler(prosumer,**_default_argument())
+        create_dry_cooler(prosumer, **_default_argument())
 
         assert hasattr(prosumer, "dry_cooler")
         assert len(prosumer.dry_cooler) == 1
@@ -80,7 +81,7 @@ class TestDryCooler:
         """
         prosumer = create_empty_prosumer_container()
 
-        create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **_default_argument())
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
@@ -91,8 +92,8 @@ class TestDryCooler:
         """
         prosumer = create_empty_prosumer_container()
 
-
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
+                                                         **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
         print(dc_controller)
 
@@ -110,7 +111,8 @@ class TestDryCooler:
 
         prosumer = create_empty_prosumer_container()
 
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
+                                                         **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[2, 80, 80, 20, np.nan]])
@@ -119,7 +121,7 @@ class TestDryCooler:
         dc_controller.time_step(prosumer, "2020-01-01 00:00:00")
 
         dc_controller.control_step(prosumer)
-        expected = [0.,  0.,  0.,  0.,  0., 20., 20.,  2., 80., 80.]
+        expected = [0., 0., 0., 0., 0., 20., 20., 2., 80., 80.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_demand(self):
@@ -128,8 +130,8 @@ class TestDryCooler:
         """
         prosumer = create_empty_prosumer_container()
 
-
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
+                                                         **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[2, 80, 40, 20, np.nan]])
@@ -157,7 +159,6 @@ class TestDryCooler:
                   't_air_out_nom_c': 25,
                   't_fluid_in_nom_c': 50,
                   't_fluid_out_nom_c': 38}
-
 
         dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **params)
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
@@ -193,7 +194,7 @@ class TestDryCooler:
                   't_fluid_out_nom_c': 38,
                   'adiabatic_mode': True}
 
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period=_default_period(prosumer), **params)
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **params)
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
@@ -218,7 +219,6 @@ class TestDryCooler:
 
         prosumer = create_empty_prosumer_container()
 
-
         params = {'fans_number': 3,
                   'n_nom_rpm': 300,
                   'p_fan_nom_kw': 15,
@@ -230,7 +230,7 @@ class TestDryCooler:
                   'adiabatic_mode': True,
                   'phi_adiabatic_sat_percent': 100}
 
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer), **params)
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **params)
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
@@ -267,7 +267,7 @@ class TestDryCooler:
                   'phi_adiabatic_sat_percent': 95
                   }
 
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer), **params)
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer), **params)
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_w = 200 / 3600 * 1.177 * 1007 * (25 - 20)
@@ -304,9 +304,8 @@ class TestDryCooler:
                   'phi_adiabatic_sat_percent': 100,
                   'min_delta_t_air_c': 5}
 
-
         dc_controller_idx = create_controlled_dry_cooler(prosumer,
-                                                         period = _default_period(prosumer),
+                                                         period=_default_period(prosumer),
                                                          **params)
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
@@ -330,8 +329,8 @@ class TestDryCooler:
         """
         prosumer = create_empty_prosumer_container()
 
-
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
+                                                         **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         dc_controller.inputs = np.array([[141 / 3.6, 53, 48, 10, np.nan]])
@@ -357,8 +356,8 @@ class TestDryCooler:
         """
         prosumer = create_empty_prosumer_container()
 
-
-        dc_controller_idx = create_controlled_dry_cooler(prosumer,period = _default_period(prosumer),**_default_argument())
+        dc_controller_idx = create_controlled_dry_cooler(prosumer, period=_default_period(prosumer),
+                                                         **_default_argument())
         dc_controller = prosumer.controller.iloc[dc_controller_idx].object
 
         q_demand_kw = 104.58385
@@ -386,7 +385,7 @@ class TestDryCooler:
         dc_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = mdot_demand_kg_per_s / 3
         assert dc_controller.t_m_to_receive(prosumer) == pytest.approx((t_feed_demand_c,
                                                                         t_return_demand_c,
-                                                                        mdot_demand_kg_per_s * 2/3),
+                                                                        mdot_demand_kg_per_s * 2 / 3),
                                                                        .001)
 
         dc_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_feed_demand_c / 2
