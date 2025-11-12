@@ -50,7 +50,7 @@ class GenericToFluidMixController(BasicProsumerController):
         deltaT = t_supply_c - t_required_in_c
 
         q_received_kw = self._get_input('q_received_kw')
-        #print(q_received_kw)
+
         if abs(deltaT) < 1e-6:
             mdot_received_kg_per_s = 0.0
         else:
