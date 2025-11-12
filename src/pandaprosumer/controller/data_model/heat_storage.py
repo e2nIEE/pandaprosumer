@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 from pandaprosumer.element.element_toolbox import enforce_types
 
+
 @enforce_types
 @dataclass
 class HeatStorageControllerData:
@@ -26,4 +27,3 @@ class HeatStorageControllerData:
     period_index: int = None
     input_columns: List[str] = field(default_factory=lambda: ["q_received_kw"])
     result_columns: List[str] = field(default_factory=lambda: ["soc", "q_delivered_kw"])
-

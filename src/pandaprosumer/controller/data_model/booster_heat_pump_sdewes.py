@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import List
 from pandaprosumer.element.element_toolbox import enforce_types
 
+
 @enforce_types
 @dataclass
 class BoosterHeatPumpControllerData:
@@ -26,4 +27,4 @@ class BoosterHeatPumpControllerData:
     element_name: str = 'booster_heat_pump'
     input_columns: List[str] = field(default_factory=lambda: ["t_source_k", 'demand', 'mode', 'q_received_kw', 'p_received_kw', 't_sink_k'])
     result_columns: List[str] = field(default_factory=lambda: ['cop', 'q_kw', 'q_remain_kw', 'p_el_kw'])
-    
+

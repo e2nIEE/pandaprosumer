@@ -15,4 +15,3 @@ class BoosterHeatPumpElementData:
         ('name', dtype(object)),
         ('hp_type', 'str'),
         ('in_service', bool)])
-    

@@ -3,6 +3,7 @@ Module containing the ConstProfileController class.
 """
 
 from pandapower.timeseries.data_sources.frame_data import DFData
+
 from .mapped import MappedController
 from pandaprosumer.mapping import FluidMixMapping
 
@@ -12,7 +13,6 @@ except ImportError:
     import logging
 
 logger = logging.getLogger(__name__)
-
 
 
 class ConstProfileController(MappedController):
@@ -38,7 +38,8 @@ class ConstProfileController(MappedController):
         return "const_profile_control"
 
     def __init__(self, prosumer, const_object, df_data: DFData, order=-1, level=-1, in_service=True, index=None,
-                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None, temp_fluid_map_idx = None, mdot_fluid_map_idx= None, **kwargs):
+                 drop_same_existing_ctrl=False, overwrite=False, name=None, matching_params=None,
+                 temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs):
         """
         Initializes the ConstProfileController.
         """
@@ -47,8 +48,6 @@ class ConstProfileController(MappedController):
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
 
         self.has_elements = False
-
-
         self.temp_fluid_map_idx = temp_fluid_map_idx
         self.mdot_fluid_map_idx = mdot_fluid_map_idx
 
@@ -65,10 +64,9 @@ class ConstProfileController(MappedController):
 
         if self.temp_fluid_map_idx is not None and self.mdot_fluid_map_idx is not None:
             result_fluid_mix = [{FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_idx],
-                             FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_idx]}]
-            self.finalize(prosumer, results,result_fluid_mix)
+                                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_idx]}]
+            self.finalize(prosumer, results, result_fluid_mix)
         else:
             self.finalize(prosumer, results)
 
-        self.applied = True
         self.applied = True

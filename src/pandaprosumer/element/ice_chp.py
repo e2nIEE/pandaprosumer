@@ -5,6 +5,7 @@ from typing import List
 
 from pandaprosumer.element.element_toolbox import enforce_types
 
+
 @enforce_types
 @dataclass
 class IceChpElementData():
@@ -20,7 +21,7 @@ class IceChpElementData():
     #
     name: str = "ice_chp"
 
-    input: List = field(default_factory = lambda: [
+    input: List = field(default_factory=lambda: [
         ('size', 'f8'),
         ('fuel', 'str'),
         ('altitude', 'f8'),

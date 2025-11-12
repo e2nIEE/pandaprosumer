@@ -53,7 +53,7 @@ class TestHeatDemand:
         assert hd_idx == 4
         assert prosumer.heat_demand.index[0] == hd_idx
 
-        expected_columns = ["name", "scaling", "in_service", "custom", "t_in_set_c", "t_out_set_c",]
+        expected_columns = ["name", "scaling", "in_service", "custom", "t_in_set_c", "t_out_set_c", ]
         expected_values = ['foo', 3.2, False, 'test', 63, 35]
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
