@@ -70,6 +70,7 @@ GenericMapping(
     initiator_column=["mode_cp","t_source_cp_k"],
     responder_id=bhp_index,
     responder_column=["mode", "t_source_k"],
+    order=0
 )
 
 GenericMapping(
@@ -78,6 +79,7 @@ GenericMapping(
     initiator_column=["t_supply_cp_c"],
     responder_id=gen_to_fluidmix_index,
     responder_column=["t_supply_c"],
+    order=0
 )
 
 GenericMapping(
@@ -86,6 +88,7 @@ GenericMapping(
     initiator_column=["q_demand_cp_kw", "t_feed_demand_cp_c", "t_return_demand_cp_c"],
     responder_id=heat_demand_index,
     responder_column=["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"],
+    order=0
 )
 
 
@@ -95,6 +98,7 @@ GenericMapping(
     initiator_column="q_floor",
     responder_id=gen_to_fluidmix_index,
     responder_column="q_received_kw",
+    order=0
 )
 
 
@@ -102,6 +106,7 @@ FluidMixMapping(
     prosumer,
     initiator_id=gen_to_fluidmix_index,
     responder_id=heat_demand_index,
+    order=0
 )
 
 run_timeseries(prosumer, period, True)
