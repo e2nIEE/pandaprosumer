@@ -1,5 +1,5 @@
-from pandaprosumer.controller.mapped import MappedController
 import numpy as np
+from pandaprosumer.controller.mapped import MappedController
 
 
 class ReadPipeProdControl(MappedController):

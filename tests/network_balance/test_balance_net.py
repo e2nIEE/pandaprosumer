@@ -17,8 +17,6 @@ from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import
     run_timeseries as run_timeseries_system
 from pandaprosumer.mapping import FluidMixEnergySystemMapping, GenericEnergySystemMapping
 
-from pandaprosumer import *
-
 from .create_networks import *
 from .create_prosumers import *
 

@@ -2,16 +2,13 @@
 Module containing the Supervisor class.
 """
 
-
-from pandapower.timeseries.data_sources.frame_data import DFData
-from pandaprosumer.controller.mapped import MappedController
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
-
-from .combining_rule import CombiningRules
-from .rule import *
 import numpy as np
 
+from pandaprosumer.controller.mapped import MappedController
+from .combining_rule import CombiningRules
+from .rule import *
 
 try:
     import pandaplan.core.pplog as logging
@@ -19,7 +16,6 @@ except ImportError:
     import logging
 
 logger = logging.getLogger(__name__)
-
 
 
 @dataclass
@@ -34,6 +30,7 @@ class SupervisorData:
     """
     input_columns: List[str]
     result_columns: List[str]
+
 
 class Supervisor(MappedController):
     """
@@ -65,10 +62,11 @@ class Supervisor(MappedController):
 
         :param action: An instance of Action class containing rule and action to execute.
         """
-        if not isinstance(rule, (Rule,CombiningRules)):
+        if not isinstance(rule, (Rule, CombiningRules)):
             raise ValueError("Rule must be an instance of the Rule class.")
         self.rules.append(rule)
-        rule.add_to_prosumer(self.container)
+        index = rule.add_to_prosumer(self.container)
+        return index
 
     def add_assert_rule(self, controller, attr, value):
         if controller not in self.assert_rule:
@@ -88,9 +86,9 @@ class Supervisor(MappedController):
             input_data = {input_name: input for input_name, input in zip(self.input_columns, self.inputs[0])}
             for rule in self.rules:
                 if rule.evaluate(input_data):
-                    rule.execute_action(prosumer,self)
+                    rule.execute_action(prosumer, self)
                 else:
-                    rule.execute_opposite(prosumer,self)
+                    rule.execute_opposite(prosumer, self)
 
         self.applied = True
         self.inputs = np.full([self._nb_elements, len(self.input_columns)], np.nan)

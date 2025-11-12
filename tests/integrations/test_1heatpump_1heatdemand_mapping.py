@@ -6,6 +6,7 @@ from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 
 from pandaprosumer import *
 
+
 class Test1HeatPump1HeatDemandMapping:
     """
     In this example, a single ConstProsumer is mapped to a Heat Pump and then to a Heat Demand
@@ -16,7 +17,7 @@ class Test1HeatPump1HeatDemandMapping:
         # ToDo: add case where demand = 0w in tests
         # ToDo: test equivalence different inputs for demand
         data = pd.DataFrame({"Tin_evap": [25, 25, 25, 25],
-                             "demand_1_kw": [50, 200, 337.512+30, 0],
+                             "demand_1_kw": [50, 200, 337.512 + 30, 0],
                              "tdmd_feed1_c": [76.85, 76.85, 76.85, 76.85],
                              "tdmd_return1_c": [30, 30, 30, 30]})
 
@@ -34,13 +35,12 @@ class Test1HeatPump1HeatDemandMapping:
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
-        hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
-
+        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                            data_source, period, level=0, order=0)
-        hp_controller_index = create_controlled_heat_pump(prosumer, level = 1,order = 0,period=period,**hp_params)
-        hd_controller_index = create_controlled_heat_demand(prosumer, level = 1,order = 1,period = period, **hd_params)
+                                                              data_source, period, level=0, order=0)
+        hp_controller_index = create_controlled_heat_pump(prosumer, level=1, order=0, period=period, **hp_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1, period=period, **hd_params)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -102,4 +102,4 @@ class Test1HeatPump1HeatDemandMapping:
         mdot_demand_kg_per_s = (data.demand_1_kw - dmd_q_uncovered_kw) / ((76.85 - 30) * 4.19)
         assert_series_equal(hp_mdot_cond_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False)
         assert hp_t_cond_out_c.values == pytest.approx([76.85, 76.85, 76.85, 30.], .01)
-        assert hp_t_cond_in_c.values == pytest.approx([30]*len(hp_t_cond_in_c), .01)
+        assert hp_t_cond_in_c.values == pytest.approx([30] * len(hp_t_cond_in_c), .01)

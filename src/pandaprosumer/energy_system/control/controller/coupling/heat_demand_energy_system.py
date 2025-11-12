@@ -3,9 +3,7 @@ Module containing the HeatDemandController class.
 """
 
 import numpy as np
-import pandas as pd
 import logging
-import math
 
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C, CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
