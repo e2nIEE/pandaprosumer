@@ -10,18 +10,14 @@ from pandaprosumer.run_time_series import run_timeseries
 import numpy as np
 import json
 import os
+import matplotlib.pyplot as plt
 
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
 
-# flex =  np.linspace(-200, 200, 96)
-
+# Flexibility demand dummy-curve
 n = 96
-
-# Erzeuge Sinus über eine Periode (0 bis 2π)
 t = np.linspace(0, 4*2*np.pi, n)
-
-# Skaliere Sinus auf [-200, 200]
 flex = 200 * np.sin(t)
 
 prosumer = create_empty_prosumer_container()
@@ -43,14 +39,11 @@ frequency = '15min'
 
 
 time_series_data = pd.read_excel('data/heat_demand_input_chp_bhp.xlsx')
-time_series_data["c_electricity_eur_per_mw"] = np.random.randint(100, 251, size=len(time_series_data))
-time_series_data["c_gas_eur_per_mw"] = 70
 time_series_data["flex_demand_kw"] = flex
 time_series_data["p_el_bhp"] = 0
 time_series_data["p_el_chp"] = 0
 time_series_data["mode"] = 2
 time_series_data["cycle"] = 1
-
 
 dur = pd.date_range(start=start, end=end, freq=frequency, tz='utc')
 time_series_data.index = dur
@@ -428,72 +421,41 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
 
 run_timeseries(prosumer, period, check_results_fct=check_results, verbose=True)
 
+res_bhp, res_chp, res_storage, res_heat_demand = [
+    prosumer.time_series.data_source.iloc[i].df for i in range(4)
+]
 
-res_chp = prosumer.time_series.data_source.iloc[1].df
-chp_p_el_out_kw = res_chp['p_el_out_kw']
-chp_p_th_out_kw = res_chp['p_th_out_kw']
+chp_p_el = res_chp["p_el_out_kw"]
+chp_p_th = res_chp["p_th_out_kw"]
+bhp_p_el = -res_bhp["p_el_floor"]   # oder radiator?
+bhp_q_th = res_bhp["q_floor"]
 
-
-res_bhp = prosumer.time_series.data_source.iloc[0].df
-bhp_p_el_in_kw = -res_bhp['p_el_floor']#or radiator?
-bhp_q_th_ou_kw = res_bhp["q_floor"]
-
-res_storage=prosumer.time_series.data_source.iloc[2].df
-res_heat_demand=prosumer.time_series.data_source.iloc[3].df
-
-p_el_balance = chp_p_el_out_kw + bhp_p_el_in_kw - flex
-
-df = pd.DataFrame({
-    "chp_p_el": chp_p_el_out_kw.values,
-    "bhp_p_el": bhp_p_el_in_kw.values,
+res_df = pd.DataFrame({
+    "chp_p_el": chp_p_el,
+    "bhp_p_el": bhp_p_el,
     "flex": flex,
-    "p_el_balance": p_el_balance.values
-}, index=res_chp.index)  # falls du den Zeitindex behalten willst
-print(df)
+    "p_el_balance": chp_p_el + bhp_p_el - flex,
+    "p_el_sum": chp_p_el + bhp_p_el,
+    "q_th_sum": chp_p_th + bhp_q_th,
+    "q_delivered_storage": res_storage["q_delivered_kw"],
+    "q_received_demand": res_heat_demand["q_received_kw"],
+}, index=res_chp.index)
 
-import matplotlib.pyplot as plt
-# Summen berechnen
-p_el_sum = chp_p_el_out_kw + bhp_p_el_in_kw
-q_th_sum = chp_p_th_out_kw + bhp_q_th_ou_kw
-# DataFrame erweitern
-df["p_el_sum"] = p_el_sum.values
-df["q_th_sum"] = q_th_sum.values
-df["q_delivered_storage"] = res_storage["q_delivered_kw"].values
-df["q_received_demand"] = res_heat_demand["q_received_kw"].values
-# Plotten
 fig, ax = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-# Elektrische Leistungen
-ax[0].plot(df.index, df["chp_p_el"], label="CHP electric output (kW)")
-ax[0].plot(df.index, df["bhp_p_el"], label="BHP electric input (kW)")
-ax[0].plot(df.index, df["p_el_sum"], label="Combined electric demand (kW)", linewidth=2, color="black")
-ax[0].plot(df.index, df["flex"], label="Flex-Signal (kW)", color="red", linewidth=1, linestyle="--")
+
+ax[0].plot(res_df.index, res_df["chp_p_el"], label="CHP electric generation")
+ax[0].plot(res_df.index, res_df["bhp_p_el"], label="BHP electric consumption")
+ax[0].plot(res_df.index, res_df["p_el_sum"], label="Electric balance CHP & BHP", linewidth=2, color="black")
+ax[0].plot(res_df.index, res_df["flex"], label="Flexibility demand", color="red", linewidth=1, linestyle="--")
 ax[0].set_ylabel("Electrical power (kW)")
-# ax[0].set_title("Elektrische Leistungen")
 ax[0].legend()
 
-ax[1].plot(df.index, df["q_delivered_storage"], label="Thermal output storage (kW)", linewidth=2, color="black")
-ax[1].plot(df.index, df["q_received_demand"], label="Heat demand (kW)", color="red", linewidth=1, linestyle="--")
+ax[1].plot(res_df.index, res_df["q_delivered_storage"], label="Thermal output storage", linewidth=2, color="black")
+ax[1].plot(res_df.index, res_df["q_received_demand"], label="Heat demand", color="red", linewidth=1, linestyle="--")
 ax[1].set_ylabel("Thermal power (kW)")
 ax[1].legend()
-plt.show()
 
-p_el_sum = chp_p_el_out_kw + bhp_p_el_in_kw
-df = pd.DataFrame({
-    "p_el_sum": p_el_sum.values,
-    "flex": flex
-}, index=res_chp.index)
-import matplotlib.pyplot as plt
-plt.figure(figsize=(12,6))
-plt.plot(df.index, df["p_el_sum"], label="Summe elektrische Leistung (kW)", color="blue", linewidth=2)
-plt.plot(df.index, df["flex"], label="Flex-Signal (kW)", color="orange", linewidth=2)
-plt.xlabel("Zeit")
-plt.ylabel(" [kW]")
-plt.title("Elektrische Summe und Flex-Signal")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
 plt.show()
-
 
 
 
