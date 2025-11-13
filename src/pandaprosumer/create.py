@@ -6,7 +6,7 @@ from pandapower.create import _get_index_with_check, _set_entries
 
 from pandaprosumer.element import *
 from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
-    HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData
+     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData, ConverterElementData
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -765,4 +765,51 @@ def create_chiller(
     )
 
     _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
+    return int(index)
+
+def create_generic_to_fluidmix(prosumer,
+                       cp_water = 4180,
+                       name=None,
+                       index=None,
+                       in_service=True,
+                       **kwargs):
+    """
+    Creates a heat demand element in prosumer["heat_demand"]
+
+    INPUT:
+        **prosumer** - The prosumer within this heat demand should be created
+
+    OPTIONAL:
+        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
+        Multiply the demanded power by this factor
+
+        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
+
+        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
+
+        **name** (string, default None) - A custom name for this heat demand
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created heat demand
+
+    EXAMPLE:
+        create_heat_demand(prosumer, "heat_demand1")
+    """
+    add_new_element(prosumer, ConverterElementData)
+
+    index = _get_index_with_check(prosumer, "converter", index)
+
+    entries = dict(zip(["name", "cp_water", "in_service"],
+                       [name, cp_water, in_service]))
+
+    _set_entries(prosumer, "converter", index, **entries, **kwargs)
+
+    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
+    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
+
     return int(index)
