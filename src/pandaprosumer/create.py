@@ -787,6 +787,7 @@ def create_solar_thermal(prosumer,
                         in_service=True,
                         name=None,
                         index=None,
+                         **kwargs
                     ):
     """_summary_
 
@@ -847,6 +848,7 @@ def create_solar_thermal(prosumer,
         zip(
             [
                 "name",
+                "in_service",
                 "collector_area",
                 "optical_efficiency",
                 "thermal_losses",
@@ -866,6 +868,7 @@ def create_solar_thermal(prosumer,
             ],
             [
                 name,
+                in_service,
                 collector_area,
                 optical_efficiency,
                 thermal_losses,
@@ -887,5 +890,5 @@ def create_solar_thermal(prosumer,
         )
     )
 
-    _set_entries(prosumer, "solar_thermal", index, **entries)
+    _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
     return int(index)
