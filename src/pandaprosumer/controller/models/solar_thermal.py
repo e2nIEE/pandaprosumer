@@ -384,7 +384,7 @@ class SolarThermalController(BasicProsumerController):
         fr_tau_alpha_n = r_capacitance * fr_tau_alpha_n
         fr_ul = r_capacitance * fr_ul
         fr_ul_t = r_capacitance * fr_ul_t
-        print(r_capacitance)
+        # print(r_capacitance)
 
         r_series = series_connection_correction_factor(
             m,
@@ -399,7 +399,7 @@ class SolarThermalController(BasicProsumerController):
         fr_ul = r_series * fr_ul
         fr_ul_t = r_series * fr_ul_t
 
-        print(r_series)
+        # print(r_series)
 
         r_piping = piping_correction_factor(
             m,
@@ -415,7 +415,7 @@ class SolarThermalController(BasicProsumerController):
         fr_ul = r_piping[1] * fr_ul
         fr_ul_t = r_piping[2] * fr_ul_t
 
-        print(r_piping)
+        # print(r_piping)
 
         gt = radiation_incidence_iam_effect(
             self._get_input("beam_solar_radiation_w_m2"),
@@ -425,7 +425,7 @@ class SolarThermalController(BasicProsumerController):
             self.pros.incidence_angle[0],
             self.pros.collector_slope[0]
         )
-        print(f"gt: {gt}")
+        # print(f"gt: {gt}")
         # fr_ul_t = 0.02
         a_field = self.pros.collector_area[0] * self.pros.number_collectors[0]
         aa = fr_ul_t * a_field
@@ -437,12 +437,12 @@ class SolarThermalController(BasicProsumerController):
             t_m = -bb / cc
         else:
             t_m = (-bb + math.sqrt(bb ** 2 - 4 * aa * cc)) / (2 * aa)
-        print(aa)
-        print(bb)
-        print(cc)
-        print(t_m)
-        print(fr_ul_t)
-        print(fr_ul)
+        # print(aa)
+        # print(bb)
+        # print(cc)
+        # print(t_m)
+        # print(fr_ul_t)
+        # print(fr_ul)
 
         # Outputs
         outlet_flow_rate_kg_h = self._get_input("inlet_mass_flow_rate_kg_h")
