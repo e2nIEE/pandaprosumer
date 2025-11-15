@@ -97,7 +97,10 @@ class ElectricBoilerController(BasicProsumerController):
         assert not np.isnan(t_out_required_c), f"Electric Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_in_required_c), f"Electric Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_required_kg_per_s).any(), f"Electric Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
+        if t_in_required_c < t_out_required_c:
+            warnings.warn(f"Electric Boiler {self.name} t_out_required_c {t_out_required_c}°C is lower than t_in_required_c {t_in_required_c}°C for timestep {self.time} in prosumer {prosumer.name}")
+            t_out_required_c = t_in_required_c
+        assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c {t_out_required_c}°C is lower than t_in_required_c {t_in_required_c}°C for timestep {self.time} in prosumer {prosumer.name}"
 
         rerun = True
         nb_runs = 0
