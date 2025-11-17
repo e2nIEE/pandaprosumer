@@ -595,6 +595,7 @@ def create_gas_boiler(prosumer,
 def create_booster_heat_pump(
     prosumer,
     hp_type,
+    q_max_kw = None,
     in_service=True,
     name=None,
     index=None,
@@ -605,7 +606,7 @@ def create_booster_heat_pump(
     :param in_service:  (Default value = True)
     :param name:  (Default value = None)
     :param index:  (Default value = None)
-
+    :param q_max_kw: (Default value = None):
     """
     add_new_element(prosumer, BoosterHeatPumpElementData)
 
@@ -615,11 +616,13 @@ def create_booster_heat_pump(
         zip(
             [
                 "name",
+                "q_max_kw",
                 "hp_type",
                 "in_service",
             ],
             [
                 name,
+                q_max_kw,
                 hp_type,
                 in_service,
             ],

@@ -16,14 +16,28 @@ import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
 
 # Flexibility demand dummy-curve
-n = 96
-t = np.linspace(0, 4*2*np.pi, n)
-flex = 200 * np.sin(t)
+
+# Zeitvektor: 0 bis 24 Stunden
+t = np.linspace(0, 24, 96)
+
+# Lastprofil (Morgen- und Abendspitze)
+L = (200 * np.exp(-((t - 8) ** 2) / (2 * 1.5 ** 2))
+     + 200 * np.exp(-((t - 18) ** 2) / (2 * 1.5 ** 2)))
+
+# PV-Erzeugung (Sinus zwischen 6 und 18 Uhr)
+G_PV = 200 * np.maximum(0, np.sin(np.pi / 12 * (t - 6)))
+
+# Flexibilitätskurve
+flex = L - G_PV
+
+
+
 
 prosumer = create_empty_prosumer_container()
 
 bhp_type = 'water-water1'
 bhp_name = 'example_bhp'
+max_thermal_power_kw = 700
 
 name = 'example_chp'
 size_kw = 700
@@ -52,14 +66,14 @@ period = create_period(prosumer, time_resolution, start, end, 'utc', 'default')
 
 print(time_series_data.head())
 input_params = ['mode', 't_source_k', 'q_demand_kw', 'cycle', 't_intake_k',
-                    "c_electricity_eur_per_mw", "c_gas_eur_per_mw", "flex_demand_kw", "p_el_bhp", "p_el_chp"]
+                    "flex_demand_kw", "p_el_bhp", "p_el_chp"]
 result_params = ['mode_cp', 't_source_cp_k', 'q_demand_cp_kw', 'cycle_cp', 't_intake_cp_k',
-                     "c_electricity_cp_eur_per_mw", "c_gas_cp_eur_per_mw", "flex_demand_cp_kw", "p_el_bhp_cp", "p_el_chp_cp"]
+                     "flex_demand_cp_kw", "p_el_bhp_cp", "p_el_chp_cp"]
 
 cp_index = create_controlled_const_profile(
         prosumer, input_params, result_params, time_series_input_bhp, period, level=0)
 
-bhp_index = create_controlled_booster_heat_pump(prosumer, bhp_type, bhp_name, level=2, order=0)
+bhp_index = create_controlled_booster_heat_pump(prosumer, hp_type=bhp_type, name=bhp_name, q_max_kw=max_thermal_power_kw, level=2, order=0)
 
 ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
@@ -163,7 +177,7 @@ def check_results(prosumer, ts):
     p_el_floor_bhp = results_timestep[ts][1]["pel_floor_kw"]
 
     #node balance for the timestep
-    node_balance = p_el_out_chp - p_el_floor_bhp + input[0, 7]
+    node_balance = p_el_out_chp - p_el_floor_bhp + input[0, 5]
 
     #select the chp_map for the optimization
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -182,16 +196,17 @@ def check_results(prosumer, ts):
     if node_balance != 0:
         results = model_optimization_chp_fit(
             heat_demand=input[0, 2],
-            flex_demand=input[0, 7],
+            flex_demand=input[0, 5],
             cop_bhp=cop_bhp,
             soc=soc,
             chp_map=chp_map_2,
+            q_bhp_max=max_thermal_power_kw,
         )
 
         if results["feasible"]:
             #put the results of the optimization as input data for the const profile for the rerun of the timestep
-            col_p_el_bhp = prosumer.controller.object[0].input_columns[8]
-            col_p_el_chp = prosumer.controller.object[0].input_columns[9]
+            col_p_el_bhp = prosumer.controller.object[0].input_columns[6]
+            col_p_el_chp = prosumer.controller.object[0].input_columns[7]
             df_data.df.loc[ts, col_p_el_bhp] = results["p_el_bhp"]
             df_data.df.loc[ts, col_p_el_chp] = results["p_el_chp"]
 
@@ -260,7 +275,7 @@ def poly_expr(coeffs, x):
 
 
 def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
-                               resol=900, degree=1, storage_cap=10000, q_bhp_max=2000):
+                               resol=900, degree=1, storage_cap=10000, q_bhp_max=700):
     """
     Build and solve a Pyomo MINLP for CHP + heat pump + storage dispatch.
 
@@ -389,11 +404,11 @@ def model_optimization_chp_fit(heat_demand, flex_demand, cop_bhp, soc, chp_map,
 
     # balances
     m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
-    m.el_bal   = pyo.Constraint(expr=-m.p_el_bhp + m.p_el_chp - m.flex_demand == 0)
+    m.el_bal   = pyo.Expression(expr=-m.p_el_bhp + m.p_el_chp - m.flex_demand)
 
     # objective to minimize the electric power consumption of the whole system.
     m.obj = pyo.Objective(
-        expr=m.p_el_bhp,
+        expr=m.el_bal**2 - m.q_th_charge,
         sense=pyo.minimize
     )
 
@@ -426,34 +441,66 @@ res_bhp, res_chp, res_storage, res_heat_demand = [
 ]
 
 chp_p_el = res_chp["p_el_out_kw"]
-chp_p_th = res_chp["p_th_out_kw"]
+chp_q_th = res_chp["p_th_out_kw"]
 bhp_p_el = -res_bhp["p_el_floor"]   # oder radiator?
 bhp_q_th = res_bhp["q_floor"]
 
 res_df = pd.DataFrame({
     "chp_p_el": chp_p_el,
     "bhp_p_el": bhp_p_el,
+    "chp_q_th": chp_q_th,
+    "bhp_q_th": bhp_q_th,
     "flex": flex,
     "p_el_balance": chp_p_el + bhp_p_el - flex,
     "p_el_sum": chp_p_el + bhp_p_el,
-    "q_th_sum": chp_p_th + bhp_q_th,
+    "q_th_sum": chp_q_th + bhp_q_th,
     "q_delivered_storage": res_storage["q_delivered_kw"],
+    "soc": res_storage["soc"] * 100,
     "q_received_demand": res_heat_demand["q_received_kw"],
 }, index=res_chp.index)
+
+import matplotlib.dates as mdates
 
 fig, ax = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
 
 ax[0].plot(res_df.index, res_df["chp_p_el"], label="CHP electric generation")
 ax[0].plot(res_df.index, res_df["bhp_p_el"], label="BHP electric consumption")
-ax[0].plot(res_df.index, res_df["p_el_sum"], label="Electric balance CHP & BHP", linewidth=2, color="black")
+ax[0].plot(res_df.index, res_df["p_el_sum"], label="Electric balance CHP & BHP", linewidth=3, color="grey")
 ax[0].plot(res_df.index, res_df["flex"], label="Flexibility demand", color="red", linewidth=1, linestyle="--")
-ax[0].set_ylabel("Electrical power (kW)")
-ax[0].legend()
+ax[0].set_ylabel("Electrical power (kW)", fontsize=12)
+ax[0].legend(fontsize=10, loc="lower left")
 
-ax[1].plot(res_df.index, res_df["q_delivered_storage"], label="Thermal output storage", linewidth=2, color="black")
+ax[1].plot(res_df.index, res_df["chp_q_th"], label="CHP thermal generation")
+ax[1].plot(res_df.index, res_df["bhp_q_th"], label="BHP thermal generation")
+ax[1].plot(res_df.index, res_df["q_delivered_storage"], label="Thermal output storage", linewidth=3, color="grey")
 ax[1].plot(res_df.index, res_df["q_received_demand"], label="Heat demand", color="red", linewidth=1, linestyle="--")
-ax[1].set_ylabel("Thermal power (kW)")
-ax[1].legend()
+ax[1].set_ylabel("Thermal power (kW)", fontsize=12)
+ax[1].legend(fontsize=10)
+
+ax2 = ax[1].twinx()
+ax2.plot(res_df.index, res_df["soc"], label="SOC", color="green", linewidth=1.5)
+ax2.set_ylabel("State of Charge (%)", fontsize=12, color="green")
+
+
+lines1, labels1 = ax[1].get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax[1].legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=10)
+
+hour_fmt = mdates.DateFormatter("%H")   # %H = Stunde (00–23)
+ax[1].xaxis.set_major_formatter(hour_fmt)
+ax[1].set_xlabel("Time (h)", fontsize=12)
+
+plt.xticks(fontsize=11)   # x-Achse Tick-Beschriftungen größer
+plt.yticks(fontsize=11)   # y-Achse Tick-Beschriftungen größer
+
+# Plot fertig zeichnen
+plt.draw()
+
+# Ticklabels abholen und anpassen
+labels = [lab.get_text() for lab in ax[1].get_xticklabels()]
+if labels and labels[-1] == "00":
+    labels[-1] = "24"
+ax[1].set_xticklabels(labels)
 
 plt.show()
 

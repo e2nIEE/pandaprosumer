@@ -648,7 +648,7 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
                Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
 
@@ -658,6 +658,8 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
                **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
 
            OPTIONAL:
+                **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
+
                **name** (string, default None) - The name of the BHP instance
 
                **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -677,7 +679,7 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
            EXAMPLE:
                create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
            """
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
+    bhp_index = create_booster_heat_pump(prosumer, hp_type, q_max_kw, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
         period_index=period

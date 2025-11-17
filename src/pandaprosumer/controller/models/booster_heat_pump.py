@@ -105,6 +105,7 @@ class BoosterHeatPumpController(BasicProsumerController):
         t_source_k = self._t_source
         hp_type = self._get_element_param(prosumer, "hp_type")
         mode = self._mode
+        q_max_kw = self._get_element_param(prosumer, "q_max_kw")
 
         t_source_k = t_source_k - 273.0  # in celsius
 
@@ -139,7 +140,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                     else:
                         t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        q_max_kw = 5.8 + 0.21 * t_source_k
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 5.8 + 0.21 * t_source_k
 
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.first_mode_calc(q_kw, demand_kw, p_el_kw, q_max_kw,
@@ -162,7 +164,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
                         if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
                             raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-                        q_max_kw = 25.308 + 0.963 * t_source_k
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 25.308 + 0.963 * t_source_k
 
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.first_mode_calc(q_kw, demand_kw, p_el_kw, q_max_kw,
@@ -185,8 +188,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                     else:
                         t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        #q_max_kw = 5.8 + 0.21 * t_source_k
-                        q_max_kw = 1000
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 5.8 + 0.21 * t_source_k
 
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.second_mode_calc(demand_kw, p_el_kw, q_max_kw,
@@ -209,7 +212,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
                         if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
                             raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-                        q_max_kw = 25.308 + 0.963 * t_source_k
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 25.308 + 0.963 * t_source_k
 
                         q_remain_kw, q_floor_kw, q_radiator_kw, cop_floor, cop_radiator = (
                             self.second_mode_calc(demand_kw, p_el_kw, q_max_kw,
@@ -231,8 +235,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                     else:
                         t_sink_floor_heating_k = 30.0 - 0.5 * t_source_k
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
-                        # q_max_kw = 5.8 + 0.21 * t_source_k
-                        q_max_kw = 1000
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 5.8 + 0.21 * t_source_k
 
                         q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
                             = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k, t_sink_radiator_heating_k, t_source_k, cop_coeff)
@@ -252,8 +256,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                         t_sink_radiator_heating_k = 40.0 - 1.0 * t_source_k
                         if t_sink_floor_heating_k > 80.0 or t_sink_radiator_heating_k > 80.0:
                             raise ValueError(f"Temperature of the heat sink is too high: {t_sink_floor_heating_k} celsius")
-
-                        q_max_kw = 25.308 + 0.963 * t_source_k
+                        if pd.isna(q_max_kw):
+                            q_max_kw = 25.308 + 0.963 * t_source_k
 
                         q_remain_kw, cop_floor, cop_radiator, pel_floor_kw, pel_radiator_kw, q_floor_kw, q_radiator_kw \
                             = self.third_mode_calc(demand_kw, q_max_kw, t_sink_floor_heating_k,
