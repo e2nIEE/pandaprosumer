@@ -24,10 +24,17 @@ class TestBoosterHeatPump:
         assert len(prosumer.booster_heat_pump) == 1
 
         expected_columns = ['name', 'hp_type', 'q_max_kw', 'in_service']
-        expected_values = ['example_hp', 'water-water1', pd.isna, True]
+        expected_values = ['example_hp', 'water-water1', np.nan, True]
 
         assert list(prosumer.booster_heat_pump.columns) == expected_columns
-        assert list(prosumer.booster_heat_pump.iloc[0]) == expected_values
+        row = list(prosumer.booster_heat_pump.iloc[0])
+        for val, exp in zip(row, expected_values):
+            if pd.isna(exp):
+                assert pd.isna(val)
+            else:
+                assert val == exp
+
+        # assert list(prosumer.booster_heat_pump.iloc[0]) == expected_values
 
     def test_define_element_with_parameters(self):
         """
