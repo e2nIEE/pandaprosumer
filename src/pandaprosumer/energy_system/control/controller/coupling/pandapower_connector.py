@@ -3,12 +3,7 @@ Module containing the HeatPumpController class.
 """
 
 import numpy as np
-from math import log
-import pandas as pd
 
-from pandapipes import create_fluid_from_lib, call_lib
-from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
 
 

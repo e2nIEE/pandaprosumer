@@ -11,4 +11,5 @@ from .electric_boiler import *
 from .gas_boiler import *
 from .chiller import *
 from .solar_thermal import *
+from .converter import*
 

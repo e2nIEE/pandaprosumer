@@ -63,6 +63,7 @@ class MappedController(Controller):
         self.has_elements = hasattr(self.obj, "element_index") or np.iterable(self.obj) and hasattr(self.obj[0], "element_index")
         self._nb_elements = len(self.obj) if self.has_elements and np.iterable(self.obj) else 1
         self.has_period = False
+        self.in_service = in_service
 
         if np.iterable(self.obj):
             self.input_columns = [name for obj in self.obj for name in obj.input_columns]  # [obj.input_columns for obj in self.obj]
@@ -162,7 +163,10 @@ class MappedController(Controller):
             Check if controller already was applied
         """
         return self.applied
-    
+
+    def is_supervisor(self):
+        return False
+
     def level_reset(self, container):
         """
         Resets the level for the controller.
@@ -235,11 +239,25 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped responders
         """
-        list_responders = [item.object.responder_net.controller.loc[item.responder]["object"] for item in
-                           container.mapping[(container.mapping["initiator"] == self.index) &
-                                             [r.no_chain == False for r in container.mapping.object]].sort_values("order")
-                           [["object", "responder"]].itertuples()]
-        
+        # Boolean mask for responders matching self.index
+        mask_initiator = container.mapping["initiator"] == self.index
+
+        # Boolean mask for objects where no_chain is False
+        mask_no_chain = ~container.mapping["object"].apply(lambda r: r.no_chain)
+
+        # Apply masks, sort, and select columns
+        filtered_mapping = (
+            container.mapping[mask_initiator & mask_no_chain]
+            .sort_values("order")
+            [["object", "responder"]]
+        )
+
+        # Build the list of initiators
+        list_responders = [
+            obj.responder_net.controller.loc[responder]["object"]
+            for obj, responder in filtered_mapping.itertuples(index=False)
+        ]
+
         if remove_duplicate:
             return list(dict.fromkeys(list_responders))
         else:
@@ -252,9 +270,10 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        return [prosumer.controller.loc[item.responder]["object"] for item in
-                prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                [["object", "responder"]].itertuples()]
+        responders = [prosumer.controller.loc[item.responder]["object"] for item in
+                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+                      [["object", "responder"]].itertuples()]
+        return [responder for responder in responders if not responder.is_supervisor()]
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
         """
@@ -263,10 +282,24 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped initiators
         """
-        list_initiators = [item.object.responder_net.controller.loc[item.initiator]["object"] for item in
-                           container.mapping[(container.mapping["responder"] == self.index) &
-                                             [r.no_chain == False for r in container.mapping.object]].sort_values("order")
-                           [["object", "initiator"]].itertuples()]
+        # Boolean mask for responders matching self.index
+        mask_responder = container.mapping["responder"] == self.index
+
+        # Boolean mask for objects where no_chain is False
+        mask_no_chain = ~container.mapping["object"].apply(lambda r: r.no_chain)
+
+        # Apply masks, sort, and select columns
+        filtered_mapping = (
+            container.mapping[mask_responder & mask_no_chain]
+            .sort_values("order")
+            [["object", "initiator"]]
+        )
+
+        # Build the list of initiators
+        list_initiators = [
+            obj.responder_net.controller.loc[initiator]["object"]
+            for obj, initiator in filtered_mapping.itertuples(index=False)
+        ]
 
         if remove_duplicate:
             return list(dict.fromkeys(list_initiators))
@@ -340,7 +373,7 @@ class MappedController(Controller):
             if not initiator.is_converged(prosumer):
                 return False
         return True
-        
+
     def time_step(self, container, time):
         """
         Executes the time step for the controller.
@@ -396,7 +429,7 @@ class MappedController(Controller):
             return self.res
         else:
             return []
-        
+
     def repair_control(self, container):
         super().repair_control(container)
 
@@ -406,7 +439,7 @@ class MappedController(Controller):
     def initialize_control(self, container):
         if getattr(container, "check_order", False): self.check_levels(container)
         super().initialize_control(container)
-        
+
     def finalize_step(self, container, time):
         super().finalize_step(container, time)
 
@@ -434,7 +467,7 @@ class MappedController(Controller):
             mdot_res_tab_kg_per_s.append(mdot_delivered_responder_i_kg_per_s)
             mdot_still_to_delivered_kg_per_s -= mdot_delivered_responder_i_kg_per_s
         return mdot_res_tab_kg_per_s
-    
+
     def finalize(self, container, result, result_fluid_mix=None):
         """
         Function that should be called at the end of the control step of the controllers.
@@ -485,7 +518,7 @@ class MappedController(Controller):
         # model = [ConstProfileController]
         for _, ctrl_row in container.controller.iterrows():
             ctrl = ctrl_row.object
-            if not ctrl.name_class() == 'const_profile_control':
+            if not ctrl.name_class() == 'const_profile_control' and not ctrl.is_supervisor():
                 levels.append(ctrl.level)
         if levels and not all(l == levels[0] for l in levels):
             raise ValueError(
@@ -493,23 +526,22 @@ class MappedController(Controller):
                 f"Found levels: {set(levels)}."
             )
 
+    def check_mappings_orders(self, container):
+        """
+        For each initiator in FluidMixMappings, check that the mapping orders are unique and form
+        a consecutive sequence of integers starting from 0.
 
-    def check_mappings_orders(self,container):
-            """
-            For each initiator in FluidMixMappings, check that the mapping orders are unique and form
-            a consecutive sequence of integers starting from 0.
-
-            Raises:
-                ValueError: If the order numbers for any initiator are not consecutive.
-            """
-            filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
-            grouped = filtered_mapping.groupby("initiator")
-            for initiator, group in grouped:
-                initiator_name = container.controller.iloc[initiator].object.name
-                sorted_orders = sorted(group["order"].tolist())
-                expected_orders = list(range(len(sorted_orders)))
-                if sorted_orders != expected_orders:
-                    raise ValueError(
-                        f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
-                        f"are not consecutive integers starting at 0 (expected: {expected_orders})."
-                    )
+        Raises:
+            ValueError: If the order numbers for any initiator are not consecutive.
+        """
+        filtered_mapping = container.mapping[container.mapping["object"].apply(lambda obj: obj.name == "FluidMixMapping")]
+        grouped = filtered_mapping.groupby("initiator")
+        for initiator, group in grouped:
+            initiator_name = container.controller.iloc[initiator].object.name
+            sorted_orders = sorted(group["order"].tolist())
+            expected_orders = list(range(len(sorted_orders)))
+            if sorted_orders != expected_orders:
+                raise ValueError(
+                    f"Mapping order error: For initiator '{initiator_name}', the mapping orders {sorted_orders} "
+                    f"are not consecutive integers starting at 0 (expected: {expected_orders})."
+                )

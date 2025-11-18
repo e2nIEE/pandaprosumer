@@ -59,6 +59,7 @@ class Test1SolarThermal1HeatDemandMapping:
         # SolarThermal-Controller
         st_controller_idx = create_controlled_solar_thermal(
             prosumer,
+            level=1,
             order=0,
             period=period,
             **_default_argument()
@@ -74,6 +75,26 @@ class Test1SolarThermal1HeatDemandMapping:
             period=period
         )
 
+        GenericMapping(
+            prosumer,
+            initiator_id=cp_controller_index,
+            initiator_column=["beam_solar_radiation_cp",
+                              "diffuse_solar_radiation_cp",
+                              "ground_solar_radiation_cp",
+                              "radiation_incidence_angle_cp",
+                              "ambient_temperature_cp",
+                              "inlet_temperature_cp",
+                              "inlet_mass_flow_rate_cp"],
+            responder_id=st_controller_idx,
+            responder_column=['beam_solar_radiation_w_m2',
+                              'diffuse_solar_radiation_w_m2',
+                              'ground_solar_radiation_w_m2',
+                              'radiation_incidence_angle_deg',
+                              'ambient_temperature_C',
+                              'inlet_temperature_C',
+                              'inlet_mass_flow_rate_kg_h',
+                              ]
+        )
         # Mapping: SolarThermal liefert Energie an HeatDemand
         GenericMapping(
             container=prosumer,

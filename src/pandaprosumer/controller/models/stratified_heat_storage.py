@@ -3,39 +3,33 @@ Module containing the StratifiedHeatStorageController class.
 """
 
 import numpy as np
-import pandas as pd
-from functools import partial
-import matplotlib.pyplot as plt
 from numba import njit
 
 from pandaprosumer.controller.base import BasicProsumerController
-
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
-from operator import add
-
 
 
 @njit
-def TVDResolutionInTime(layer_temps_c,
-                             mdot_charge_kg_per_s,
-                             t_charge_c,
-                             mdot_discharge_kg_per_s,
-                             t_return_c,
-                             t_ext_c,
-                             cp_j_per_kgk,
-                             rho_kg_per_m3,
-                             A_m2,
-                             dz_m,
-                             Sl_m2,
-                             S1_m2,
-                             SN_m2,
-                             k_star_w_per_mk,
-                             U_w_per_m2k,
-                             U1_w_per_m2k,
-                             UN_w_per_m2k,
-                             resol,
-                             max_dt_s):
+def tvd_resolution_in_time(layer_temps_c,
+                           mdot_charge_kg_per_s,
+                           t_charge_c,
+                           mdot_discharge_kg_per_s,
+                           t_return_c,
+                           t_ext_c,
+                           cp_j_per_kgk,
+                           rho_kg_per_m3,
+                           A_m2,
+                           dz_m,
+                           Sl_m2,
+                           S1_m2,
+                           SN_m2,
+                           k_star_w_per_mk,
+                           U_w_per_m2k,
+                           U1_w_per_m2k,
+                           UN_w_per_m2k,
+                           resol,
+                           max_dt_s):
     if resol < max_dt_s:
         # If the resolution is too small, we use a timestep
         # that is a multiple of the resolution
@@ -49,24 +43,24 @@ def TVDResolutionInTime(layer_temps_c,
 
     # Repeat the calculation so the timestep is not too big
     for i in range(nb_intervals):
-        layer_temps_c = tvdConvectionStep(layer_temps_c,
-                              mdot_charge_kg_per_s,
-                              t_charge_c,
-                              mdot_discharge_kg_per_s,
-                              t_return_c,
-                              t_ext_c,
-                              cp_j_per_kgk,
-                              rho_kg_per_m3,
-                              A_m2,
-                              dz_m,
-                              Sl_m2,
-                              S1_m2,
-                              SN_m2,
-                              k_star_w_per_mk,
-                              U_w_per_m2k,
-                              U1_w_per_m2k,
-                              UN_w_per_m2k,
-                              dt_s)
+        layer_temps_c = tvd_convection_step(layer_temps_c,
+                                            mdot_charge_kg_per_s,
+                                            t_charge_c,
+                                            mdot_discharge_kg_per_s,
+                                            t_return_c,
+                                            t_ext_c,
+                                            cp_j_per_kgk,
+                                            rho_kg_per_m3,
+                                            A_m2,
+                                            dz_m,
+                                            Sl_m2,
+                                            S1_m2,
+                                            SN_m2,
+                                            k_star_w_per_mk,
+                                            U_w_per_m2k,
+                                            U1_w_per_m2k,
+                                            UN_w_per_m2k,
+                                            dt_s)
     # layer_temps_c = np.linalg.solve(a, b).tolist()
     return layer_temps_c
 
@@ -81,31 +75,31 @@ def phi(r):
     limiterName = "superbee"
     if limiterName == "superbee":
         return np.maximum(0, np.maximum(np.minimum(1., 2 * r), np.minimum(2., r)))
-    elif limiterName == "vanleer":#Not used
+    elif limiterName == "vanleer":  # Not used
         return (r + abs(r)) / (1 + abs(r))
     else:
         raise Exception("only superbee and van Leer are supported")
 
 
 @njit
-def tvdConvectionStep(layer_temps_c,
-                       mdot_charge_kg_per_s,
-                       t_charge_c,
-                       mdot_discharge_kg_per_s,
-                       t_return_c,
-                       t_ext_c,
-                       cp_j_per_kgk,
-                       rho_kg_per_m3,
-                       A_m2,
-                       dz_m,
-                       Sl_m2,
-                       S1_m2,
-                       SN_m2,
-                       k_star_w_per_mk,
-                       U_w_per_m2k,
-                       U1_w_per_m2k,
-                       UN_w_per_m2k,
-                       resol):
+def tvd_convection_step(layer_temps_c,
+                        mdot_charge_kg_per_s,
+                        t_charge_c,
+                        mdot_discharge_kg_per_s,
+                        t_return_c,
+                        t_ext_c,
+                        cp_j_per_kgk,
+                        rho_kg_per_m3,
+                        A_m2,
+                        dz_m,
+                        Sl_m2,
+                        S1_m2,
+                        SN_m2,
+                        k_star_w_per_mk,
+                        U_w_per_m2k,
+                        U1_w_per_m2k,
+                        UN_w_per_m2k,
+                        resol):
     #
     # We introduce a constant time step
     #
@@ -169,12 +163,12 @@ def tvdConvectionStep(layer_temps_c,
         term_3 = mass_flow_balance_J_per_K_per_s * deltaT[1:]
         # term_33 =-0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * ((self.T[i - 1] - self.T[i]) * self.limiter[i] - (self.T[i] - self.T[i + 1]) * self.limiter[i + 1] )
         term_33 = -0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * (
-                    -deltaT[:-1] * limiter[1:-1] + deltaT[1:] * limiter[2:])
+                -deltaT[:-1] * limiter[1:-1] + deltaT[1:] * limiter[2:])
     else:
         oneMinusCfl = 1. - (-c * resol / dz_m)
         term_3 = mass_flow_balance_J_per_K_per_s * deltaT[:-1]
         term_33 = +0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * (
-                    deltaT[1:] * limiter[1:-1] - deltaT[:-1] * limiter[0:-2])
+                deltaT[1:] * limiter[1:-1] - deltaT[:-1] * limiter[0:-2])
 
     layer_temp_deltas = term_1 + term_2 + cp_j_per_kgk * (term_3 + term_33)
     # layer_temp_deltas = layer_temp_deltas.tolist()
@@ -354,7 +348,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         mdot_charge_kg_per_s = nb_cold_layers * m_layer_kg / self.resol
 
         mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
-        t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
+        if mdot_required_kg_per_s == 0:
+            t_required_out_c = t_required_in_c
+        else:
+            t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         if not np.isnan(self.t_previous_out_charge_c):
             mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
@@ -426,7 +423,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 # discharge mass flow to get this required temperature
                 if abs(t_demand_out_c - t_discharge_out_c) > self._get_element_param(prosumer, "t_discharge_out_tol_c"):
                     mdot_discharge_kg_per_s = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c) / (
-                                t_demand_out_c - t_discharge_out_c)
+                            t_demand_out_c - t_discharge_out_c)
                 else:
                     mdot_discharge_kg_per_s = mdot_demand_kg_per_s - mdot_bypass_kg_per_s
                 if mdot_discharge_kg_per_s < 0:
@@ -474,25 +471,25 @@ class StratifiedHeatStorageController(BasicProsumerController):
             max_dt_s = self.resol
         else:
             max_dt_s = self._get_element_param(prosumer, 'max_dt_s')
-        self._layer_temps_c = TVDResolutionInTime(layer_temps_c=np.array(self._layer_temps_c),
-                                                  mdot_charge_kg_per_s=mdot_charge_kg_per_s,
-                                                  t_charge_c=t_received_in_c,
-                                                  mdot_discharge_kg_per_s=mdot_discharge_kg_per_s,
-                                                  t_return_c=t_demand_in_c,
-                                                  t_ext_c=t_ext_c,
-                                                  cp_j_per_kgk=cp_discharge_j_per_kgk,
-                                                  rho_kg_per_m3=rho_kg_per_m3,
-                                                  A_m2=self.A_m2,
-                                                  dz_m=self.dz_m,
-                                                  Sl_m2=self.Sl_m2,
-                                                  S1_m2=self.S1_m2,
-                                                  SN_m2=self.SN_m2,
-                                                  k_star_w_per_mk=self.k_star_w_per_mk,
-                                                  U_w_per_m2k=self.U_w_per_m2k,
-                                                  U1_w_per_m2k=self.U1_w_per_m2k,
-                                                  UN_w_per_m2k=self.UN_w_per_m2k,
-                                                  resol=self.resol,
-                                                  max_dt_s=max_dt_s)
+        self._layer_temps_c = tvd_resolution_in_time(layer_temps_c=np.array(self._layer_temps_c),
+                                                     mdot_charge_kg_per_s=mdot_charge_kg_per_s,
+                                                     t_charge_c=t_received_in_c,
+                                                     mdot_discharge_kg_per_s=mdot_discharge_kg_per_s,
+                                                     t_return_c=t_demand_in_c,
+                                                     t_ext_c=t_ext_c,
+                                                     cp_j_per_kgk=cp_discharge_j_per_kgk,
+                                                     rho_kg_per_m3=rho_kg_per_m3,
+                                                     A_m2=self.A_m2,
+                                                     dz_m=self.dz_m,
+                                                     Sl_m2=self.Sl_m2,
+                                                     S1_m2=self.S1_m2,
+                                                     SN_m2=self.SN_m2,
+                                                     k_star_w_per_mk=self.k_star_w_per_mk,
+                                                     U_w_per_m2k=self.U_w_per_m2k,
+                                                     U1_w_per_m2k=self.U1_w_per_m2k,
+                                                     UN_w_per_m2k=self.UN_w_per_m2k,
+                                                     resol=self.resol,
+                                                     max_dt_s=max_dt_s)
 
         assert (self._layer_temps_c > 0).all(), (f"The SHS model has diverged - "
                                                  f"Negative temperature in the storage for "
@@ -521,10 +518,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
             t_received_out_c = (mdot_charge_kg_per_s * t_charge_out_c + mdot_bypass_kg_per_s * t_demand_in_c) / (mdot_charge_kg_per_s + mdot_bypass_kg_per_s)
 
         return (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
-             mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
-             mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
-             mdot_charge_kg_per_s, t_charge_out_c,
-             mdot_discharge_kg_per_s, t_discharge_out_c)
+                mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
+                mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
+                mdot_charge_kg_per_s, t_charge_out_c,
+                mdot_discharge_kg_per_s, t_discharge_out_c)
 
     def control_step(self, prosumer):
         """
@@ -532,7 +529,12 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
+
         super().control_step(prosumer)
+
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)
@@ -621,13 +623,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
             self.mdot_charge_tab_kg_per_s += [mdot_charge_kg_per_s]
             self.mdot_discharge_tab_kg_per_s += [mdot_discharge_kg_per_s]
 
-        #assert q_received_kw >= 0, f"SHS {self.name} q_received_kw is negative ({q_received_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_delivered_kw >= 0, f"SHS {self.name} q_delivered_kw is negative ({q_delivered_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_charge_kw >= 0, f"SHS {self.name} q_charge_kw is negative ({q_charge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert q_discharge_kw >= 0, f"SHS {self.name} q_discharge_kw is negative ({q_discharge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert q_received_kw >= 0, f"SHS {self.name} q_received_kw is negative ({q_received_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert q_delivered_kw >= 0, f"SHS {self.name} q_delivered_kw is negative ({q_delivered_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert q_charge_kw >= 0, f"SHS {self.name} q_charge_kw is negative ({q_charge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert q_discharge_kw >= 0, f"SHS {self.name} q_discharge_kw is negative ({q_discharge_kw}) for timestep {self.time} in prosumer {prosumer.name}"
         # assert e_stored_kwh >= 0, f"SHS {self.name} e_stored_kwh is negative ({e_stored_kwh}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert mdot_received_kg_per_s >= 0, f"SHS {self.name} mdot_received_kg_per_s is negative ({mdot_received_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        #assert mdot_delivered_kg_per_s >= 0, f"SHS {self.name} mdot_delivered_kg_per_s is negative ({mdot_delivered_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert mdot_received_kg_per_s >= 0, f"SHS {self.name} mdot_received_kg_per_s is negative ({mdot_received_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+        # assert mdot_delivered_kg_per_s >= 0, f"SHS {self.name} mdot_delivered_kg_per_s is negative ({mdot_delivered_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
         if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
             # If the actual output temperature is the same as the promised one, the storage is correctly applied

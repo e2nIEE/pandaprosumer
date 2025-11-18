@@ -41,6 +41,7 @@ def _solve_t_bc_c(t_wb_c, phi_air_out_percent):
     :param phi_air_out_percent: The relative humidity of the air in percent (0-100) at the output
     :return: The dry bulb temperature of the air after adiabatic pre-cooling
     """
+
     # Define the equation in terms of t_bc_c (the variable we are solving for)
     def equation(t_bc_c):
         return _get_wet_bulb_temperature(t_bc_c, phi_air_out_percent) - t_wb_c
@@ -70,6 +71,7 @@ def _adiabatic_pre_cooling(t_db_c, phi_air_in_percent, phi_air_out_percent=99):
     t_db_out_c = _solve_t_bc_c(t_wb_c, phi_air_out_percent)
 
     return t_db_out_c
+
 
 class DryCoolerController(BasicProsumerController):
     """
@@ -111,13 +113,15 @@ class DryCoolerController(BasicProsumerController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        t_feed_required_c = self._get_input('t_in_c')
-        t_return_required_c = self._get_input('t_out_c')
-        mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s')
+        t_feed_required_c = self._get_input('t_in_c', prosumer)
+        t_return_required_c = self._get_input('t_out_c', prosumer)
+        mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s', prosumer)
 
         if not np.isnan(self.t_previous_out_c):
             assert self.mdot_previous_in_kg_per_s >= 0
-            assert self.t_previous_in_c >= self.t_previous_out_c
+            assert self.t_previous_in_c + 1e-9 >= self.t_previous_out_c
+            if self.t_previous_in_c < self.t_previous_out_c:
+                self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
             assert mdot_required_kg_per_s >= 0
@@ -170,7 +174,7 @@ class DryCoolerController(BasicProsumerController):
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
         min_t_air_out_c = t_air_in_c + min_delta_t_air_c
         max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
-        if max_x<=-1:
+        if max_x <= -1:
             max_x = -0.999
         min_a = np.log(1 + max_x) / max_x
 
@@ -210,8 +214,8 @@ class DryCoolerController(BasicProsumerController):
         t_fluid_mean_c = (t_out_required_c + t_in_required_c) / 2
         cp_fluid_kj_per_kg_k = self.fluid.get_heat_capacity(CELSIUS_TO_K + t_fluid_mean_c) / 1000
 
-        t_air_in_c = self._get_input('t_air_in_c')
-        phi_air_in_percent = self._get_input('phi_air_in_percent')
+        t_air_in_c = self._get_input('t_air_in_c', prosumer)
+        phi_air_in_percent = self._get_input('phi_air_in_percent', prosumer)
         phi_air_out_percent = self._get_element_param(prosumer, 'phi_adiabatic_sat_percent')
 
         # If the adiabatic mode is activated, the air is pre-cooled
@@ -248,7 +252,12 @@ class DryCoolerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
+
         super().control_step(prosumer)
+
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)
@@ -258,7 +267,7 @@ class DryCoolerController(BasicProsumerController):
 
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
-        t_out_required_c = self._get_input('t_out_c')
+        t_out_required_c = self._get_input('t_out_c', prosumer)
 
         assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"

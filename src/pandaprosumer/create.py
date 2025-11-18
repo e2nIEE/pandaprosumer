@@ -1,14 +1,15 @@
 import logging
-
 import numpy as np
 import pandas as pd
 from pandapipes import Fluid, create_fluid_from_lib
-
-from pandapower.create import _get_index_with_check, _set_entries, _add_to_entries_if_not_nan
-from pandaprosumer.element import *
 from pandapower.create import _get_index_with_check, _set_entries
-from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
-     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData, SolarThermalElementData
+
+from pandaprosumer.element import *
+from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
+    HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
+                                   SolarThermalElementData,ConverterElementData)
+
+
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -17,7 +18,7 @@ from pandaprosumer.time_series.time_series import TimeSeries
 logger = logging.getLogger()
 
 
-def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water",check_order = True):
+def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", check_order=True):
     """
     This function initializes the prosumer datastructure
 
@@ -35,6 +36,7 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water",c
     add_new_element(prosumer, TimeSeries)
     prosumer['controller'] = pd.DataFrame(np.zeros(0, dtype=prosumer['controller']), index=[])
     prosumer['mapping'] = pd.DataFrame(np.zeros(0, dtype=prosumer['mapping']), index=[])
+    prosumer['rules'] = pd.DataFrame(np.zeros(0, dtype=prosumer['rules']), index=[])
     prosumer['check_order'] = check_order
 
     if fluid is not None:
@@ -549,13 +551,13 @@ def create_electric_boiler(prosumer,
 
 
 def create_gas_boiler(prosumer,
-                           max_q_kw,
-                           heating_value_kj_per_kg=50e3,
-                           efficiency_percent=100,
-                           name=None,
-                           index=None,
-                           in_service=True,
-                           **kwargs):
+                      max_q_kw,
+                      heating_value_kj_per_kg=50e3,
+                      efficiency_percent=100,
+                      name=None,
+                      index=None,
+                      in_service=True,
+                      **kwargs):
     """
         Creates an gas boiler element in prosumer["gas_boiler"]
 
@@ -630,6 +632,7 @@ def create_booster_heat_pump(
     _set_entries(prosumer, "booster_heat_pump", index, **entries, **kwargs)
     return int(index)
 
+
 def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None, index=None, **kwargs):
     add_new_element(prosumer, IceChpElementData)
 
@@ -657,13 +660,13 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
     _set_entries(prosumer, "ice_chp", index, **entries, **kwargs)
     return int(index)
 
+
 def create_heat_storage(prosumer,
                         q_capacity_kwh=0.,
                         in_service=True,
                         index=None,
                         name=None,
                         **kwargs):
-
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
@@ -672,6 +675,7 @@ def create_heat_storage(prosumer,
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
     return int(index)
+
 
 def create_chiller(
         prosumer,
@@ -689,7 +693,6 @@ def create_chiller(
         index=None,
         name=None,
         **kwargs):
-
     """Adds a new chiller to the list of prosumer elements and defines its datasheet values
 
     :param prosumer: Empty prosumer container
@@ -766,6 +769,7 @@ def create_chiller(
 
     _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)
+
 
 def create_solar_thermal(prosumer,
                         collector_area=2.5,
@@ -891,4 +895,51 @@ def create_solar_thermal(prosumer,
     )
 
     _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
+
+
+def create_generic_to_fluidmix(prosumer,
+                       cp_water = 4180,
+                       name=None,
+                       index=None,
+                       in_service=True,
+                       **kwargs):
+    """
+    Creates a heat demand element in prosumer["heat_demand"]
+
+    INPUT:
+        **prosumer** - The prosumer within this heat demand should be created
+
+    OPTIONAL:
+        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
+        Multiply the demanded power by this factor
+
+        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
+
+        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
+
+        **name** (string, default None) - A custom name for this heat demand
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created heat demand
+
+    EXAMPLE:
+        create_heat_demand(prosumer, "heat_demand1")
+    """
+    add_new_element(prosumer, ConverterElementData)
+
+    index = _get_index_with_check(prosumer, "converter", index)
+
+    entries = dict(zip(["name", "cp_water", "in_service"],
+                       [name, cp_water, in_service]))
+
+    _set_entries(prosumer, "converter", index, **entries, **kwargs)
+
+    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
+    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
+
     return int(index)

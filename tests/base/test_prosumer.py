@@ -2,7 +2,6 @@ from pandaprosumer.create import create_empty_prosumer_container
 
 
 class TestProsumer:
-
     """
     Tests that the prosumer is initialized with the expected properties and columns of child DataFrames
     """
