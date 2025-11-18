@@ -523,12 +523,29 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 mdot_charge_kg_per_s, t_charge_out_c,
                 mdot_discharge_kg_per_s, t_discharge_out_c)
 
+    def _save_state(self):
+        """Backup states before Run"""
+        self._backup_state = {
+            "layer_temps_c": list(self._layer_temps_c),
+        }
+
+    def _restore_state(self):
+        """Restore states before Rerun"""
+        if hasattr(self, "_backup_state"):
+            self._layer_temps_c = self._backup_state["layer_temps_c"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return

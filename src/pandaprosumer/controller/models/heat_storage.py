@@ -66,18 +66,16 @@ class HeatStorageController(BasicProsumerController):
         return q_to_deliver_kw
 
     def _save_state(self):
-        """Backup aller relevanten Zustände vor dem ersten Run"""
+        """Backup states before Run"""
         self._backup_state = {
-            "soc": float(self._soc),
+            "soc": self._soc,
         }
 
     def _restore_state(self):
-        """Restore der Zustände beim Rerun"""
+        """Restore states before Rerun"""
         if hasattr(self, "_backup_state"):
             self._soc = self._backup_state["soc"]
 
-            # for key, value in self._backup_state.items():
-            #     setattr(self, key, value)
 
 
     def control_step(self, prosumer):
@@ -89,7 +87,6 @@ class HeatStorageController(BasicProsumerController):
         if not prosumer.rerun:
             self._save_state()
         else:
-            # Beim Rerun: alten Zustand wiederherstellen
             self._restore_state()
 
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):

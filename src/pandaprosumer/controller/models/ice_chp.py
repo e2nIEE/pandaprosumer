@@ -111,7 +111,7 @@ class IceChpController(BasicProsumerController):
         return self.applied
 
     def _save_state(self):
-        """Backup aller relevanten Zustände vor dem ersten Run"""
+        """Backup states before Run"""
         self._backup_state = {
             "acc_m_fuel_in_kg": self.acc_m_fuel_in_kg,
             "acc_m_co2_equiv_kg": self.acc_m_co2_equiv_kg,
@@ -121,12 +121,13 @@ class IceChpController(BasicProsumerController):
         }
 
     def _restore_state(self):
-        """Restore der Zustände beim Rerun"""
+        """Restore states before Rerun"""
         if hasattr(self, "_backup_state"):
-            for key, value in self._backup_state.items():
-                setattr(self, key, value)
-
-
+            self.acc_m_fuel_in_kg = self._backup_state["acc_m_fuel_in_kg"]
+            self.acc_m_co2_equiv_kg = self._backup_state["acc_m_co2_equiv_kg"]
+            self.acc_m_co2_inst_kg = self._backup_state["acc_m_co2_inst_kg"]
+            self.acc_m_nox_mg = self._backup_state["acc_m_nox_mg"]
+            self.acc_time_ice_chp_oper_s = self._backup_state["acc_time_ice_chp_oper_s"]
 
     def control_step(self, prosumer):
         #       
@@ -136,7 +137,6 @@ class IceChpController(BasicProsumerController):
         if not prosumer.rerun:
             self._save_state()
         else:
-            # Beim Rerun: alten Zustand wiederherstellen
             self._restore_state()
 
 

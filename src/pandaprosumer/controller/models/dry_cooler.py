@@ -246,12 +246,32 @@ class DryCoolerController(BasicProsumerController):
                 mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
                 mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c)
 
+    def _save_state(self):
+        """Backup states before Run"""
+        self._backup_state = {
+            "t_previous_out_c": self.t_previous_out_c,
+            "t_previous_in_c": self.t_previous_in_c,
+            "mdot_previous_in_kg_per_s": self.mdot_previous_in_kg_per_s,
+        }
+
+    def _restore_state(self):
+        """Restore states before Rerun"""
+        if hasattr(self, "_backup_state"):
+            self.t_previous_out_c = self._backup_state["t_previous_out_c"]
+            self.t_previous_in_c = self._backup_state["t_previous_in_c"]
+            self.mdot_previous_in_kg_per_s = self._backup_state["mdot_previous_in_kg_per_s"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
