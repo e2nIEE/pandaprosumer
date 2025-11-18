@@ -1,5 +1,6 @@
 import numpy as np
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 import math
 
 
@@ -456,6 +457,12 @@ class SolarThermalController(BasicProsumerController):
             outlet_temperature_C = self._get_input("inlet_temperature_C") + 3.6 * energy_gain_W / (
                         self._get_input("inlet_mass_flow_rate_kg_h") * self.pros.use_specific_heat[0])
 
+        outlet_flow_rate_kg_s = outlet_flow_rate_kg_h / 3600
+
+        result_fluid_mix = []
+        result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: outlet_temperature_C,
+                                 FluidMixMapping.MASS_FLOW_KEY: outlet_flow_rate_kg_s})
+
         # considering other components to be connected to the cooler, please consider only the necessary outputs for your use case in Cordoba
         result = np.array([[
             outlet_temperature_C,
@@ -463,7 +470,7 @@ class SolarThermalController(BasicProsumerController):
             energy_gain_W]]
         )
 
-        self.finalize(prosumer, result)
+        self.finalize(prosumer, result, result_fluid_mix)
 
         # idx = np.where(self.dur == self.time)[0][0]
         # array = np.stack([series for series in result], axis=1)
