@@ -8,8 +8,6 @@ from pandaprosumer.element import *
 from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
                                    SolarThermalElementData,ConverterElementData)
-
-
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
