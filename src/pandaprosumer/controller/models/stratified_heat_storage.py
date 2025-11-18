@@ -610,6 +610,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
                             q_discharge_kw,
                             e_stored_kwh]])
 
+        self.last_result = {
+            "mdot_discharge_kg_per_s": mdot_discharge_kg_per_s,
+            "t_discharge_out_c": t_discharge_out_c,
+            "q_discharge_kw": q_discharge_kw,
+            "e_stored_kwh": e_stored_kwh,
+        }
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_delivered_out_c,

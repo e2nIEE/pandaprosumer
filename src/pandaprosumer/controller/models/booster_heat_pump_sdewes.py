@@ -146,6 +146,13 @@ class BoosterHeatPumpController(BasicProsumerController):
                   pd.Series(p_el_kw)
                   ])
 
+        self.last_result = {
+            "cop": cop,
+            "q_kw": q_kw,
+            "q_remain_kw": q_remain_kw,
+            "p_el_kw": p_el_kw
+        }
+
         self.finalize(prosumer, result.T)
 
         self.applied = True

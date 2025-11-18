@@ -300,6 +300,19 @@ class DryCoolerController(BasicProsumerController):
                             mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
                             mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
 
+        self.last_result = {
+            "q_exchanged_kw": q_exchanged_kw,
+            "p_fans_kw": p_fans_kw,
+            "n_rpm": n_rpm,
+            "mdot_air_m3_per_h": mdot_air_m3_per_h,
+            "mdot_air_kg_per_s": mdot_air_kg_per_s,
+            "t_air_in_c": t_air_in_c,
+            "t_air_out_c": t_air_out_c,
+            "mdot_fluid_kg_per_s": mdot_fluid_kg_per_s,
+            "t_fluid_in_c": t_fluid_in_c,
+            "t_fluid_out_c": t_fluid_out_c,
+        }
+
         assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
         # ToDo: Add a condition to check whether the mass flows are equal

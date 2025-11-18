@@ -396,6 +396,16 @@ class HeatExchangerController(BasicProsumerController):
             [[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]]
         )
 
+        self.last_result = {
+            "q_exchanged_kw": q_exchanged_kw,
+            "mdot_1_kg_per_s": mdot_1_kg_per_s,
+            "t_1_in_c": t_1_in_c,
+            "t_1_out_c": t_1_out_c,
+            "mdot_2_kg_per_s": mdot_2_kg_per_s,
+            "t_2_in_c": t_2_in_c,
+            "t_2_out_c": t_2_out_c,
+        }
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_2_out_c,
