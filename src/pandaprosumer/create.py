@@ -896,6 +896,8 @@ def create_solar_thermal(prosumer,
 
     _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
 
+    return int(index)
+
 
 def create_generic_to_fluidmix(prosumer,
                        cp_water = 4180,
