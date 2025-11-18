@@ -12,18 +12,16 @@ class Test1SolarThermal1HeatDemandMapping:
     In this example, a Solar Thermal controller is mapped to a Heat Demand
     """
 
-    def test_mapping(self):
-        prosumer = create_empty_prosumer_container(self)
+    def test_generic_mapping(self):
 
-        # Eingangszeitreihe für die SolarThermal-Anlage
         data = pd.DataFrame({
-            "beam_solar_radiation_w_m2": [800, 200, 0, 0],
-            "diffuse_solar_radiation_w_m2": [200, 50, 0, 0],
-            "ground_solar_radiation_w_m2": [50, 10, 0, 0],
-            "radiation_incidence_angle_deg": [30, 30, 30, 30],
-            "ambient_temperature_C": [25, 20, 15, 10],
-            "inlet_mass_flow_rate_kg_h": [100, 100, 100, 100],
-            "inlet_temperature_C": [30, 30, 30, 30],
+            "Beam Solar Radiation [W/m2]": [800, 200, 0, 0],
+            "Diffuse Solar Radiation [W/m2]": [200, 50, 0, 0],
+            "Ground Solar Radiation [W/m2]": [50, 10, 0, 0],
+            "Radiation incidence angle [deg]": [30, 30, 30, 30],
+            "Ambient temperature [C]": [25, 20, 15, 10],
+            "Inlet mass flow rate [kg/h]": [100, 100, 100, 100],
+            "Inlet temperature [C]": [30, 30, 30, 30],
             "q_demand_kw": [10, 20, 30, 0]  # gewünschte Wärmelast
         })
 
@@ -31,53 +29,50 @@ class Test1SolarThermal1HeatDemandMapping:
         resol = 3600
         end = pd.Timestamp(start) + len(data) * pd.Timedelta(f"{resol}s") - pd.Timedelta("1s")
         dur = pd.date_range(start, end, freq=f"{resol}s", tz="utc")
-        period = create_period(prosumer, resol, start, end, "utc", "default")
 
         data.index = dur
         data_source = DFData(data)
 
-        cp_input_columns = ['Beam Solar Radiation [W/m2]',
+        input_params = ['Beam Solar Radiation [W/m2]',
                         'Diffuse Solar Radiation [W/m2]',
                         'Ground Solar Radiation [W/m2]',
                         'Radiation incidence angle [deg]',
                         'Ambient temperature [C]',
                         'Inlet temperature [C]',
-                        'Inlet mass flow rate [kg/h]']
-        cp_result_columns = [
+                        'Inlet mass flow rate [kg/h]',
+                        'q_demand_kw']
+        result_params = [
             "beam_solar_radiation_cp",
             "diffuse_solar_radiation_cp",
             "ground_solar_radiation_cp",
             "radiation_incidence_angle_cp",
             "ambient_temperature_cp",
             "inlet_temperature_cp",
-            "inlet_mass_flow_rate_cp"
+            "inlet_mass_flow_rate_cp",
+            "q_demand_kw_cp"
         ]
 
+        prosumer = create_empty_prosumer_container()
 
-        cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              data_source,period, 0,0)
-        # SolarThermal-Controller
-        st_controller_idx = create_controlled_solar_thermal(
-            prosumer,
-            level=1,
-            order=0,
-            period=period,
-            **_default_argument()
-        )
+        period = create_period(prosumer, resol, start, end, "utc", "default")
+
+        cp_index = create_controlled_const_profile(
+            prosumer, input_params, result_params, data_source, period)
+
+        st_index = create_controlled_solar_thermal(prosumer, name="solar_thermal_plant", level=1, order=0)
 
         # HeatDemand-Controller
-        hd_controller_idx = create_controlled_heat_demand(
+        hd_index = create_controlled_heat_demand(
             prosumer,
             level=1,
             order=1,
             t_in_set_c=30,
             t_out_set_c=25,
-            period=period
         )
 
         GenericMapping(
             prosumer,
-            initiator_id=cp_controller_index,
+            initiator_id=cp_index,
             initiator_column=["beam_solar_radiation_cp",
                               "diffuse_solar_radiation_cp",
                               "ground_solar_radiation_cp",
@@ -85,7 +80,7 @@ class Test1SolarThermal1HeatDemandMapping:
                               "ambient_temperature_cp",
                               "inlet_temperature_cp",
                               "inlet_mass_flow_rate_cp"],
-            responder_id=st_controller_idx,
+            responder_id=st_index,
             responder_column=['beam_solar_radiation_w_m2',
                               'diffuse_solar_radiation_w_m2',
                               'ground_solar_radiation_w_m2',
@@ -95,35 +90,159 @@ class Test1SolarThermal1HeatDemandMapping:
                               'inlet_mass_flow_rate_kg_h',
                               ]
         )
-        # Mapping: SolarThermal liefert Energie an HeatDemand
+
         GenericMapping(
             container=prosumer,
-            initiator_id=st_controller_idx,
-            initiator_column="energy_gain_W",
-            responder_id=hd_controller_idx,
+            initiator_id=cp_index,
+            initiator_column="q_demand_kw_cp",
+            responder_id=hd_index,
             responder_column="q_demand_kw",
-            order=0
         )
 
-        run_timeseries(prosumer, period, True)
-
-        # Erwartete Ergebnisse (vereinfacht, nur Struktur)
-        st_results = prosumer.time_series.loc[0].data_source.df
-        hd_results = prosumer.time_series.loc[1].data_source.df
-
-        # Sicherstellen, dass keine NaNs auftreten
-        assert not st_results.isna().any().any()
-        assert not hd_results.isna().any().any()
-
-        # Konsistenzprüfung: die an HeatDemand übergebene Leistung entspricht der SolarThermal-Leistung
-        assert_series_equal(
-            hd_results.q_demand_kw,
-            st_results.energy_gain_W / 1000.0,  # W → kW
-            rtol=0.05,
-            check_names=False
+        GenericMapping(
+            container=prosumer,
+            initiator_id=st_index,
+            initiator_column="energy_gain_W",
+            responder_id=hd_index,
+            responder_column="q_received_kw",
+            order=0,
+            conversion_function=lambda x: x / 1000,
         )
 
-        # Massenstrom bleibt erhalten
-        assert hd_results.mdot_kg_per_s.values == pytest.approx(
-            st_results.outlet_flow_rate_kg_h.values / 3600.0, rel=1e-3
+        run_timeseries(prosumer)
+
+        df = prosumer.time_series.data_source.iloc[1].df
+
+        # Einzelwerte prüfen
+        assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(6.550240, rel=1e-6)
+        assert df.loc["2020-01-01 01:00:00+00:00", "q_uncovered_kw"] == pytest.approx(18.590205, rel=1e-6)
+        assert df.loc["2020-01-01 02:00:00+00:00", "q_received_kw"] == pytest.approx(-0.388631, rel=1e-6)
+        assert df.loc["2020-01-01 03:00:00+00:00", "t_out_c"] == 0.0
+
+        # Ganze Spalte prüfen
+        expected_q_received = [6.550240, 1.409795, -0.388631, -0.530509]
+        assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-6)
+
+        # Komplettes DataFrame prüfen
+        expected = pd.DataFrame({
+            "q_received_kw": [6.550240, 1.409795, -0.388631, -0.530509],
+            "q_uncovered_kw": [3.449760, 18.590205, 30.388631, 0.530509],
+            "mdot_kg_per_s": [0.0, 0.0, 0.0, 0.0],
+            "t_in_c": [0.0, 0.0, 0.0, 0.0],
+            "t_out_c": [0.0, 0.0, 0.0, 0.0]
+        }, index=df.index)
+
+        pd.testing.assert_frame_equal(df, expected, rtol=1e-6)
+
+    def test_fluidmix_mapping(self):
+        data = pd.DataFrame({
+            "Beam Solar Radiation [W/m2]": [800, 200, 0, 0],
+            "Diffuse Solar Radiation [W/m2]": [200, 50, 0, 0],
+            "Ground Solar Radiation [W/m2]": [50, 10, 0, 0],
+            "Radiation incidence angle [deg]": [30, 30, 30, 30],
+            "Ambient temperature [C]": [25, 20, 15, 10],
+            "Inlet mass flow rate [kg/h]": [100, 100, 100, 100],
+            "Inlet temperature [C]": [30, 30, 30, 30],
+            "q_demand_kw": [10, 20, 30, 0]  # gewünschte Wärmelast
+        })
+
+        start = "2020-01-01 00:00:00"
+        resol = 3600
+        end = pd.Timestamp(start) + len(data) * pd.Timedelta(f"{resol}s") - pd.Timedelta("1s")
+        dur = pd.date_range(start, end, freq=f"{resol}s", tz="utc")
+
+        data.index = dur
+        data_source = DFData(data)
+
+        input_params = ['Beam Solar Radiation [W/m2]',
+                        'Diffuse Solar Radiation [W/m2]',
+                        'Ground Solar Radiation [W/m2]',
+                        'Radiation incidence angle [deg]',
+                        'Ambient temperature [C]',
+                        'Inlet temperature [C]',
+                        'Inlet mass flow rate [kg/h]',
+                        'q_demand_kw']
+        result_params = [
+            "beam_solar_radiation_cp",
+            "diffuse_solar_radiation_cp",
+            "ground_solar_radiation_cp",
+            "radiation_incidence_angle_cp",
+            "ambient_temperature_cp",
+            "inlet_temperature_cp",
+            "inlet_mass_flow_rate_cp",
+            "q_demand_kw_cp"
+        ]
+
+        prosumer = create_empty_prosumer_container()
+
+        period = create_period(prosumer, resol, start, end, "utc", "default")
+
+        cp_index = create_controlled_const_profile(
+            prosumer, input_params, result_params, data_source, period)
+
+        st_index = create_controlled_solar_thermal(prosumer, name="solar_thermal_plant", level=1, order=0)
+
+        # HeatDemand-Controller
+        hd_index = create_controlled_heat_demand(
+            prosumer,
+            level=1,
+            order=1,
+            t_in_set_c=30,
+            t_out_set_c=25,
         )
+
+        GenericMapping(
+            prosumer,
+            initiator_id=cp_index,
+            initiator_column=["beam_solar_radiation_cp",
+                              "diffuse_solar_radiation_cp",
+                              "ground_solar_radiation_cp",
+                              "radiation_incidence_angle_cp",
+                              "ambient_temperature_cp",
+                              "inlet_temperature_cp",
+                              "inlet_mass_flow_rate_cp"],
+            responder_id=st_index,
+            responder_column=['beam_solar_radiation_w_m2',
+                              'diffuse_solar_radiation_w_m2',
+                              'ground_solar_radiation_w_m2',
+                              'radiation_incidence_angle_deg',
+                              'ambient_temperature_C',
+                              'inlet_temperature_C',
+                              'inlet_mass_flow_rate_kg_h',
+                              ]
+        )
+
+        GenericMapping(
+            container=prosumer,
+            initiator_id=cp_index,
+            initiator_column="q_demand_kw_cp",
+            responder_id=hd_index,
+            responder_column="q_demand_kw",
+        )
+
+        FluidMixMapping(prosumer,
+                        initiator_id=st_index,
+                        responder_id=hd_index,
+                        order=0)
+
+        run_timeseries(prosumer)
+        df = prosumer.time_series.data_source.iloc[1].df
+
+        # Einzelwerte prüfen
+        assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(7.136952, rel=1e-3)
+        assert df.loc["2020-01-01 01:00:00+00:00", "t_out_c"] == 25.0
+
+        # Ganze Spalte prüfen
+        expected_q_received = [7.136952, 1.990310, 0.191985, 0.050065]
+        assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-3)
+
+        # Komplettes DataFrame prüfen
+        expected = pd.DataFrame({
+            "q_received_kw": [7.136952, 1.990310, 0.191985, 0.050065],
+            "q_uncovered_kw": [2.863048, 18.009690, 29.808015, -0.050065],
+            "mdot_kg_per_s": [0.027778, 0.027778, 0.027778, 0.027778],
+            "t_in_c": [86.413554, 42.141779, 26.652939, 25.431024],
+            "t_out_c": [25.0, 25.0, 25.0, 25.0]
+        }, index=df.index)
+
+        pd.testing.assert_frame_equal(df, expected, rtol=1e-3)
