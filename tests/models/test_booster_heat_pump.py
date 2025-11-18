@@ -23,7 +23,7 @@ class TestBoosterHeatPump:
         assert hasattr(prosumer, 'booster_heat_pump')
         assert len(prosumer.booster_heat_pump) == 1
 
-        expected_columns = ['name', 'hp_type', 'in_service']
+        expected_columns = ['name', 'hp_type', 'q_max_kw', 'in_service']
         expected_values = ['example_hp', 'water-water1', True]
 
         assert list(prosumer.booster_heat_pump.columns) == expected_columns
