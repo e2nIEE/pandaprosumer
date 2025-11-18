@@ -914,8 +914,6 @@ def create_controlled_solar_thermal(prosumer,
                                     period=0,
                                     **kwargs):
 
-
-
     solar_thermal_index = create_solar_thermal(
         prosumer,
         **{k: v for k, v in locals().items()
