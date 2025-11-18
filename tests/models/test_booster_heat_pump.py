@@ -24,7 +24,7 @@ class TestBoosterHeatPump:
         assert len(prosumer.booster_heat_pump) == 1
 
         expected_columns = ['name', 'hp_type', 'q_max_kw', 'in_service']
-        expected_values = ['example_hp', 'water-water1', np.nan, True]
+        expected_values = ['example_hp', 'water-water1', pd.isna, True]
 
         assert list(prosumer.booster_heat_pump.columns) == expected_columns
         assert list(prosumer.booster_heat_pump.iloc[0]) == expected_values
