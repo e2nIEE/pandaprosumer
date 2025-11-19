@@ -49,8 +49,8 @@ class HeatDemandController(BasicProsumerController):
     def _mdot_demand_kg_per_s(self):
         return self._get_input('mdot_demand_kg_per_s')
 
-    def _t_feed_demand_c(self,prosumer):
-        return self._get_input('t_feed_demand_c',prosumer)
+    def _t_feed_demand_c(self, prosumer):
+        return self._get_input('t_feed_demand_c', prosumer)
 
     @property
     def _t_return_demand_c(self):
@@ -86,7 +86,7 @@ class HeatDemandController(BasicProsumerController):
         for responder in self._get_generic_mapped_responders(prosumer):
             # The demand is normally not mapped to anything
             q_to_receive_kw += responder.q_to_receive_kw(prosumer)
-        q_to_receive_kw += self._q_demand_kw # The actual demand
+        q_to_receive_kw += self._q_demand_kw  # The actual demand
         if not np.isnan(self._get_input('q_received_kw')):
             # If there is already some power in the input, don't require it again
             q_received_kw = self._get_input('q_received_kw')
@@ -101,7 +101,8 @@ class HeatDemandController(BasicProsumerController):
 
         if np.isnan(self._t_feed_demand_c(prosumer)):
             if np.isnan(self._t_return_demand_c) or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                t_feed_demand_c = self.element_instance.t_in_set_c[self.element_index[0]]#TODO : error if t_in_set_c do not exists
+                # TODO : error if t_in_set_c do not exists
+                t_feed_demand_c = self.element_instance.t_in_set_c[self.element_index[0]]
             else:
                 cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + self._t_return_demand_c)) / 1000
                 t_feed_demand_c = self._t_return_demand_c + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
@@ -109,7 +110,8 @@ class HeatDemandController(BasicProsumerController):
             t_feed_demand_c = self._t_feed_demand_c(prosumer)
         if np.isnan(self._t_return_demand_c):
             if np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]#TODO : error if t_out_set_c do not exists
+                # TODO : error if t_out_set_c do not exists
+                t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
             else:
                 cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
                 t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
@@ -165,11 +167,12 @@ class HeatDemandController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
-            self.obj.element_index[0]].in_service):
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
+
         super().control_step(prosumer)
+
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)

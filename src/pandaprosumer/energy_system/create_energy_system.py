@@ -10,9 +10,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.WARNING)
 
-import numpy as np
-import pandas as pd
-
 from pandapipes import pandapipesNet
 from pandapower import pandapowerNet
 from pandaprosumer.energy_system import EnergySystem

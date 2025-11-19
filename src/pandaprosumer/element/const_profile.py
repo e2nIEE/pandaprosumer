@@ -5,6 +5,7 @@ from numpy import dtype
 
 from pandaprosumer.element.element_toolbox import enforce_types
 
+
 @enforce_types
 @dataclass
 class ConstProfileElementData:
