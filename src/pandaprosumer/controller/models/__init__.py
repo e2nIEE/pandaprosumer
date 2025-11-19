@@ -9,3 +9,4 @@ from .gas_boiler import *
 from .heat_exchanger import *
 from .heat_pump import *
 from .chiller import *
+from .pv import *

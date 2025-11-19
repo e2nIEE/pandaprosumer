@@ -939,24 +939,21 @@ def create_controlled_senergy_nets_pv_production(
         Controller index of the created PV production controller.
     """
 
-    # --- Create base PV production component
-    pv_index = define_senergy_nets_pv_production(
+    pv_index = create_senergy_nets_pv_production(
         prosumer,
         **{k: v for k, v in locals().items()
            if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs
     )
 
-    # --- Prepare controller data (example structure)
-    pv_controller_data = SenergyNetsPvControllerData(
+    pv_controller_data = SenergyNetsPvProductionComponentData(
         element_name='sn_pv_production',
         element_index=[pv_index],
         period_index=period,
         **kwargs
     )
 
-    # --- Create controller
-    pv_controller = SenergyNetsPvController(
+    pv_controller = SenergyNetsPvProductionController(
         prosumer,
         pv_controller_data,
         order=order,

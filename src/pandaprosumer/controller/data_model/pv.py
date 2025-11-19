@@ -13,6 +13,9 @@ class SenergyNetsPvProductionComponentData:
     """Define format of the parameters of PV production in SenergyNets.
     """
     element_index: List[int]
+    period_index: int = None
+    element_name: str = "sn_pv_production"
+
 
     input_columns: List[str] = field(
         default_factory=lambda: [
@@ -43,8 +46,5 @@ class SenergyNetsPvProductionComponentData:
     )
 
     # Generic stuff
-    period_index: int = None
     location_index: int = None
-    element: str = "sn_pv_production"
-    name: str = "sn_pv_production"
 
