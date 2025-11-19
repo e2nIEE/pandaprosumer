@@ -86,7 +86,7 @@ class TestSolarThermal:
         Test the creation of a heat demand controller in a prosumer container
         """
         prosumer = create_empty_prosumer_container()
-        create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
+        create_controlled_solar_thermal(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
