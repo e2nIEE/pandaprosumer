@@ -229,12 +229,30 @@ class HeatPumpController(BasicProsumerController):
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c)
 
+    def _save_state(self):
+        self._backup_state = {
+            "t_previous_evap_out_c": self.t_previous_evap_out_c,
+            "t_previous_evap_in_c": self.t_previous_evap_in_c,
+            "mdot_previous_evap_kg_per_s": self.mdot_previous_evap_kg_per_s,
+        }
+
+    def _restore_state(self):
+        if hasattr(self, "_backup_state"):
+            self.t_previous_evap_out_c = self._backup_state["t_previous_evap_out_c"]
+            self.t_previous_evap_in_c = self._backup_state["t_previous_evap_in_c"]
+            self.mdot_previous_evap_kg_per_s = self._backup_state["mdot_previous_evap_kg_per_s"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
@@ -327,6 +345,19 @@ class HeatPumpController(BasicProsumerController):
         result = np.array([[q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c]])
+
+        self.last_result = {
+            "q_cond_kw": q_cond_kw,
+            "p_comp_kw": p_comp_kw,
+            "q_evap_kw": q_evap_kw,
+            "cop_hp": cop_hp,
+            "mdot_cond_kg_per_s": mdot_cond_kg_per_s,
+            "t_cond_in_c": t_cond_in_c,
+            "t_cond_out_c": t_cond_out_c,
+            "mdot_evap_kg_per_s": mdot_evap_kg_per_s,
+            "t_evap_in_c": t_evap_in_c,
+            "t_evap_out_c": t_evap_out_c,
+        }
 
         assert cop_hp >= 0, f"Heat Pump {self.name} COP is negative ({cop_hp}) for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_evap_kg_per_s >= 0, f"Heat Pump {self.name} mdot_evap_kg_per_s is negative ({mdot_evap_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"

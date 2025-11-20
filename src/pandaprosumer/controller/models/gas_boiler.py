@@ -121,6 +121,14 @@ class GasBoilerController(BasicProsumerController):
 
         result = np.array([[q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s]])
 
+        self.last_result = {
+            "q_kw": q_kw,
+            "mdot_delivered_kg_per_s": mdot_delivered_kg_per_s,
+            "t_in_c": t_in_c,
+            "t_out_c": t_out_c,
+            "mdot_gas_kg_per_s": mdot_gas_kg_per_s,
+        }
+
         self.finalize(prosumer, result, result_fluid_mix)
 
         self.applied = True

@@ -19,6 +19,8 @@ class pandaprosumerContainer(ADict):
             self.clear()
             self.update(**prosumer.deepcopy())
 
+        self.rerun = False
+
     def deepcopy(self):
         return copy.deepcopy(self)
 
