@@ -94,14 +94,8 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --extra test --extra plotting
-      - name: Install ipopt (Linux)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y coinor-ipopt
-      - name: Install ipopt (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          conda install -c conda-forge ipopt
-
+      - name: Install ipopt (Linux/Windows)
+        run: conda install -c conda-forge ipopt
       - name: List all installed packages
         run: |
           uv pip list
