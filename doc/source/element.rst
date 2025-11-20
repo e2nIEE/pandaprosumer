@@ -27,4 +27,5 @@ information about the definition and interpretation of the parameters in the fol
     elements/dry_cooler
     elements/ice_chp
     elements/chiller
+    elements/solar_thermal
 
