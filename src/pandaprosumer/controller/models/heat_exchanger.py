@@ -253,12 +253,32 @@ class HeatExchangerController(BasicProsumerController):
 
         return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
 
+    def _save_state(self):
+        """Backup states before Run"""
+        self._backup_state = {
+            "t_previous_1_out_c": self.t_previous_1_out_c,
+            "t_previous_1_in_c": self.t_previous_1_in_c,
+            "mdot_previous_1_kg_per_s": self.mdot_previous_1_kg_per_s,
+        }
+
+    def _restore_state(self):
+        """Restore states before Rerun"""
+        if hasattr(self, "_backup_state"):
+            self.t_previous_1_out_c = self._backup_state["t_previous_1_out_c"]
+            self.t_previous_1_in_c = self._backup_state["t_previous_1_in_c"]
+            self.mdot_previous_1_kg_per_s = self._backup_state["mdot_previous_1_kg_per_s"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
             self.obj.element_index[0]].in_service):  # FixMe: use gettattr element
             self.applied = True
@@ -395,6 +415,16 @@ class HeatExchangerController(BasicProsumerController):
         result = np.array(
             [[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]]
         )
+
+        self.last_result = {
+            "q_exchanged_kw": q_exchanged_kw,
+            "mdot_1_kg_per_s": mdot_1_kg_per_s,
+            "t_1_in_c": t_1_in_c,
+            "t_1_out_c": t_1_out_c,
+            "mdot_2_kg_per_s": mdot_2_kg_per_s,
+            "t_2_in_c": t_2_in_c,
+            "t_2_out_c": t_2_out_c,
+        }
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:

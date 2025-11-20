@@ -596,6 +596,7 @@ def create_gas_boiler(prosumer,
 def create_booster_heat_pump(
     prosumer,
     bhp_type,
+    q_max_kw = None,
     in_service=True,
     name=None,
     index=None,
@@ -606,7 +607,7 @@ def create_booster_heat_pump(
     :param in_service:  (Default value = True)
     :param name:  (Default value = None)
     :param index:  (Default value = None)
-
+    :param q_max_kw: (Default value = None):
     """
     add_new_element(prosumer, BoosterHeatPumpElementData)
 
@@ -617,11 +618,13 @@ def create_booster_heat_pump(
             [
                 "name",
                 "bhp_type",
+                "q_max_kw",
                 "in_service",
             ],
             [
                 name,
                 bhp_type,
+                q_max_kw,
                 in_service,
             ],
         )
@@ -768,7 +771,6 @@ def create_chiller(
     _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)
 
-
 def create_solar_thermal(prosumer,
                         collector_area=2.5,
                         optical_efficiency=0.77,  # °C of super heating in the evaporator
@@ -897,27 +899,22 @@ def create_solar_thermal(prosumer,
     return int(index)
 
 
-def create_generic_to_fluidmix(prosumer,
+def create_converter(prosumer,
                        cp_water = 4180,
                        name=None,
                        index=None,
                        in_service=True,
                        **kwargs):
     """
-    Creates a heat demand element in prosumer["heat_demand"]
+    Creates a converter element in prosumer["converter"]
 
     INPUT:
-        **prosumer** - The prosumer within this heat demand should be created
+        **prosumer** - The prosumer within this converter should be created
 
     OPTIONAL:
-        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
-        Multiply the demanded power by this factor
+        **cp_water** (float) - specific heat capacity, units J/kgK, by default 4180.
 
-        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
-
-        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
-
-        **name** (string, default None) - A custom name for this heat demand
+        **name** (string, default None) - A custom name for this converter
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
             higher than the highest already existing index is selected.
@@ -928,7 +925,7 @@ def create_generic_to_fluidmix(prosumer,
         **index** (int) - The unique ID of the created heat demand
 
     EXAMPLE:
-        create_heat_demand(prosumer, "heat_demand1")
+        create_converter(prosumer, "heat_demand1")
     """
     add_new_element(prosumer, ConverterElementData)
 
@@ -944,6 +941,196 @@ def create_generic_to_fluidmix(prosumer,
 
     return int(index)
 
+def create_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    peakpower=1,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs,
+):
+    """
+    Adds a new SenergyNets PV production element to the prosumer and defines its
+    PVGIS / pvlib input parameters.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer container.
+    latitude : float
+        Site latitude in decimal degrees (-90..90, north positive).
+    longitude : float
+        Site longitude in decimal degrees (-180..180, east positive).
+    raddatabase : str, optional
+        Radiation database name, e.g. "PVGIS-ERA5".
+    surface_tilt : float, optional
+        Tilt angle of the PV surface [deg], default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface [deg], 0=north, 180=south, default 0.
+    peakpower : float, optional
+        Nominal PV system power [kW], default 1.
+    loss : float, optional
+        Sum of system losses [%], default 0.
+    usehorizon : bool, optional
+        Whether to consider horizon effects computed by PVGIS.
+    userhorizon : object, optional
+        Custom horizon description or file, if used.
+    pvtechchoice : str, optional
+        PV technology, e.g. "crystSi".
+    mountingplace : str, optional
+        Mounting type, e.g. "free" or "building".
+    trackingtype : int, optional
+        Tracking type (0=fixed, other integers for tracking options).
+    optimal_surface_tilt : bool, optional
+        If True, let PVGIS determine optimal tilt.
+    optimalangles : bool, optional
+        If True, let PVGIS determine optimal angles.
+    outputformat : str, optional
+        PVGIS output format, typically "json".
+    url : str, optional
+        PVGIS API base URL.
+    map_variables : bool, optional
+        If True, pvlib should map PVGIS variable names.
+    timeout : float, optional
+        Request timeout for PVGIS [s], default 30.
+    in_service : bool, optional
+        Whether the element is in service, default True.
+    index : int or None, optional
+        Zero-based index of the element in the sn_pv_production table. If None,
+        a new index is created.
+    name : str or None, optional
+        Name of the PV element. If None, a default name is generated.
+    **kwargs :
+        Additional keyword arguments passed through to `_set_entries`.
+
+    Returns
+    -------
+    int
+        Zero-based index position of the element in the `sn_pv_production` table.
+    """
+
+    add_new_element(prosumer, SenergyNetsPvProductionComponentData)
+    index = _get_index_with_check(prosumer, "sn_pv_production", index)
+
+    if name is None:
+        name = f"sn_pv_production_{index}"
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "in_service",
+                "latitude",
+                "longitude",
+                "raddatabase",
+                "surface_tilt",
+                "surface_azimuth",
+                "peakpower",
+                "loss",
+                "usehorizon",
+                "userhorizon",
+                "pvtechchoice",
+                "mountingplace",
+                "trackingtype",
+                "optimal_surface_tilt",
+                "optimalangles",
+                "outputformat",
+                "url",
+                "map_variables",
+                "timeout",
+            ],
+            [
+                name,
+                in_service,
+                latitude,
+                longitude,
+                raddatabase,
+                surface_tilt,
+                surface_azimuth,
+                peakpower,
+                loss,
+                usehorizon,
+                userhorizon,
+                pvtechchoice,
+                mountingplace,
+                trackingtype,
+                optimal_surface_tilt,
+                optimalangles,
+                outputformat,
+                url,
+                map_variables,
+                timeout,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwargs):
+    """
+    Creates an MDU CHP (Modular Data Unit Combined Heat and Power) element.
+
+    INPUT:
+        **prosumer** - The prosumer within which this MDU CHP should be created
+
+        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
+
+    OPTIONAL:
+        **name** (string, default None) - The name of the MDU CHP instance
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created MDU CHP
+
+    EXAMPLE:
+        create_mdu_chp(prosumer, 100, name="example_mdu_chp")
+    """
+    add_new_element(prosumer, MduChpElementData)
+
+    index = _get_index_with_check(prosumer, "mdu_chp", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "size",
+                "in_service",
+            ],
+            [
+                name,
+                size,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
+    return int(index)
+  
+  
 def create_senergy_nets_pv_production(
     prosumer,
     latitude,

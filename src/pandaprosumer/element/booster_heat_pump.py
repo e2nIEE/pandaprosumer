@@ -14,4 +14,5 @@ class BoosterHeatPumpElementData:
     input: List[tuple] = field(default_factory=lambda: [
         ('name', dtype(object)),
         ('bhp_type', 'str'),
+        ('q_max_kw', 'float'),
         ('in_service', bool)])
