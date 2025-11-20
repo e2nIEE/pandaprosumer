@@ -984,6 +984,121 @@ def create_controlled_converter(prosumer, cp_water=4180,
                                                        in_service=in_service,
                                                       )
     return converter_controller.index
+  
+  
+def create_controlled_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    peakpower=1,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    name=None,
+    index=None,
+    in_service=True,
+    level=0,
+    order=0,
+    period=0,
+    **kwargs
+):
+    """
+    Creates a controlled Senergy Nets PV production component, adds it to the
+    prosumer model, and links it to a PV production controller.
+
+    Parameters
+    ----------
+    prosumer : object
+        The prosumer container to which the PV production unit will be added.
+    latitude : float
+        Latitude of the PV installation.
+    longitude : float
+        Longitude of the PV installation.
+    raddatabase : str, optional
+        Radiation database source, by default 'PVGIS-ERA5'.
+    surface_tilt : float, optional
+        Tilt angle of the PV surface (degrees), by default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface (degrees), by default 0.
+    loss : float, optional
+        System losses (%), by default 0.
+    usehorizon : bool, optional
+        Whether to use horizon data, by default True.
+    userhorizon : float or None, optional
+        User-defined horizon, by default None.
+    peakpower : float, optional
+        Installed PV peak power (kWp), by default 1.
+    pvtechchoice : str, optional
+        PV technology type, by default 'crystSi'.
+    mountingplace : str, optional
+        Mounting type, by default 'free'.
+    trackingtype : int, optional
+        PV tracking type, by default 0.
+    optimal_surface_tilt : bool, optional
+        Whether to use optimal surface tilt, by default False.
+    optimalangles : bool, optional
+        Whether to optimize surface angles, by default False.
+    outputformat : str, optional
+        API output format, by default 'json'.
+    url : str, optional
+        PVGIS API endpoint, by default given URL.
+    map_variables : bool, optional
+        Map output variables to internal names, by default True.
+    timeout : int, optional
+        API timeout (s), by default 30.
+    in_service : bool, optional
+        Whether the unit is active, by default True.
+    name : str, optional
+        Optional name of the element, by default None.
+    level : int, optional
+        Hierarchy level for controller, by default 0.
+    order : int, optional
+        Execution order of controller, by default 0.
+    period : int, optional
+        Period index for time-based operation, by default 0.
+
+    Returns
+    -------
+    int
+        Controller index of the created PV production controller.
+    """
+
+    pv_index = create_senergy_nets_pv_production(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    pv_controller_data = SenergyNetsPvProductionComponentData(
+        element_name='sn_pv_production',
+        element_index=[pv_index],
+        period_index=period,
+        **kwargs
+    )
+
+    pv_controller = SenergyNetsPvProductionController(
+        prosumer,
+        pv_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return pv_controller.index
+  
 
 def create_controlled_senergy_nets_pv_production(
     prosumer,
@@ -1097,3 +1212,55 @@ def create_controlled_senergy_nets_pv_production(
     )
 
     return pv_controller.index
+
+def create_controlled_mdu_chp(prosumer,
+                               size,
+                               name=None,
+                               index=None,
+                               in_service=True,
+                               level=0,
+                               order=0,
+                               period=0,
+                               **kwargs):
+    """
+    Creates an MDU CHP element in prosumer["mdu_chp"] and an MDU CHP controller
+
+    INPUT:
+        **prosumer** - The prosumer within which this MDU CHP should be created
+
+        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
+
+    OPTIONAL:
+        **name** (string, default None) - The name of the MDU CHP instance
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+        **level** (int, default 0) - The level of the controller
+
+        **order** (int, default 0) - The order of the controller
+
+        **period** (int, default 0) - Index of the period, default is 0
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created MDU CHP controller
+
+    EXAMPLE:
+        create_controlled_mdu_chp(prosumer, 100, name="example_mdu_chp")
+    """
+    mdu_chp_index = create_mdu_chp(prosumer, size, in_service, name, index, **kwargs)
+    mdu_chp_controller_data = MduChpControllerData(
+        element_name='mdu_chp',
+        element_index=[mdu_chp_index],
+        period_index=period
+    )
+    mdu_chp = MduChpController(prosumer,
+                               mdu_chp_controller_data,
+                               order=order,
+                               level=level,
+                               in_service=in_service,
+                               index=None,
+                               name=name)
+    return mdu_chp.index
