@@ -1229,18 +1229,6 @@ def create_senergy_nets_pv_production(
         zip(
             [
                 "name",
-                "size",
-                "in_service",
-            ],
-            [
-                name,
-                size,
-                in_service,
-            ],
-        )
-    )
-
-    _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
                 "in_service",
                 "latitude",
                 "longitude",
