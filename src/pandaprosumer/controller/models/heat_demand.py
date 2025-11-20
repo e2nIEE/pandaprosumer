@@ -161,12 +161,32 @@ class HeatDemandController(BasicProsumerController):
             assert t_feed_demand_c >= t_return_demand_c
             return t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
 
+    def _save_state(self):
+        """Backup states before Run"""
+        self._backup_state = {
+            "t_previous_out_c": self.t_previous_out_c,
+            "t_previous_in_c": self.t_previous_in_c,
+            "mdot_previous_in_kg_per_s": self.mdot_previous_in_kg_per_s,
+        }
+
+    def _restore_state(self):
+        """Restore states before Rerun"""
+        if hasattr(self, "_backup_state"):
+            self.t_previous_out_c = self._backup_state["t_previous_out_c"]
+            self.t_previous_in_c = self._backup_state["t_previous_in_c"]
+            self.mdot_previous_in_kg_per_s = self._backup_state["mdot_previous_in_kg_per_s"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
         if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
@@ -184,6 +204,14 @@ class HeatDemandController(BasicProsumerController):
             q_received_kw = self._get_input('q_received_kw')
             q_uncovered_kw = self._q_demand_kw - q_received_kw
             result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
+            self.last_result = {
+                "q_received_kw": q_received_kw,
+                "q_uncovered_kw": q_uncovered_kw,
+                "mdot_received_kg_per_s": 0,
+                "t_in_c": 0,
+                "t_out_c": 0
+            }
+
             self.finalize(prosumer, result)
             self.applied = True
             return
@@ -211,6 +239,13 @@ class HeatDemandController(BasicProsumerController):
         # FixMe: Consider the temperature level in the output
         q_uncovered_kw = q_demand_kw - q_received_kw
         result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
+        self.last_result = {
+            "q_received_kw": q_received_kw,
+            "q_uncovered_kw": q_uncovered_kw,
+            "mdot_received_kg_per_s": mdot_received_kg_per_s,
+            "t_in_c": self._t_in_c,
+            "t_out_c": t_out_c
+        }
         if np.isnan(result).any():
             self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                               FluidMixMapping.MASS_FLOW_KEY: np.nan}

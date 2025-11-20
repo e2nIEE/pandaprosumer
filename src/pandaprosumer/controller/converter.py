@@ -50,14 +50,17 @@ class GenericToFluidMixController(BasicProsumerController):
         deltaT = t_supply_c - t_required_in_c
 
         q_received_kw = self._get_input('q_received_kw')
-        #print(q_received_kw)
-        if abs(deltaT) < 1e-6:
-            mdot_received_kg_per_s = 0.0
+
+        if abs(deltaT) < 1e-10:
+            raise ValueError(
+                f"Invalid temperature configuration: supply temperature ({t_supply_c} °C) "
+                f"is lower than return temperature ({t_required_in_c} °C). "
+            )
+
         else:
             t_mean_K = CELSIUS_TO_K + 0.5 * (t_supply_c + t_required_in_c)
             cp = self.fluid.get_heat_capacity(t_mean_K)
             mdot_received_kg_per_s = q_received_kw * 1e3/ (cp * deltaT)
-            #print(mdot_received_kg_per_s)
 
         result = np.array([])
 
