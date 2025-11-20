@@ -813,3 +813,48 @@ def create_generic_to_fluidmix(prosumer,
     # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
 
     return int(index)
+
+def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwargs):
+    """
+    Creates an MDU CHP (Modular Data Unit Combined Heat and Power) element.
+
+    INPUT:
+        **prosumer** - The prosumer within which this MDU CHP should be created
+
+        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
+
+    OPTIONAL:
+        **name** (string, default None) - The name of the MDU CHP instance
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created MDU CHP
+
+    EXAMPLE:
+        create_mdu_chp(prosumer, 100, name="example_mdu_chp")
+    """
+    add_new_element(prosumer, MduChpElementData)
+
+    index = _get_index_with_check(prosumer, "mdu_chp", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "size",
+                "in_service",
+            ],
+            [
+                name,
+                size,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
+    return int(index)
