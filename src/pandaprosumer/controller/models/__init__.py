@@ -10,3 +10,4 @@ from .heat_exchanger import *
 from .heat_pump import *
 from .chiller import *
 from .pv import *
+from .solar_thermal import *
