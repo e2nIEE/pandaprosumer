@@ -690,22 +690,6 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
 
     return bhp.index
 
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
-    from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
-    bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
-    from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
-    bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name=name)
-
-    return bhp.index
-
 
 def create_controlled_ice_chp(prosumer,
                               size,
@@ -889,6 +873,56 @@ def create_controlled_heat_storage(prosumer,
     return hs.index
 
 
+def create_controlled_solar_thermal(prosumer,
+                                    collector_area=2.5,
+                                    optical_efficiency=0.77,
+                                    thermal_losses=3.0,
+                                    second_thermal_losses=0.02,
+                                    incidence_angle=0.9,
+                                    flow_rate=72,
+                                    test_specific_heat=4.18,
+                                    use_specific_heat=4.18,
+                                    number_collectors=4.0,
+                                    series=1.0,
+                                    piping_length=0.0,
+                                    piping_diameter=0.028,
+                                    piping_thickness=0.03,
+                                    piping_conductivity=0.04,
+                                    collector_slope=40.0,
+                                    collector_azimut=0.0,
+                                    name=None,
+                                    index=None,
+                                    in_service=True,
+                                    level=0,
+                                    order=0,
+                                    period=0,
+                                    **kwargs):
+
+    solar_thermal_index = create_solar_thermal(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    solar_controller_data = SolarThermalControllerData(
+        element_name='solar_thermal',
+        element_index=[solar_thermal_index],
+        period_index=period,
+        **kwargs
+    )
+
+    st_controller = SolarThermalController(
+        prosumer,
+        solar_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return st_controller.index
+
+
 def create_controlled_converter(prosumer, cp_water=4180,
                               name=None,
                               index=None,
@@ -946,3 +980,4 @@ def create_controlled_converter(prosumer, cp_water=4180,
                                                        in_service=in_service,
                                                       )
     return converter_controller.index
+

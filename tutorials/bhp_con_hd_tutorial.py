@@ -34,11 +34,8 @@ frequency = '15min'
 bhp_type = 'water-water1'
 bhp_name = 'example_bhp'
 
-demand_data = pd.read_excel('data/input_bhp.xlsx')
-demand_data['t_feed_demand_c'] = 60
-demand_data['t_return_demand_c'] = 20
-demand_data["mode"] = 3
-demand_data["t_supply_c"] = 70
+demand_data = pd.read_excel('data/input_bhp_conv.xlsx')
+
 
 demand_data["q_demand_kw"] *= 5
 
@@ -52,8 +49,8 @@ prosumer = create_empty_prosumer_container()
 
 period = create_period(prosumer, time_resolution_s, start, end, 'utc', 'default')
 
-input_params = ['mode', 't_source_k', 'q_demand_kw', "t_feed_demand_c", "t_return_demand_c", "t_supply_c"]
-result_params = ['mode_cp', 't_source_cp_k', 'q_demand_cp_kw', "t_feed_demand_cp_c", "t_return_demand_cp_c", "t_supply_cp_c"]
+input_params = ['mode', 't_source_k', 'q_demand_kw', "t_feed_demand_c", "t_return_demand_c", "t_supply_c", "t_amb_k"]
+result_params = ['mode_cp', 't_source_cp_k', 'q_demand_cp_kw', "t_feed_demand_cp_c", "t_return_demand_cp_c", "t_supply_cp_c", "t_amb_k_cp"]
 
 cp_index = create_controlled_const_profile(
     prosumer, input_params, result_params, demand_input, period)
@@ -67,9 +64,9 @@ heat_demand_index = create_controlled_heat_demand(prosumer, name= 'heat_demand',
 GenericMapping(
     prosumer,
     initiator_id=cp_index,
-    initiator_column=["mode_cp","t_source_cp_k"],
+    initiator_column=["mode_cp","t_source_cp_k", "t_amb_k_cp"],
     responder_id=bhp_index,
-    responder_column=["mode", "t_source_k"],
+    responder_column=["mode", "t_source_k", "t_amb_k"],
     order=0
 )
 
@@ -122,7 +119,6 @@ res_df.data_source.loc['heat_demand'].df.q_received_kw.plot(ax=ax1, legend=True,
 res_df.data_source.loc['heat_demand'].df.q_uncovered_kw.plot(ax=ax1, legend=True, label='q_uncovered_kw', linestyle='--')
 
 ax1.set_ylabel("Thermal power (kW)")
-
 
 plt.show()
 
