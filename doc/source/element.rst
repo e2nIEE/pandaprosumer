@@ -28,4 +28,5 @@ information about the definition and interpretation of the parameters in the fol
     elements/ice_chp
     elements/chiller
     elements/solar_thermal
+    elements/pv
 
