@@ -722,6 +722,59 @@ def create_controlled_ice_chp(prosumer,
     return ice_chp.index
 
 
+def create_controlled_mdu_chp(prosumer,
+                               size,
+                               name=None,
+                               index=None,
+                               in_service=True,
+                               level=0,
+                               order=0,
+                               period=0,
+                               **kwargs):
+    """
+    Creates an MDU CHP element in prosumer["mdu_chp"] and an MDU CHP controller
+
+    INPUT:
+        **prosumer** - The prosumer within which this MDU CHP should be created
+
+        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
+
+    OPTIONAL:
+        **name** (string, default None) - The name of the MDU CHP instance
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+        **level** (int, default 0) - The level of the controller
+
+        **order** (int, default 0) - The order of the controller
+
+        **period** (int, default 0) - Index of the period, default is 0
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created MDU CHP controller
+
+    EXAMPLE:
+        create_controlled_mdu_chp(prosumer, 100, name="example_mdu_chp")
+    """
+    mdu_chp_index = create_mdu_chp(prosumer, size, in_service, name, index, **kwargs)
+    mdu_chp_controller_data = MduChpControllerData(
+        element_name='mdu_chp',
+        element_index=[mdu_chp_index],
+        period_index=period
+    )
+    mdu_chp = MduChpController(prosumer,
+                               mdu_chp_controller_data,
+                               order=order,
+                               level=level,
+                               in_service=in_service,
+                               index=None,
+                               name=name)
+    return mdu_chp.index
+
+
 def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_cond=5.0,
                               pp_evap=5.0, plf_cc=0.9,
                               w_evap_pump=200.0, w_cond_pump=200.0,

@@ -1,19 +1,22 @@
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from numpy import dtype
 from typing import List
 
 from pandaprosumer.element.element_toolbox import enforce_types
 
+
 @enforce_types
 @dataclass
-class MduChpElementData():
+class MduChpElementData:
     """
-    Defines the static input data for the MDU CHP unit.
-
-        :param name: name of the unit assigned when creating a new MDU CHP instance
-        :param size: size of the MDU CHP defined as the nominal electrical power in kW
-        :param in_service: defines if the MDU CHP is in the network or not
+    Element data structure for MDU CHP unit.
+    
+    Attributes
+    ----------
+    name : str
+        Name of the MDU CHP unit (default: "mdu_chp")
+    input : List[tuple]
+        List of input parameter definitions: name, size, in_service
     """
     name: str = "mdu_chp"
 
