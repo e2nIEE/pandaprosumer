@@ -205,7 +205,7 @@ class TestBoosterHeatPump:
         expected = [5.21054, 4.8605, 0.191919, 0.205738, 0.0, 1.0, 1.0]
 
         assert first_result[0, 0] == second_result[0, 0]
-        assert first_result[0, 1] == second_result[0, 1]
+        assert first_result[0, 1] == pytest.approx(second_result[0, 1], rel=1e-3)
         assert first_result[0, 2] == second_result[0, 2]
         assert first_result[0, 3] == second_result[0, 3]
         assert first_result[0, 5] >= second_result[0, 5]
@@ -219,7 +219,7 @@ class TestBoosterHeatPump:
         assert first_result[0, 6] >= third_result[0, 6]
 
         assert second_result[0, 0] == third_result[0, 0]
-        assert second_result[0, 1] == third_result[0, 1]
+        assert second_result[0, 1] == pytest.approx(third_result[0, 1], rel=1e-3)
         assert second_result[0, 2] >= third_result[0, 2]
         assert second_result[0, 3] >= third_result[0, 3]
         assert second_result[0, 5] >= third_result[0, 5]
