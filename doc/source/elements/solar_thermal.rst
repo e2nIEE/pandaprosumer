@@ -79,10 +79,13 @@ Model
 =======
 
 .. autoclass:: pandaprosumer.controller.models.SolarThermalController
-    :members:
+
 
 The Solar Thermal controller implements the thermodynamic model of a collector field.
 It accounts for **optical efficiency**, **thermal losses**, and **correction factors** for capacitance, series connection, and piping.
+The model uses a single temperature to characterize the solar field and relies on the EN12975 standard to characterize the solar thermal collector performance. The approach is based on Chapter 6 and Chapter 10 of “Solar Engineering of Thermal Processes”, by J.A Duffie and W.A. Beckman.
+The model can simulate the performance of the solar field collector, and then connect it to a thermal storage component or heat exchanger model to incorporate it in a model or a functional system.
+
 
     **Collector Initial Parameters**
 
