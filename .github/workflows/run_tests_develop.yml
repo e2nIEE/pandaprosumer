@@ -84,44 +84,27 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11']
-        os: [ubuntu-latest, windows-latest]
+        os:  [ ubuntu-latest, windows-latest ]
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
-        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a #v4.2.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           uv sync --extra test --extra plotting
-
-      # ---------------------------
-      # NEW: Install Ipopt (Linux)
-      # ---------------------------
-      - name: Install Ipopt on Linux
+      - name: Install ipopt (Linux)
         if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y coinor-ipopt
+      - name: Install ipopt (Windows)
+        if: runner.os == 'Windows'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y coinor-libipopt-dev
-
-      # ---------------------------
-      # NEW: Install Ipopt (Windows)
-      # ---------------------------
-      - name: Install Miniconda on Windows
-        if: runner.os == 'Windows'
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          activate-environment: ipopt
-          channels: conda-forge
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install Ipopt solver on Windows
-        if: runner.os == 'Windows'
-        run: conda install -c conda-forge ipopt
+          conda install -c conda-forge ipopt
 
       - name: List all installed packages
-        run: uv pip list
-
+        run: |
+          uv pip list
       - name: Test with pytest
         run: |
           uv sync --extra test --extra plotting
