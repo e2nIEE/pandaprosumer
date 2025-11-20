@@ -94,18 +94,6 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --extra test --extra plotting
-      - name: Install ipopt (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y coinor-libipopt1v5 coinor-libipopt-dev
-
-      - name: Install ipopt (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          uv pip install cyipopt
-      
-
       - name: List all installed packages
         run: |
           uv pip list
