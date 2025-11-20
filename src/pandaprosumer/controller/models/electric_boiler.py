@@ -139,6 +139,14 @@ class ElectricBoilerController(BasicProsumerController):
 
         result = np.array([[q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw]])
 
+        self.last_result = {
+            "q_kw": q_kw,
+            "mdot_delivered_kg_per_s": mdot_delivered_kg_per_s,
+            "t_in_c": t_in_c,
+            "t_out_c": t_out_c,
+            "p_kw": p_kw,
+        }
+
         self.finalize(prosumer, result, result_fluid_mix)
 
         self.applied = True
