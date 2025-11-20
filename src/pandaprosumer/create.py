@@ -5,8 +5,9 @@ from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
 from pandaprosumer.element import *
-from pandaprosumer.element import HeatPumpElementData, HeatDemandElementData, \
-     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData, ConverterElementData
+from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
+    HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
+                                   SolarThermalElementData,ConverterElementData)
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -594,7 +595,7 @@ def create_gas_boiler(prosumer,
 
 def create_booster_heat_pump(
     prosumer,
-    hp_type,
+    bhp_type,
     in_service=True,
     name=None,
     index=None,
@@ -615,12 +616,12 @@ def create_booster_heat_pump(
         zip(
             [
                 "name",
-                "hp_type",
+                "bhp_type",
                 "in_service",
             ],
             [
                 name,
-                hp_type,
+                bhp_type,
                 in_service,
             ],
         )
@@ -767,6 +768,135 @@ def create_chiller(
     _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
     return int(index)
 
+
+def create_solar_thermal(prosumer,
+                        collector_area=2.5,
+                        optical_efficiency=0.77,  # °C of super heating in the evaporator
+                        thermal_losses=3.0,
+                        second_thermal_losses=0.02,
+                        incidence_angle=0.9,
+                        flow_rate=72,
+                        test_specific_heat=4.18,
+                        use_specific_heat=4.18,
+                        number_collectors=4.0,
+                        series = 1.0,
+                        piping_length=0.0,
+                        piping_diameter=0.028,
+                        piping_thickness=0.03,
+                        piping_conductivity=0.04,
+                        collector_slope = 40.0,
+                        collector_azimut = 0.0,
+                        in_service=True,
+                        name=None,
+                        index=None,
+                         **kwargs
+                    ):
+    """_summary_
+
+    Parameters
+    ----------
+    prosumer : _type_
+        _description_
+    collector_area : float, optional
+        collector area [m_2], by default 2.0
+    optical_efficiency : float, optional
+        collector curve optical efficiency [-], by default 0.7
+    second_thermal_losses : float, optional
+        collector curve first order efficiency [W_per_m_2_K], by default 3.5
+    second_thermal_losses : float, optional
+        collector curve second order efficiency [W_per_m_2_K_2], by default 0.007
+    incidence_angle : float, optional
+        radiation incidence angle modifier at theta 50 deg [-], by default 0.9
+    flow_rate : int, optional
+        collector test specific flow rate [kg_per_h_m], by default 72
+    test_specific_heat : float, optional
+        heat capacity of the collector test fluid [kJ_per_kg_K], by default 4.18
+    use_specific_heat : float, optional
+        heat capacity of the fluid used [kJ_per_kg_K], by default 3.8
+    number_collectors : float, optional
+        number of collectors [-], by default 4.0
+    series : float, optional
+        number of collectors connected in series [-], by default 1.0
+    piping_length : float, optional
+        solar field piping length [m], by default 10.0
+    piping_diameter : float, optional
+        piping diameter [m], by default 0.028
+    piping_thickness : float, optional
+        piping insulation thickness [m], by default 0.03
+    piping_conductivity : float, optional
+        piping insulation conductivity [W_per_m_K], by default 0.04
+    collector_slope : float, optional
+        collector slope [deg], by default 40.0
+    collector_azimut : float, optional
+        collector azimut [deg], by default 0.0
+    in_service : bool, optional
+        _description_, by default True
+    index : _type_, optional
+        _description_, by default None
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+    add_new_element(
+        prosumer, SolarThermalElementData
+    )
+
+    index = _get_index_with_check(prosumer, "solar_thermal", index)
+
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "in_service",
+                "collector_area",
+                "optical_efficiency",
+                "thermal_losses",
+                "second_thermal_losses",
+                "incidence_angle",
+                "flow_rate",
+                "test_specific_heat",
+                "use_specific_heat",
+                "number_collectors",
+                "series",
+                "piping_length",
+                "piping_diameter",
+                "piping_thickness",
+                "piping_conductivity",
+                "collector_slope",
+                "collector_azimut"
+            ],
+            [
+                name,
+                in_service,
+                collector_area,
+                optical_efficiency,
+                thermal_losses,
+                second_thermal_losses,
+                incidence_angle,
+                flow_rate,
+                test_specific_heat,
+                use_specific_heat,
+                number_collectors,
+                series,
+                piping_length,
+                piping_diameter,
+                piping_thickness,
+                piping_conductivity,
+                collector_slope,
+                collector_azimut
+
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
+
+    return int(index)
+
+
 def create_generic_to_fluidmix(prosumer,
                        cp_water = 4180,
                        name=None,
@@ -813,6 +943,150 @@ def create_generic_to_fluidmix(prosumer,
     # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
 
     return int(index)
+
+def create_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    peakpower=1,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs,
+):
+    """
+    Adds a new SenergyNets PV production element to the prosumer and defines its
+    PVGIS / pvlib input parameters.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer container.
+    latitude : float
+        Site latitude in decimal degrees (-90..90, north positive).
+    longitude : float
+        Site longitude in decimal degrees (-180..180, east positive).
+    raddatabase : str, optional
+        Radiation database name, e.g. "PVGIS-ERA5".
+    surface_tilt : float, optional
+        Tilt angle of the PV surface [deg], default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface [deg], 0=north, 180=south, default 0.
+    peakpower : float, optional
+        Nominal PV system power [kW], default 1.
+    loss : float, optional
+        Sum of system losses [%], default 0.
+    usehorizon : bool, optional
+        Whether to consider horizon effects computed by PVGIS.
+    userhorizon : object, optional
+        Custom horizon description or file, if used.
+    pvtechchoice : str, optional
+        PV technology, e.g. "crystSi".
+    mountingplace : str, optional
+        Mounting type, e.g. "free" or "building".
+    trackingtype : int, optional
+        Tracking type (0=fixed, other integers for tracking options).
+    optimal_surface_tilt : bool, optional
+        If True, let PVGIS determine optimal tilt.
+    optimalangles : bool, optional
+        If True, let PVGIS determine optimal angles.
+    outputformat : str, optional
+        PVGIS output format, typically "json".
+    url : str, optional
+        PVGIS API base URL.
+    map_variables : bool, optional
+        If True, pvlib should map PVGIS variable names.
+    timeout : float, optional
+        Request timeout for PVGIS [s], default 30.
+    in_service : bool, optional
+        Whether the element is in service, default True.
+    index : int or None, optional
+        Zero-based index of the element in the sn_pv_production table. If None,
+        a new index is created.
+    name : str or None, optional
+        Name of the PV element. If None, a default name is generated.
+    **kwargs :
+        Additional keyword arguments passed through to `_set_entries`.
+
+    Returns
+    -------
+    int
+        Zero-based index position of the element in the `sn_pv_production` table.
+    """
+
+    add_new_element(prosumer, SenergyNetsPvProductionComponentData)
+    index = _get_index_with_check(prosumer, "sn_pv_production", index)
+
+    if name is None:
+        name = f"sn_pv_production_{index}"
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "in_service",
+                "latitude",
+                "longitude",
+                "raddatabase",
+                "surface_tilt",
+                "surface_azimuth",
+                "peakpower",
+                "loss",
+                "usehorizon",
+                "userhorizon",
+                "pvtechchoice",
+                "mountingplace",
+                "trackingtype",
+                "optimal_surface_tilt",
+                "optimalangles",
+                "outputformat",
+                "url",
+                "map_variables",
+                "timeout",
+            ],
+            [
+                name,
+                in_service,
+                latitude,
+                longitude,
+                raddatabase,
+                surface_tilt,
+                surface_azimuth,
+                peakpower,
+                loss,
+                usehorizon,
+                userhorizon,
+                pvtechchoice,
+                mountingplace,
+                trackingtype,
+                optimal_surface_tilt,
+                optimalangles,
+                outputformat,
+                url,
+                map_variables,
+                timeout,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    return int(index)
+
 
 def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwargs):
     """
