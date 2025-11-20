@@ -1,3 +1,16 @@
+[0.1.3] 2025-11-20
+------------------------------
+-[ADDED] Solar thermal model
+-[ADDED] PV model
+-[ADDED] Rankine cycle CHP model
+-[ADDED] `Converter` controller: for converting generic to fluid mix mapping as a functionality addition
+-[FIXED] `Supervisor` controller
+-[ADDED] Option to rerun time step with run_timeseries
+-[ADDED] BHP parameters adapted and updated tutorials
+-[ADDED] `NetworkCoupling` controller: Can be used to create a coupling between a prosumer and a pandapipes or pandapower network and a tutorial demonstrating building an energy system that couples multiple networks
+
+
+
 [0.1.2] - 2025-05-16
 -------------------------------
 - [ADDED] `Supervisor` controller: allows dynamic attribute control based on input conditions and logical rules.
