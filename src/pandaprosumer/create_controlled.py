@@ -934,17 +934,13 @@ def create_controlled_converter(prosumer, cp_water=4180,
                               order=0,
                               **kwargs):
     """
-    Creates a chiller element in prosumer["chiller"] and a chiller controller.
+    Creates a converter element in prosumer["converter"] and a converter controller.
 
     INPUT:
-        **prosumer** - The prosumer within which this chiller should be created.
-
-        **max_q_kw** (float) - Maximal cooling power of the chiller [kW].
+        **prosumer** - The prosumer within which this converter should be created.
 
     OPTIONAL:
-        **cooling_value_kj_per_kg** (float, default 200e3) - Cooling Value of the refrigerant [kJ/kg].
-
-        **efficiency_percent** (float, default 100) - Chiller Efficiency [%].
+        **cp_water** (float) - specific heat capacity, units J/kgK, by default 4180.
 
         **name** (string, default None) - The name for this chiller.
 
@@ -959,13 +955,13 @@ def create_controlled_converter(prosumer, cp_water=4180,
         **period** (int, default 0) - Index of the period, default is 0.
 
     OUTPUT:
-        **index** (int) - The unique ID of the created chiller.
+        **index** (int) - The unique ID of the created converter.
 
     EXAMPLE:
-        create_controlled_chiller(prosumer, "chiller_1")
+        create_controlled_converter(prosumer, "chiller_1")
     """
 
-    converter_index = create_generic_to_fluidmix(
+    converter_index = create_converter(
         prosumer,
         **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs)
