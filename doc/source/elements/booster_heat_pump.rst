@@ -39,10 +39,8 @@ Input Static Data
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "name", "Custom name for the Booster heat pump", "N/A"
-    "hp_type", "Type of heat pump", "N/A"
-    "in_service", "Indicates if the Booster heat pump is in service", "N/A"
-
+    "name", "Name of the Booster Heat Pump", "N/A"
+    "hp_type", "Type of the Booster Heat Pump (air-water, water-water1, water-water2, water-water3)", "N/A"
 
 Input Time Series
 -------------------
@@ -50,9 +48,12 @@ Input Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "name", "Custom name for the Booster heat pump", "N/A"
-    "hp_type", "Type of heat pump", "N/A"
-    "in_service", "Indicates if the Booster heat pump is in service", "N/A"
+    "t_amb_k", "Ambient temperature that must be provided if using the heating curves", "K"
+    "t_source_k", "Source temperature that must be provided", "K"
+    "t_sink_k", "Sink temperature that is optional but must be provided if the user doesn't want to use built-in heating curves", "K"
+    "mode", "Operational mode of the Booster heat pump", "N/A"
+    "p_received_kw", "Electrical power that is provided in mode 1 and 2", "kW"
+    "q_received_kw", "Heat power that is provided in mode 1", "kW"
 
 
 Output Time Series

@@ -595,7 +595,7 @@ def create_gas_boiler(prosumer,
 
 def create_booster_heat_pump(
     prosumer,
-    hp_type,
+    bhp_type,
     q_max_kw = None,
     in_service=True,
     name=None,
@@ -617,14 +617,14 @@ def create_booster_heat_pump(
         zip(
             [
                 "name",
+                "bhp_type",
                 "q_max_kw",
-                "hp_type",
                 "in_service",
             ],
             [
                 name,
+                bhp_type,
                 q_max_kw,
-                hp_type,
                 in_service,
             ],
         )
