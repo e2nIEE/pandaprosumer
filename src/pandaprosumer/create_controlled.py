@@ -690,22 +690,6 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
 
     return bhp.index
 
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
-    from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
-    bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
-    from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
-    bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name=name)
-
-    return bhp.index
-
 
 def create_controlled_ice_chp(prosumer,
                               size,
@@ -889,6 +873,56 @@ def create_controlled_heat_storage(prosumer,
     return hs.index
 
 
+def create_controlled_solar_thermal(prosumer,
+                                    collector_area=2.5,
+                                    optical_efficiency=0.77,
+                                    thermal_losses=3.0,
+                                    second_thermal_losses=0.02,
+                                    incidence_angle=0.9,
+                                    flow_rate=72,
+                                    test_specific_heat=4.18,
+                                    use_specific_heat=4.18,
+                                    number_collectors=4.0,
+                                    series=1.0,
+                                    piping_length=0.0,
+                                    piping_diameter=0.028,
+                                    piping_thickness=0.03,
+                                    piping_conductivity=0.04,
+                                    collector_slope=40.0,
+                                    collector_azimut=0.0,
+                                    name=None,
+                                    index=None,
+                                    in_service=True,
+                                    level=0,
+                                    order=0,
+                                    period=0,
+                                    **kwargs):
+
+    solar_thermal_index = create_solar_thermal(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    solar_controller_data = SolarThermalControllerData(
+        element_name='solar_thermal',
+        element_index=[solar_thermal_index],
+        period_index=period,
+        **kwargs
+    )
+
+    st_controller = SolarThermalController(
+        prosumer,
+        solar_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return st_controller.index
+
+
 def create_controlled_converter(prosumer, cp_water=4180,
                               name=None,
                               index=None,
@@ -950,6 +984,121 @@ def create_controlled_converter(prosumer, cp_water=4180,
                                                        in_service=in_service,
                                                       )
     return converter_controller.index
+  
+  
+def create_controlled_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    peakpower=1,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    name=None,
+    index=None,
+    in_service=True,
+    level=0,
+    order=0,
+    period=0,
+    **kwargs
+):
+    """
+    Creates a controlled Senergy Nets PV production component, adds it to the
+    prosumer model, and links it to a PV production controller.
+
+    Parameters
+    ----------
+    prosumer : object
+        The prosumer container to which the PV production unit will be added.
+    latitude : float
+        Latitude of the PV installation.
+    longitude : float
+        Longitude of the PV installation.
+    raddatabase : str, optional
+        Radiation database source, by default 'PVGIS-ERA5'.
+    surface_tilt : float, optional
+        Tilt angle of the PV surface (degrees), by default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface (degrees), by default 0.
+    loss : float, optional
+        System losses (%), by default 0.
+    usehorizon : bool, optional
+        Whether to use horizon data, by default True.
+    userhorizon : float or None, optional
+        User-defined horizon, by default None.
+    peakpower : float, optional
+        Installed PV peak power (kWp), by default 1.
+    pvtechchoice : str, optional
+        PV technology type, by default 'crystSi'.
+    mountingplace : str, optional
+        Mounting type, by default 'free'.
+    trackingtype : int, optional
+        PV tracking type, by default 0.
+    optimal_surface_tilt : bool, optional
+        Whether to use optimal surface tilt, by default False.
+    optimalangles : bool, optional
+        Whether to optimize surface angles, by default False.
+    outputformat : str, optional
+        API output format, by default 'json'.
+    url : str, optional
+        PVGIS API endpoint, by default given URL.
+    map_variables : bool, optional
+        Map output variables to internal names, by default True.
+    timeout : int, optional
+        API timeout (s), by default 30.
+    in_service : bool, optional
+        Whether the unit is active, by default True.
+    name : str, optional
+        Optional name of the element, by default None.
+    level : int, optional
+        Hierarchy level for controller, by default 0.
+    order : int, optional
+        Execution order of controller, by default 0.
+    period : int, optional
+        Period index for time-based operation, by default 0.
+
+    Returns
+    -------
+    int
+        Controller index of the created PV production controller.
+    """
+
+    pv_index = create_senergy_nets_pv_production(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    pv_controller_data = SenergyNetsPvProductionComponentData(
+        element_name='sn_pv_production',
+        element_index=[pv_index],
+        period_index=period,
+        **kwargs
+    )
+
+    pv_controller = SenergyNetsPvProductionController(
+        prosumer,
+        pv_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return pv_controller.index
+  
 
 def create_controlled_mdu_chp(prosumer,
                                size,
