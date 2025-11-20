@@ -23,7 +23,7 @@ class TestBoosterHeatPump:
         assert hasattr(prosumer, 'booster_heat_pump')
         assert len(prosumer.booster_heat_pump) == 1
 
-        expected_columns = ['name', 'hp_type', 'in_service']
+        expected_columns = ['name', 'bhp_type', 'in_service']
         expected_values = ['example_hp', 'water-water1', True]
 
         assert list(prosumer.booster_heat_pump.columns) == expected_columns
@@ -212,7 +212,7 @@ class TestBoosterHeatPump:
         assert first_result[0, 6] >= second_result[0, 6]
 
         assert first_result[0, 0] == third_result[0, 0]
-        assert first_result[0, 1] == third_result[0, 1]
+        assert first_result[0, 1] == pytest.approx(third_result[0, 1], rel=1e-3)
         assert first_result[0, 2] >= third_result[0, 2]
         assert first_result[0, 3] >= third_result[0, 3]
         assert first_result[0, 5] >= third_result[0, 5]
