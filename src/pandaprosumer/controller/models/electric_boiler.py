@@ -3,29 +3,27 @@ Module containing the ElectricBoilerController class.
 """
 
 import numpy as np
-from math import log
-import pandas as pd
-from numba import njit
 
-from pandapipes import create_fluid_from_lib, call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
 
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, efficiency_percent, max_p_kw):
-    # 1. Calculate power of condenser
+    # Calculate thermal power
     q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
+    # Calculate electric power
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
 
-    # 8. Check parameters
+    # Check parameters
     if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
         # If the consumed electrical power is too high, recalculate the output temperature
         p_el_consumed_kw = max_p_kw
         q_fluid_kw = max_p_kw * (efficiency_percent / 100)
         # FixMe: Should update the output temperature or the mass flow rate ?
-        t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+        # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+        mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
 
     return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
@@ -43,9 +41,8 @@ class ElectricBoilerController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "electric_boiler"
+    def name_class(self):
+        return "electric_boiler_controller"
 
     def __init__(self, prosumer, electric_boiler_object, order, level, in_service=True, index=None,
                  name=None, **kwargs):
@@ -69,7 +66,6 @@ class ElectricBoilerController(BasicProsumerController):
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
 
-
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
         p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
@@ -89,6 +85,10 @@ class ElectricBoilerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
+
         super().control_step(prosumer)
 
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
@@ -138,6 +138,14 @@ class ElectricBoilerController(BasicProsumerController):
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
         result = np.array([[q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw]])
+
+        self.last_result = {
+            "q_kw": q_kw,
+            "mdot_delivered_kg_per_s": mdot_delivered_kg_per_s,
+            "t_in_c": t_in_c,
+            "t_out_c": t_out_c,
+            "p_kw": p_kw,
+        }
 
         self.finalize(prosumer, result, result_fluid_mix)
 

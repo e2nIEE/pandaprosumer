@@ -7,7 +7,6 @@ from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 from pandaprosumer import *
 
 
-
 class Test1HeatPump1GasBoiler1HeatDemandMapping:
     """
     In this example, a single ConstProsumer is mapped to a Heat Pump with an Gas Boiler and then to a Heat Demand
@@ -41,17 +40,16 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
 
         gb_params = {'max_q_kw': 500}
 
-        hd_params = {'t_in_set_c':76.85, 't_out_set_c':30}
-
+        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                            period, data_source, 0)
+                                                              data_source, period, 0, 0)
 
-        hp_controller_index = create_controlled_heat_pump(prosumer,period=period,level=1,order = 0,**hp_params)
+        hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
 
-        gb_controller_index = create_controlled_gas_boiler(prosumer,period=period,level = 1,order = 1,**gb_params)
+        gb_controller_index = create_controlled_gas_boiler(prosumer, period=period, level=1, order=1, **gb_params)
 
-        hd_controller_index = create_controlled_heat_demand(prosumer,period=period,level=1, order=2,**hd_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -117,7 +115,7 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
         assert not np.isnan(prosumer.time_series.loc[1, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[2, "data_source"].df).any().any()
         assert_frame_equal(prosumer.time_series.loc[0].data_source.df, hp_expected, check_dtype=False)
-        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, gb_expected, atol = 0.0001, check_dtype=False)
+        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, gb_expected, atol=0.0001, check_dtype=False)
         assert_frame_equal(prosumer.time_series.loc[2].data_source.df, hd_expected, check_dtype=False)
 
         hp_p_kw = prosumer.time_series.loc[0].data_source.df.p_comp_kw
@@ -129,7 +127,6 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
         hp_t_cond_out_c = prosumer.time_series.loc[0].data_source.df.t_cond_out_c
         gb_t_out_c = prosumer.time_series.loc[1].data_source.df.t_out_c
         assert (hp_p_kw <= hp_params['max_p_comp_kw']).all()
-
 
         mdot_prod_kg_per_s = hp_mdot_cond_kg_per_s + gb_mdot_kg_per_s
         mdot_dmd_kg_per_s = data.demand_1 / ((76.85 - 30) * 4.19)

@@ -1,3 +1,43 @@
+[0.1.3] 2025-11-20
+------------------------------
+- [ADDED] Solar thermal model
+- [ADDED] PV model
+- [ADDED] Rankine cycle CHP model
+- [ADDED] `Converter` controller: for converting generic to fluid mix mapping as a functionality addition
+- [FIXED] `Supervisor` controller
+- [ADDED] Option to rerun time step with run_timeseries
+- [ADDED] BHP parameters adapted and updated tutorials
+- [ADDED] `NetworkCoupling` controller: Can be used to create a coupling between a prosumer and a pandapipes or pandapower network and a tutorial demonstrating building an energy system that couples multiple networks
+
+
+[0.1.2] - 2025-05-16
+-------------------------------
+- [ADDED] `Supervisor` controller: allows dynamic attribute control based on input conditions and logical rules.
+- [ADDED] `SupervisorData` class: handles input structure for the supervisor controller.
+- [ADDED] `Rule` class: defines single-condition logic to modify prosumer attributes.
+- [ADDED] `CombiningRules` class: supports logical combination (AND/OR) of multiple `Rule` instances.
+- [DOCS] Added detailed documentation and usage examples for the supervisor.
+
+[0.1.2] - 2025-05-07
+-------------------------------
+- [ADDED] `ConstProfileController` now supports automatic period detection from the DataFrame via a `period` column if no period is explicitly set.
+- [CHANGED] Improved period handling logic to reduce user configuration burden and improve flexibility.
+- [UPDATED] Tests and tutorials to reflect the new behavior in period detection and ensure compatibility with updated controller logic.
+- [FIXED] Runtime Warning due to negative value inside np.log
+- [CHANGED] merged duplicate code from dry cooler and heat exchanger
+
+
+[0.1.2] - 2025-05-02
+-------------------------------
+- [ADDED] `check_levels` function: ensures that all controllers in a prosumer have the same execution level (with exceptions for ConstProfile and pandapower/pandapipes).
+- [ADDED] `check_controllers_orders` function: validates that initiator controllers execute before responder controllers, based on level and order attributes.
+- [ADDED] `check_mappings_orders` function: checks that controller mapping orders are continuous and start from zero.
+- [ADDED] `check_order` argument to the prosumer constructor: allows enabling or disabling all order validation mechanisms.
+- [UPDATED] Tests and tutorials to comply with new order checking mechanisms (minor fixes for compatibility).
+- [FIXED] Incorrect reference to "pandapipes" in `CONTRIBUTING.rst` now correctly mentions "pandaprosumer".
+- [CHANGED] Unit correction in `dry_cooler.rst` documentation.
+- [ADDED] q_exchanged_kw in Heat Exchanger result columns.
+
 [0.1.2] - 2025-04-22
 -------------------------------
 - [FIXED] ice chp documentation

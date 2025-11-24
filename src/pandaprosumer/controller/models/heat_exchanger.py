@@ -5,121 +5,13 @@ Module containing the HeatExchangerController class.
 import logging
 import numpy as np
 from pandapipes import call_lib
-from scipy import optimize
 
 from pandaprosumer.controller.base import BasicProsumerController
-from pandaprosumer.constants import CELSIUS_TO_K, HeatExchangerControl, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.mapping import FluidMixMapping
-from pandaprosumer.controller.models.dry_cooler import compute_temp as compute_temp_reverse
+from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
 logger = logging.getLogger()
-
-
-def solve_dichotomy(f, x_min, x_max):
-    """
-    Solve f(x)=0 by dichotomy in the interval [x_min, x_max].
-    The function f should be strictly decreasing, or x_max and x_min reversed if it is increasing.
-
-    :param f: Function to be solved.
-    :param x_min: Minimum value.
-    :param x_max: Maximum value.
-    :return: The found value of x after convergence
-    """
-    x_mean = (x_max + x_min) / 2
-    while (abs(f(x_mean)) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD
-           and abs(x_max - x_min) > HeatExchangerControl.DICHOTOMY_CONVERGENCE_THRESHOLD):
-        x_mean = (x_max + x_min) / 2
-        if f(x_mean) > 0:
-            x_min = x_mean
-        else:
-            x_max = x_mean
-    return x_mean
-
-
-def calculate_cold_temperature_difference(a, delta_t_hot):
-    """
-    Solve the equation with dichotomy to find t_out_1
-    x is defined such as delta_t_cold / delta_t_hot = (1 - x) 
-
-    :param a: The parameter 'a'
-    :param delta_t_hot: The temperature difference between the primary hot (in) and secondary hot (out) temperatures
-    :return: The temperature difference between the primary cold (out) and secondary cold (in) temperatures
-    """
-    dichotomy_fun = lambda x: a * x + np.log(1 - x)
-    if a > 1:
-        # dichotomy_fun is strictly decreasing on [x_min, x_max], 0 < x < 1
-        x_max = 1
-        x_min = (a - 1) / (a - 0.001)
-    else:
-        # dichotomy_fun is strictly increasing on [x_max, x_min], x < 0
-        x_max = (a - 1) / a
-        x_min = 3 * x_max
-
-    x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max)
-    # x_mean = optimize.newton(dichotomy_fun, (x_min + x_max) / 2)
-
-    delta_t_cold = (1 - x_mean) * delta_t_hot
-    return delta_t_cold
-
-
-def compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
-                 delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk):
-    """
-    Calculate the return temperature on the primary side and the primary mass flow
-
-    :param q_ratio: The ratio of the exchanged heat and the nominal exchanged heat
-    :param q_exchanged_w: The heat to be exchanged
-    :param t_1_in_c: The primary feed (hot) temperature
-    :param t_2_in_c: The secondary input (cold) temperature (return pipe)
-    :param t_2_out_c: The secondary output (hot) temperature (feed pipe)
-    :param delta_t_hot_nom_c: The temperature difference between the nominal
-        primary hot and secondary hot (out) temperature
-    :param delta_t_cold_nom_c: The temperature difference between the nominal
-        primary cold and secondary cold (out) temperature
-    :param cp_1_j_per_kgk: The heat capacity of the fluid in the primary side
-
-    :return: The temperature on the primary side and the primary mass flow
-    """
-    if q_ratio == 0:
-        # No heat transfer at the secondary side so no heat transfer at the primary side
-        t_1_out_c = t_1_in_c
-    else:
-        delta_t_hot = t_1_in_c - t_2_out_c
-        # Logarithmic mean temperature difference (LMTD) at nominal conditions
-        # FixMe: what if delta_t_hot_n == delta_t_cold_n ? wikipedia: limit val: lmtd_n = delta_t_hot_n = delta_t_cold_n
-        if delta_t_hot_nom_c == delta_t_cold_nom_c:
-            lmtd_nom = delta_t_hot_nom_c
-        else:
-            lmtd_nom = (delta_t_hot_nom_c - delta_t_cold_nom_c) / np.log(delta_t_hot_nom_c / delta_t_cold_nom_c)
-        a = delta_t_hot / (q_ratio * lmtd_nom)
-        if a > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
-            logger.warning("Heat Exchanger state too far from nominal conditions. "
-                           f"The temperature difference between the primary (t_1_in_c={t_1_in_c}°C) and "
-                           f"secondary side (t_2_out_c={t_2_out_c}°C) may be too high or the transferred heat "
-                           f"q_exchanged_w={q_exchanged_w}W too small compared to the nominal conditions")
-            t_1_out_c = t_1_in_c
-        else:
-            delta_t_cold = calculate_cold_temperature_difference(a, delta_t_hot)
-            t_1_out_c = t_2_in_c + delta_t_cold
-
-    # Find the primary mass flow rate so that the heat exchanged by the fluid on the primary side is equal to q_exchanged
-    # mdot_1_kg_per_s = q_exchanged_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
-    if t_1_in_c - t_1_out_c == 0:
-        mdot_1_kg_per_s = 0
-    else:
-        mdot_1_kg_per_s = q_exchanged_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
-    # elif a == 0:  # Note: Can go there with 'a' not defined if T_in_1 is nan
-    #     mdot_1_kg_per_s = HeatExchangerControl.MIN_PRIMARY_MASS_FLOW_KG_PER_S  # 0.2 m3/h  FixMe: Why ?
-    # else:
-    #     # Find the primary mass flow rate so that the heat exchanged by the fluid on the primary side is equal to q_exchanged
-    #     mdot_1_kg_per_s = q_exchanged_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
-    if t_1_out_c > t_1_in_c:
-        # The fluid on the primary side should not cool down
-        t_1_out_c = t_1_in_c
-        mdot_1_kg_per_s = 0
-    # FixMe: t_1_out_c=nan if T_hot_1 == T_hot_2
-    # self._a = a
-    return t_1_out_c, mdot_1_kg_per_s  # , T_in_2, T_out_2, Q_2
 
 
 class HeatExchangerController(BasicProsumerController):
@@ -151,9 +43,8 @@ class HeatExchangerController(BasicProsumerController):
     :param kwargs: Additional keyword arguments
     """
 
-    @classmethod
-    def name(cls):
-        return "heat_exchanger"
+    def name_class(self):
+        return "heat_exchanger_controller"
 
     def __init__(self, prosumer, stratified_heat_storage_object, order, level,
                  in_service=True, index=None, name=None, **kwargs):
@@ -162,11 +53,16 @@ class HeatExchangerController(BasicProsumerController):
         """
         super().__init__(prosumer, stratified_heat_storage_object, order=order, level=level, in_service=in_service,
                          index=index, name=name, **kwargs)
-
-        self.primary_fluid = call_lib(self.element_instance.primary_fluid[self.element_index[0]]) \
-            if self.element_instance.primary_fluid[self.element_index[0]] else prosumer.fluid
-        self.secondary_fluid = call_lib(self.element_instance.secondary_fluid[self.element_index[0]]) \
-            if self.element_instance.secondary_fluid[self.element_index[0]] else prosumer.fluid
+        primary_fluid = self._get_element_param(prosumer, 'primary_fluid')
+        secondary_fluid = self._get_element_param(prosumer, 'secondary_fluid')
+        if primary_fluid and primary_fluid != prosumer.fluid.name:
+            self.primary_fluid = call_lib(primary_fluid)
+        else:
+            self.primary_fluid = prosumer.fluid
+        if secondary_fluid and secondary_fluid != prosumer.fluid.name:
+            self.secondary_fluid = call_lib(secondary_fluid)
+        else:
+            self.secondary_fluid = prosumer.fluid
 
         self.t_previous_1_out_c = np.nan
         self.t_previous_1_in_c = np.nan
@@ -287,7 +183,7 @@ class HeatExchangerController(BasicProsumerController):
         max_t_1_out_c = t_1_in_c - min_delta_t_1_c
         min_x = 1 - (max_t_1_out_c - t_2_in_c) / delta_t_hot_c
 
-        min_a = -np.log(1 - min_x) / min_x
+        min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1  # FixMe: case where min_x == 1 or >= 1 ?
 
         if a < min_a:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
@@ -302,7 +198,8 @@ class HeatExchangerController(BasicProsumerController):
             mdot_1_kg_per_s = q_exchanged_w / (self.primary_fluid.get_heat_capacity(t_mean_1_c) * (t_1_in_c - t_1_out_c))
         else:
             t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
-                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk)
+                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
+                                                      heat_consumer=False)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
         # if mdot_1_kg_per_s < 1e-6:
@@ -312,15 +209,18 @@ class HeatExchangerController(BasicProsumerController):
 
     def calculate_heat_exchanger_reverse(self, prosumer, t_1_in_c, t_1_out_c, mdot_1_kg_per_s, t_2_in_c):
         """
-        Air Cooled Heat Exchanger calculation method based on LMTD method from nominal conditions
+        Heat Exchanger calculation method based on LMTD method from nominal conditions.
+        Reverse calculation that limit the primary side mass flow.
 
         :param prosumer: The prosumer object
         :param t_1_in_c: The input temperature of the fluid in °C
         :param t_1_out_c: The output temperature of the fluid in °C
         :param mdot_1_kg_per_s: Mass flow rate of the fluid in kg/s
-        :param t_2_in_c: The input temperature of the air in °C
-        :return: The output mass flow rate of the air in kg/s, the input and output temperature of the air in °C,
-            the output mass flow rate of the fluid in kg/s, the input and output temperature of the fluid in °C
+        :param t_2_in_c: The input temperature of the secondary side in °C
+        :return: The output mass flow rate of the secondary side in kg/s,
+            the input and output temperature of the secondary side in °C,
+            the output mass flow rate of the primary side in kg/s,
+            the input and output temperature of the primary side in °C
         """
         t_1_hot_nom_c = self._get_element_param(prosumer, 't_1_in_nom_c')
         t_1_cold_nom_c = self._get_element_param(prosumer, 't_1_out_nom_c')
@@ -330,19 +230,20 @@ class HeatExchangerController(BasicProsumerController):
 
         delta_t_fluid_c = t_1_in_c - t_1_out_c
         cp_fluid_j_per_kgk = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2)
-        cp_air_j_per_kgk = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + t_2_in_c)
+        cp_2_j_per_kgk = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + t_2_in_c)
         q_exchanged_w = cp_fluid_j_per_kgk * mdot_1_kg_per_s * delta_t_fluid_c
 
-        delta_t_air_n = t_2_hot_nom_c - t_2_cold_nom_c
-        cp_air_nom_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_hot_nom_c + t_2_cold_nom_c) / 2)
-        q_exchanged_nom_w = cp_air_nom_j_per_kg_k * mdot_2_nom_kg_per_s * delta_t_air_n
+        delta_t_2_n = t_2_hot_nom_c - t_2_cold_nom_c
+        cp_2_nom_j_per_kg_k = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_hot_nom_c + t_2_cold_nom_c) / 2)
+        q_exchanged_nom_w = cp_2_nom_j_per_kg_k * mdot_2_nom_kg_per_s * delta_t_2_n
         q_ratio = q_exchanged_w / q_exchanged_nom_w
 
         delta_t_hot_nom_c = t_1_hot_nom_c - t_2_hot_nom_c
         delta_t_cold_nom_c = t_1_cold_nom_c - t_2_cold_nom_c
 
-        t_2_out_c, mdot_2_kg_per_s = compute_temp_reverse(q_ratio, q_exchanged_w, t_2_in_c, t_1_in_c, t_1_out_c,
-                                                          delta_t_hot_nom_c, delta_t_cold_nom_c, cp_air_j_per_kgk)
+        t_2_out_c, mdot_2_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_2_in_c, t_1_in_c, t_1_out_c,
+                                                  delta_t_hot_nom_c, delta_t_cold_nom_c, cp_2_j_per_kgk,
+                                                  heat_consumer=True)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
         if mdot_2_kg_per_s < 1e-6:
@@ -352,13 +253,39 @@ class HeatExchangerController(BasicProsumerController):
 
         return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
 
+    def _save_state(self):
+        """Backup states before Run"""
+        self._backup_state = {
+            "t_previous_1_out_c": self.t_previous_1_out_c,
+            "t_previous_1_in_c": self.t_previous_1_in_c,
+            "mdot_previous_1_kg_per_s": self.mdot_previous_1_kg_per_s,
+        }
+
+    def _restore_state(self):
+        """Restore states before Rerun"""
+        if hasattr(self, "_backup_state"):
+            self.t_previous_1_out_c = self._backup_state["t_previous_1_out_c"]
+            self.t_previous_1_in_c = self._backup_state["t_previous_1_in_c"]
+            self.mdot_previous_1_kg_per_s = self._backup_state["mdot_previous_1_kg_per_s"]
+
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+        if not prosumer.rerun:
+            self._save_state()
+        else:
+            self._restore_state()
+
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):  # FixMe: use gettattr element
+            self.applied = True
+            return
+
         super().control_step(prosumer)
+
         if not self._are_initiators_converged(prosumer):
             # If some of the initiators are not converged, do not run the control step
             self._unapply_initiators(prosumer)
@@ -386,7 +313,13 @@ class HeatExchangerController(BasicProsumerController):
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
         else:
-            # FixMe: What to do in these cases ?
+            # FixMe: case where t_out_2_required_c == t_in_2_required_c
+            t_out_2_required_c_init = t_out_2_required_c
+            if t_1_in_c < t_out_2_required_c:
+                t_out_2_required_c = t_1_in_c - min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
+            if t_out_2_required_c < t_in_2_required_c:
+                t_in_2_required_c += t_out_2_required_c - t_out_2_required_c_init
+
             assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
             assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
@@ -411,6 +344,7 @@ class HeatExchangerController(BasicProsumerController):
                 #     mdot_1_kg_per_s = m_1_kg_per_s_in
 
                 if not np.isnan(self._mdot_1_provided_kg_per_s):
+                    assert self._mdot_1_provided_kg_per_s >= 0, f"Heat Exchanger {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
                     # If the primary is fed with a fixed mass flow (not free air)
                     if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is higher than the one required by the Heat Exchanger,
@@ -430,9 +364,11 @@ class HeatExchangerController(BasicProsumerController):
                                                                                                        t_1_out_c,
                                                                                                        self._mdot_1_provided_kg_per_s,
                                                                                                        t_2_in_c)
+                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01,\
+                            (f"Heat Exchanger {self.name} mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s"
+                             f" ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s}) for for timestep"
+                             f" {self.time} in prosumer {prosumer.name}")
 
-                        # ToDo: Check that mdot_1_kg_per_s==self._mdot_1_provided_kg_per_s
-                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01
                     elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is lower than the one required by the Heat Exchanger,
                         # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
@@ -442,7 +378,9 @@ class HeatExchangerController(BasicProsumerController):
                         t_1_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_1_out_c * mdot_1_kg_per_s) / self._mdot_1_provided_kg_per_s
                         mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
 
-                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s, mdot_tab_required_kg_per_s)
+                result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
+                                                                       mdot_2_kg_per_s,
+                                                                       mdot_tab_required_kg_per_s)
 
                 rerun = False
                 if len(self._get_mapped_responders(prosumer)) > 1 and mdot_2_kg_per_s < mdot_2_required_kg_per_s:
@@ -467,9 +405,26 @@ class HeatExchangerController(BasicProsumerController):
             for i in range(len(result_mdot_tab_kg_per_s)):
                 result_mdot_tab_kg_per_s[i] = result_mdot_tab_kg_per_s[i] + (mdot_2_kg_per_s - mdot_2_required_kg_per_s) / len(result_mdot_tab_kg_per_s)
 
-            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3
+            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3, \
+                (f"Heat Exchanger {self.name} mdot_2_kg_per_s != sum(result_mdot_tab_kg_per_s) "
+                 f"({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)}) for"
+                 f" timestep {self.time} in prosumer {prosumer.name}")
 
-        result = np.array([[mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]])
+        cp_1_kj_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2) / 1000
+        q_exchanged_kw = mdot_1_kg_per_s * cp_1_kj_per_kg_k * (t_1_in_c - t_1_out_c)
+        result = np.array(
+            [[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]]
+        )
+
+        self.last_result = {
+            "q_exchanged_kw": q_exchanged_kw,
+            "mdot_1_kg_per_s": mdot_1_kg_per_s,
+            "t_1_in_c": t_1_in_c,
+            "t_1_out_c": t_1_out_c,
+            "mdot_2_kg_per_s": mdot_2_kg_per_s,
+            "t_2_in_c": t_2_in_c,
+            "t_2_out_c": t_2_out_c,
+        }
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:

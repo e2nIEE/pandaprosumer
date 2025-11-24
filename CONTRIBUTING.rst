@@ -12,7 +12,7 @@ Setup your git repository
 If you want to contribute for the first time, you can set up your environment like this:
 
 #. If you have not done it yet: install git and create a github account
-#. Create a fork of the official pandapipes repository by clicking on "Fork" on the official pandapipes repository (see https://help.github.com/articles/fork-a-repo/)  
+#. Create a fork of the official pandapipes repository by clicking on "Fork" on the official pandapipes repository (see https://help.github.com/articles/fork-a-repo/)
 #. Clone the forked repository to your local machine: ::
 
     git clone https://github.com/YOUR-USERNAME/pandaprosumer.git
@@ -32,11 +32,11 @@ If you want to contribute for the first time, you can set up your environment li
     [branch "develop"]
         remote = origin
         merge = refs/heads/develop
-        
+
 The develop branch is now configured to automatically track the official pandapipes develop branch. So if you are on the develop branch and use: ::
 
     git pull
-    
+
 your local repository will be updated with the newest changes in the official pandaprosumer repository.
 
 Since you cannot push directly to the official pandaprosumer repository, if you are on develop and do: ::
@@ -74,7 +74,7 @@ Contribute from your develop branch
 
     git add --all
     git commit -m"commit message"
-   
+
    If there is an open issue that the commit belongs to, reference the issue in the commit message, for example for issue 3: ::
 
     git commit -m"commit message #3"
@@ -82,7 +82,7 @@ Contribute from your develop branch
 #. Push your changes to your fork: ::
 
     git push
-    
+
 #. Put in a Pull request to the main repository: https://help.github.com/articles/creating-a-pull-request-from-a-fork/
 
 #. For each Pull request, some checks will start automatically. It is required that the travis-ci
@@ -93,7 +93,7 @@ Contribute from your develop branch
     git add --all
     git commit -m"I have updated the pull request after discussions #3"
     git push
-    
+
    The pull request will be automatically updated.
 
 Contribute from a feature branch
@@ -110,24 +110,24 @@ Contribute from a feature branch
 #. Create a new feature branch: ::
 
     git checkout -b my_branch
-    
+
 #. Make changes in the code
 
 #. Add and commit your change: ::
 
     git add --all
     git commit -m"commit message"
-   
+
    If there is an open issue that the commit belongs to, reference the issue in the commit message, for example for issue 3: ::
 
     git commit -m"commit message #3"
-    
+
 #. Push your changes to your fork: ::
 
     git push -u pp_fork my_branch
-    
-   this pushes the new branch to your fork and also sets up the remote tracking. 
-   
+
+   this pushes the new branch to your fork and also sets up the remote tracking.
+
 #. Put in a Pull request to the official repository (see https://help.github.com/articles/creating-a-pull-request-from-a-fork/).
 
 #. For each Pull request, some checks will start automatically. It is required that the travis-ci

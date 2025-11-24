@@ -39,11 +39,11 @@ class Test1HeatExchanger1HeatDemandMapping:
                      'mdot_2_nom_kg_per_s': 2}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              period, data_source, 0)
+                                                              data_source, period, 0, 0)
 
-        hx_controller_index = create_controlled_heat_exchanger(prosumer, level=1, order=0, period=period,  **hx_params)
-        hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1, t_in_set_c=76.85, t_out_set_c=30,
-                                                            period=period)
+        hx_controller_index = create_controlled_heat_exchanger(prosumer, level=1, order=0, period=period, **hx_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1,
+                                                            t_in_set_c=76.85, t_out_set_c=30, period=period)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -67,6 +67,7 @@ class Test1HeatExchanger1HeatDemandMapping:
         run_timeseries(prosumer, period, True)
 
         hx_data = {
+            'q_exchanged_kw': [49.840478, 198.94348, 772.4698, 0.],
             'mdot_1_kg_per_s': [.245960, .774713, 36.718481, 0.],
             't_1_in_c': [80., 95., 95., 95.],
             't_1_out_c': [31.56451, 33.67385, 90., 95.],

@@ -1,27 +1,89 @@
-from pandaprosumer.controller.models.heat_pump import HeatPumpController
 from pandaprosumer.create import *
-from pandaprosumer.controller.models import *
-from pandaprosumer.controller.data_model import *
 from pandaprosumer.controller import *
-import numpy as np
+from pandaprosumer.supervisor import *
+from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
-def create_controlled_const_profile(prosumer, input_columns, result_columns, period, data_source, level=0, order=0,
+def create_controlled_network_coupling(net,
+                                       element_index,
+                                       element_name='heat_consumer',
+                                       input_columns=[],
+                                       result_columns=[],
+                                       temp_fluid_map_input_col=[],
+                                       mdot_fluid_map_input_col=[],
+                                       temp_fluid_map_output_idx=None,
+                                       mdot_fluid_map_output_idx=None,
+                                       level=0,
+                                       order=0,
+                                       name=None):
+    if isinstance(element_index, (np.integer, int)):
+        element_index = [int(element_index)]
+    elif isinstance(element_index, np.ndarray):
+        element_index = [int(i) for i in element_index.tolist()]
+    elif isinstance(element_index, list):
+        element_index = [int(i) for i in element_index]
+
+    networkcoupling = NetworkCouplingData(element_index=element_index,
+                                          element_name=element_name,
+                                          input_columns=input_columns,
+                                          result_columns=result_columns)
+
+    n = NetworkCouplingControl(net,
+                               networkcoupling,
+                               temp_fluid_map_input_col=temp_fluid_map_input_col,
+                               mdot_fluid_map_input_col=mdot_fluid_map_input_col,
+                               temp_fluid_map_output_idx=temp_fluid_map_output_idx,
+                               mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
+                               level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_const_profile(prosumer,
+                                    input_columns,
+                                    result_columns,
+                                    data_source,
+                                    period=0,
+                                    level=0,
+                                    order=0,
+                                    name=None,
+                                    in_service=True,
                                     temp_fluid_map_idx=None,
                                     mdot_fluid_map_idx=None):
     const_controller_data = ConstProfileControllerData(
         input_columns=input_columns,
         result_columns=result_columns,
-        period_index=period,
+        period_index=period
     )
     const_profile = ConstProfileController(prosumer,
                                            const_object=const_controller_data,
                                            df_data=data_source,
-                                           order=order,
+                                           name=name,
+                                           in_service=in_service,
                                            level=level,
+                                           order=order,
                                            temp_fluid_map_idx=temp_fluid_map_idx,
                                            mdot_fluid_map_idx=mdot_fluid_map_idx)
     return const_profile.index
+
+
+def create_controlled_supervisor(prosumer,
+                                 input_columns,
+                                 period=0,
+                                 level=0,
+                                 order=0):
+    spdata = SupervisorData(
+        input_columns=input_columns,
+        result_columns=input_columns
+    )
+    supervisor = Supervisor(prosumer,
+                            supervisor_object=spdata,
+                            period_index=period,
+                            level=level,
+                            order=order)
+
+    return supervisor.index
 
 
 def create_controlled_heat_pump(prosumer,
@@ -103,7 +165,7 @@ def create_controlled_heat_pump(prosumer,
                                    heat_pump_controller_data,
                                    order=order,
                                    level=level,
-                                   name='heat_pump_controller')
+                                   name=name)
     return heat_pump.index
 
 
@@ -164,7 +226,7 @@ def create_controlled_heat_demand(prosumer,
                                                   heat_demand_controller_data,
                                                   order=order,
                                                   level=level,
-                                                  name='heat_demand_controller')
+                                                  name=name)
     return heat_demand_controller.index
 
 
@@ -289,7 +351,7 @@ def create_controlled_stratified_heat_storage(prosumer,
                                                                          init_layer_temps_c=init_layer_temps_c,
                                                                          plot=plot,
                                                                          bypass=bypass,
-                                                                         name='stratified_heat_storage_controller')
+                                                                         name=name)
     return stratified_heat_storage_controller.index
 
 
@@ -368,14 +430,13 @@ def create_controlled_heat_exchanger(prosumer,
     heat_exchanger_controller_data = HeatExchangerControllerData(
         element_name='heat_exchanger',
         element_index=[heat_exchanger_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     heat_exchanger_controller = HeatExchangerController(prosumer,
                                                         heat_exchanger_controller_data,
                                                         order=order,
                                                         level=level,
-                                                        name='heat_exchanger_controller')
+                                                        name=name)
     return heat_exchanger_controller.index
 
 
@@ -427,14 +488,13 @@ def create_controlled_electric_boiler(prosumer,
     electric_boiler_controller_data = ElectricBoilerControllerData(
         element_name='electric_boiler',
         element_index=[electric_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     electric_boiler_controller = ElectricBoilerController(prosumer,
                                                           electric_boiler_controller_data,
                                                           order=order,
                                                           level=level,
-                                                          name='electric_boiler_controller')
+                                                          name=name)
     return electric_boiler_controller.index
 
 
@@ -490,14 +550,13 @@ def create_controlled_gas_boiler(prosumer,
     gas_boiler_controller_data = GasBoilerControllerData(
         element_name='gas_boiler',
         element_index=[gas_boiler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     gas_boiler_controller = GasBoilerController(prosumer,
                                                 gas_boiler_controller_data,
                                                 order=order,
                                                 level=level,
-                                                name='gas_boiler_controller')
+                                                name=name)
     return gas_boiler_controller.index
 
 
@@ -579,18 +638,17 @@ def create_controlled_dry_cooler(prosumer,
     dry_cooler_controller_data = DryCoolerControllerData(
         element_name='dry_cooler',
         element_index=[dry_cooler_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     dry_cooler_controller = DryCoolerController(prosumer,
                                                 dry_cooler_controller_data,
                                                 order=order,
                                                 level=level,
-                                                name='dry_cooler_controller')
+                                                name=name)
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
                Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
 
@@ -600,6 +658,8 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
                **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
 
            OPTIONAL:
+                **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
+
                **name** (string, default None) - The name of the BHP instance
 
                **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -619,7 +679,7 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
            EXAMPLE:
                create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
            """
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
+    bhp_index = create_booster_heat_pump(prosumer, hp_type, q_max_kw, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
         period_index=period
@@ -628,25 +688,10 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, index=None
                                    bhp_controller_data,
                                    order=order,
                                    level=level,
-                                   name='heat_pump_controller')
+                                   name=name)
 
     return bhp.index
 
-def create_controlled_booster_heat_pump_sdewes(prosumer, hp_type, name=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, in_service, name, index, **kwargs)
-    from pandaprosumer.controller.data_model.booster_heat_pump_sdewes import BoosterHeatPumpControllerData
-    bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
-        element_index=[bhp_index],
-        period_index=period
-    )
-    from pandaprosumer.controller.models.booster_heat_pump_sdewes import BoosterHeatPumpController
-    bhp = BoosterHeatPumpController(prosumer,
-                                   bhp_controller_data,
-                                   order=order,
-                                   level=level,
-                                   name='heat_pump_controller')
-
-    return bhp.index
 
 def create_controlled_ice_chp(prosumer,
                               size,
@@ -701,11 +746,11 @@ def create_controlled_ice_chp(prosumer,
                                ice_chp_controller_data,
                                order=order,
                                level=level,
-                               name='ice_chp_controller')
+                               name=name)
     return ice_chp.index
 
 
-def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_cond=5.0,
+def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_cond=5.0,
                               pp_evap=5.0, plf_cc=0.9,
                               w_evap_pump=200.0, w_cond_pump=200.0,
                               eng_eff=1.0, n_ref="R410A",
@@ -756,15 +801,14 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0,  t_sc=2.0, pp_c
     chiller_controller_data = ChillerControllerData(
         element_name='sn_chiller',
         element_index=[chiller_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
 
     chiller_controller = ChillerController(prosumer,
                                            chiller_controller_data,
                                            order=order,
                                            level=level,
-                                           name='sn_chiller')
+                                           name=name)
     return chiller_controller.index
 
 
@@ -778,7 +822,6 @@ def create_controlled_heat_storage(prosumer,
                                    init_soc=0.,
                                    period=0,
                                    **kwargs):
-
     """
     Creates a heat storage element in the prosumer and a heat storage controller.
 
@@ -819,8 +862,7 @@ def create_controlled_heat_storage(prosumer,
     heat_storage_controller_data = HeatStorageControllerData(
         element_name='heat_storage',
         element_index=[heat_storage_index],
-        period_index=period,
-        **kwargs
+        period_index=period
     )
     hs = HeatStorageController(
         prosumer,
@@ -828,6 +870,395 @@ def create_controlled_heat_storage(prosumer,
         order=order,
         level=level,
         init_soc=init_soc,
-        name='heat_storage_controller'
+        name=name
     )
     return hs.index
+
+
+def create_controlled_solar_thermal(prosumer,
+                                    collector_area=2.5,
+                                    optical_efficiency=0.77,
+                                    thermal_losses=3.0,
+                                    second_thermal_losses=0.02,
+                                    incidence_angle=0.9,
+                                    flow_rate=72,
+                                    test_specific_heat=4.18,
+                                    use_specific_heat=4.18,
+                                    number_collectors=4.0,
+                                    series=1.0,
+                                    piping_length=0.0,
+                                    piping_diameter=0.028,
+                                    piping_thickness=0.03,
+                                    piping_conductivity=0.04,
+                                    collector_slope=40.0,
+                                    collector_azimut=0.0,
+                                    name=None,
+                                    index=None,
+                                    in_service=True,
+                                    level=0,
+                                    order=0,
+                                    period=0,
+                                    **kwargs):
+
+    solar_thermal_index = create_solar_thermal(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    solar_controller_data = SolarThermalControllerData(
+        element_name='solar_thermal',
+        element_index=[solar_thermal_index],
+        period_index=period,
+        **kwargs
+    )
+
+    st_controller = SolarThermalController(
+        prosumer,
+        solar_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return st_controller.index
+
+
+def create_controlled_converter(prosumer, cp_water=4180,
+                              name=None,
+                              index=None,
+                              in_service=True,
+                              period=0,
+                              level=0,
+                              order=0,
+                              **kwargs):
+    """
+    Creates a converter element in prosumer["converter"] and a converter controller.
+
+    INPUT:
+        **prosumer** - The prosumer within which this converter should be created.
+
+    OPTIONAL:
+        **cp_water** (float) - specific heat capacity, units J/kgK, by default 4180.
+
+        **name** (string, default None) - The name for this chiller.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **level** (int, default 0) - The level of the controller.
+
+        **order** (int, default 0) - The order of the controller.
+
+        **period** (int, default 0) - Index of the period, default is 0.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created converter.
+
+    EXAMPLE:
+        create_controlled_converter(prosumer, "chiller_1")
+    """
+
+    converter_index = create_converter(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs)
+
+    converter_controller_data = ConverterControllerData(
+        element_name='converter',
+        element_index=[converter_index],
+        period_index=period,
+        **kwargs
+    )
+
+    converter_controller = GenericToFluidMixController(prosumer,
+                                                       converter_controller_data,
+                                                       order=order,
+                                                       level=level,
+                                                       name=name,
+                                                       index=index,
+                                                       in_service=in_service,
+                                                      )
+    return converter_controller.index
+  
+  
+def create_controlled_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    peakpower=1,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    name=None,
+    index=None,
+    in_service=True,
+    level=0,
+    order=0,
+    period=0,
+    **kwargs
+):
+    """
+    Creates a controlled Senergy Nets PV production component, adds it to the
+    prosumer model, and links it to a PV production controller.
+
+    Parameters
+    ----------
+    prosumer : object
+        The prosumer container to which the PV production unit will be added.
+    latitude : float
+        Latitude of the PV installation.
+    longitude : float
+        Longitude of the PV installation.
+    raddatabase : str, optional
+        Radiation database source, by default 'PVGIS-ERA5'.
+    surface_tilt : float, optional
+        Tilt angle of the PV surface (degrees), by default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface (degrees), by default 0.
+    loss : float, optional
+        System losses (%), by default 0.
+    usehorizon : bool, optional
+        Whether to use horizon data, by default True.
+    userhorizon : float or None, optional
+        User-defined horizon, by default None.
+    peakpower : float, optional
+        Installed PV peak power (kWp), by default 1.
+    pvtechchoice : str, optional
+        PV technology type, by default 'crystSi'.
+    mountingplace : str, optional
+        Mounting type, by default 'free'.
+    trackingtype : int, optional
+        PV tracking type, by default 0.
+    optimal_surface_tilt : bool, optional
+        Whether to use optimal surface tilt, by default False.
+    optimalangles : bool, optional
+        Whether to optimize surface angles, by default False.
+    outputformat : str, optional
+        API output format, by default 'json'.
+    url : str, optional
+        PVGIS API endpoint, by default given URL.
+    map_variables : bool, optional
+        Map output variables to internal names, by default True.
+    timeout : int, optional
+        API timeout (s), by default 30.
+    in_service : bool, optional
+        Whether the unit is active, by default True.
+    name : str, optional
+        Optional name of the element, by default None.
+    level : int, optional
+        Hierarchy level for controller, by default 0.
+    order : int, optional
+        Execution order of controller, by default 0.
+    period : int, optional
+        Period index for time-based operation, by default 0.
+
+    Returns
+    -------
+    int
+        Controller index of the created PV production controller.
+    """
+
+    pv_index = create_senergy_nets_pv_production(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    pv_controller_data = SenergyNetsPvProductionComponentData(
+        element_name='sn_pv_production',
+        element_index=[pv_index],
+        period_index=period,
+        **kwargs
+    )
+
+    pv_controller = SenergyNetsPvProductionController(
+        prosumer,
+        pv_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return pv_controller.index
+  
+
+def create_controlled_senergy_nets_pv_production(
+    prosumer,
+    latitude,
+    longitude,
+    raddatabase="PVGIS-ERA5",
+    surface_tilt=40,
+    surface_azimuth=0,
+    loss=0,
+    usehorizon=True,
+    userhorizon=None,
+    peakpower=1,
+    pvtechchoice="crystSi",
+    mountingplace="free",
+    trackingtype=0,
+    optimal_surface_tilt=False,
+    optimalangles=False,
+    outputformat="json",
+    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
+    map_variables=True,
+    timeout=30,
+    name=None,
+    index=None,
+    in_service=True,
+    level=0,
+    order=0,
+    period=0,
+    **kwargs
+):
+    """
+    Creates a controlled Senergy Nets PV production component, adds it to the
+    prosumer model, and links it to a PV production controller.
+
+    Parameters
+    ----------
+    prosumer : object
+        The prosumer container to which the PV production unit will be added.
+    latitude : float
+        Latitude of the PV installation.
+    longitude : float
+        Longitude of the PV installation.
+    raddatabase : str, optional
+        Radiation database source, by default 'PVGIS-ERA5'.
+    surface_tilt : float, optional
+        Tilt angle of the PV surface (degrees), by default 40.
+    surface_azimuth : float, optional
+        Azimuth of the PV surface (degrees), by default 0.
+    loss : float, optional
+        System losses (%), by default 0.
+    usehorizon : bool, optional
+        Whether to use horizon data, by default True.
+    userhorizon : float or None, optional
+        User-defined horizon, by default None.
+    peakpower : float, optional
+        Installed PV peak power (kWp), by default 1.
+    pvtechchoice : str, optional
+        PV technology type, by default 'crystSi'.
+    mountingplace : str, optional
+        Mounting type, by default 'free'.
+    trackingtype : int, optional
+        PV tracking type, by default 0.
+    optimal_surface_tilt : bool, optional
+        Whether to use optimal surface tilt, by default False.
+    optimalangles : bool, optional
+        Whether to optimize surface angles, by default False.
+    outputformat : str, optional
+        API output format, by default 'json'.
+    url : str, optional
+        PVGIS API endpoint, by default given URL.
+    map_variables : bool, optional
+        Map output variables to internal names, by default True.
+    timeout : int, optional
+        API timeout (s), by default 30.
+    in_service : bool, optional
+        Whether the unit is active, by default True.
+    name : str, optional
+        Optional name of the element, by default None.
+    level : int, optional
+        Hierarchy level for controller, by default 0.
+    order : int, optional
+        Execution order of controller, by default 0.
+    period : int, optional
+        Period index for time-based operation, by default 0.
+
+    Returns
+    -------
+    int
+        Controller index of the created PV production controller.
+    """
+
+    pv_index = create_senergy_nets_pv_production(
+        prosumer,
+        **{k: v for k, v in locals().items()
+           if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+
+    pv_controller_data = SenergyNetsPvProductionComponentData(
+        element_name='sn_pv_production',
+        element_index=[pv_index],
+        period_index=period,
+        **kwargs
+    )
+
+    pv_controller = SenergyNetsPvProductionController(
+        prosumer,
+        pv_controller_data,
+        order=order,
+        level=level,
+        name=name
+    )
+
+    return pv_controller.index
+
+def create_controlled_mdu_chp(prosumer,
+                               size,
+                               name=None,
+                               index=None,
+                               in_service=True,
+                               level=0,
+                               order=0,
+                               period=0,
+                               **kwargs):
+    """
+    Creates an MDU CHP element in prosumer["mdu_chp"] and an MDU CHP controller
+
+    INPUT:
+        **prosumer** - The prosumer within which this MDU CHP should be created
+
+        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
+
+    OPTIONAL:
+        **name** (string, default None) - The name of the MDU CHP instance
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+        **level** (int, default 0) - The level of the controller
+
+        **order** (int, default 0) - The order of the controller
+
+        **period** (int, default 0) - Index of the period, default is 0
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created MDU CHP controller
+
+    EXAMPLE:
+        create_controlled_mdu_chp(prosumer, 100, name="example_mdu_chp")
+    """
+    mdu_chp_index = create_mdu_chp(prosumer, size, in_service, name, index, **kwargs)
+    mdu_chp_controller_data = MduChpControllerData(
+        element_name='mdu_chp',
+        element_index=[mdu_chp_index],
+        period_index=period
+    )
+    mdu_chp = MduChpController(prosumer,
+                               mdu_chp_controller_data,
+                               order=order,
+                               level=level,
+                               in_service=in_service,
+                               index=None,
+                               name=name)
+    return mdu_chp.index

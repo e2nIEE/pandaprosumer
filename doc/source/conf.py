@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath('../../'))
 project = 'Pandaprosumer'
 copyright = '2025, Uni Kassel, European Institute for Energy Research'
 author = 'Uni Kassel, European Institute for Energy Research'
-release = '0.1'
+release = '0.3'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

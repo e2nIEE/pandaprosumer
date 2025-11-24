@@ -35,6 +35,7 @@ class TestChpBhpStorageDemandMapping:
         time_resolution = 15 * 60
 
         demand_data= pd.DataFrame({'cycle': [1, 1, 1, 1],
+                      't_amb_k': [278, 295, 295, 400],
                       't_source_k': [278, 295, 295, 400],
                       'demand': [100, 100, 500, 500],
                       'mode': [1, 1, 1, 1],
@@ -54,8 +55,8 @@ class TestChpBhpStorageDemandMapping:
         create_heat_demand(prosumer, scaling=1.0, name='heat_demand_controller')
 
         const_controller_data = ConstProfileControllerData(
-            input_columns=['cycle', 't_source_k', 'demand', 'mode', 't_intake_k'],
-            result_columns=["cycle_cp", 't_source_cp', "demand_cp", 'mode_cp', 't_intake_cp'],
+            input_columns=['cycle', 't_amb_k', 't_source_k', 'demand', 'mode', 't_intake_k'],
+            result_columns=["cycle_cp", 't_amb_cp','t_source_cp', "demand_cp", 'mode_cp', 't_intake_cp'],
             period_index=period
         )
         ice_chp_controller_data = IceChpControllerData(
@@ -128,6 +129,14 @@ class TestChpBhpStorageDemandMapping:
             initiator_column="t_source_cp",
             responder_id=2,
             responder_column="t_source_k",
+            order=0
+        )
+        GenericMapping(
+            prosumer,
+            initiator_id=0,
+            initiator_column="t_amb_cp",
+            responder_id=2,
+            responder_column="t_amb_k",
             order=0
         )
         GenericMapping(
@@ -233,4 +242,3 @@ class TestChpBhpStorageDemandMapping:
         soc = prosumer.time_series.loc[2].data_source.df.soc
 
         assert ((1.0 >= soc) & (soc >= 0.0)).all()
-

@@ -6,6 +6,7 @@ from pandaprosumer.mapping import GenericMapping
 
 from pandaprosumer import *
 
+
 class Test2HeatPumps1HeatDemandMapping:
     """
     In this example, a single ConstProsumer is mapped to 2 Heat Pumps and which are mapped to the same Heat Demand
@@ -39,7 +40,7 @@ class Test2HeatPumps1HeatDemandMapping:
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
-                                                              period, data_source, 0, 0)
+                                                              data_source, period, 0, 0)
         hp_controller_index_1 = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
         hp_controller_index_2 = create_controlled_heat_pump(prosumer, period=period, level=1, order=1, **hp_params)
         hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
@@ -50,7 +51,7 @@ class Test2HeatPumps1HeatDemandMapping:
                        responder_id=hp_controller_index_1,
                        responder_column="t_evap_in_c",
                        order=0)
-        
+
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
                        initiator_column="t_evap_in_c",
@@ -139,4 +140,4 @@ class Test2HeatPumps1HeatDemandMapping:
         mdot_hp_kg_per_s = hp1_mdot_cond_kg_per_s + hp2_mdot_cond_kg_per_s
         assert_series_equal(mdot_hp_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False)
         t_mix_c = (hp1_mdot_cond_kg_per_s * hp1_t_cond_out_c + hp2_mdot_cond_kg_per_s * hp2_t_out_c) / mdot_hp_kg_per_s
-        assert t_mix_c.values == pytest.approx([76.85]*len(t_mix_c))
+        assert t_mix_c.values == pytest.approx([76.85] * len(t_mix_c))

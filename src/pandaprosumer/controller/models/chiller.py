@@ -6,10 +6,9 @@ from pandaprosumer.controller.base import BasicProsumerController
 class ChillerController(BasicProsumerController):
     """Definition of the Class for the Controller"""
 
-    @classmethod
-    def name(cls):
+    def name_class(self):
         """Name of the chiller"""
-        return "sn_chiller"
+        return "sn_chiller_controller"
 
     def __init__(self, prosumer, sn_chiller_object, order, level, data_source=None, in_service=True, index=None,
                  name=None, **kwargs):
@@ -89,6 +88,10 @@ class ChillerController(BasicProsumerController):
 
 
         """
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[
+            self.obj.element_index[0]].in_service):
+            self.applied = True
+            return
         super().control_step(prosumer)
         # @tecnalia: this is where you have to put the calculation of the time series dependent values in
         # try:  # why try except here? --> because there was the
@@ -118,6 +121,18 @@ class ChillerController(BasicProsumerController):
                 np.array([0.0]),
             )
 
+            self.last_result = {
+                "q_evap_kw": np.array([0.0]),
+                "unmet_load_kw": np.array([0.0]),
+                "w_in_tot_kw": np.array([0.0]),
+                "eer": np.array([0.0]),
+                "plr": np.array([0.0]),
+                "t_out_ev_in_c": np.array([t_out_ev_in_c]).flatten(),
+                "t_out_cond_in_c": np.array([t_out_cond_in_c]).flatten(),
+                "m_evap_kg_per_s": np.array([0.0]),
+                "m_cond_kg_per_s": np.array([0.0]),
+                "q_cond_kw": np.array([0.0]),
+            }
 
             for idx, series in enumerate(result):
                 print(f"Shape of result[{idx}]: {series.shape}")
@@ -245,6 +260,19 @@ class ChillerController(BasicProsumerController):
                 m_cond_kg_per_s,
                 q_cond_kw,
             )
+
+            self.last_result = {
+                "q_evap_kw": q_evap_kw,
+                "unmet_load_kw": unmet_load_kw,
+                "w_in_tot_kw": w_in_tot_kw,
+                "eer": eer,
+                "plr": plr,
+                "t_out_ev_in_c": t_out_ev_in_c,
+                "t_out_cond_in_c": t_out_cond_in_c,
+                "m_evap_kg_per_s": m_evap_kg_per_s,
+                "m_cond_kg_per_s": m_cond_kg_per_s,
+                "q_cond_kw": q_cond_kw,
+            }
 
             array = np.array(result).reshape(1, -1)  # Shape (1, 10)
             self.finalize(prosumer, array)  # Transpose to match expected output format
