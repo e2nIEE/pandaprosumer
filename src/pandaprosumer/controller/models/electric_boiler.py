@@ -18,7 +18,7 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
 
     # Check parameters
-    if max_p_kw is not None and not np.isnan(max_p_kw) and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
+    if not np.isnan(max_p_kw) and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
         # If the consumed electrical power is too high, recalculate the output temperature
         p_el_consumed_kw = max_p_kw
         q_fluid_kw = max_p_kw * (efficiency_percent / 100)
@@ -86,8 +86,7 @@ class ElectricBoilerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service and max_p_kw > 0):
+        if not (self.in_service and getattr(prosumer, self.obj.element_name).iloc[self.obj.element_index[0]].in_service):
             self.applied = True
             return
 
