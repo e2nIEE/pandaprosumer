@@ -53,7 +53,7 @@ class GasBoilerController(BasicProsumerController):
 
         # Check parameters
         max_q_kw = self._get_element_param(prosumer, 'max_q_kw')
-        if max_q_kw and q_fluid_kw > max_q_kw + 1e-3:
+        if max_q_kw is not None and not np.isnan(max_q_kw) and q_fluid_kw > max_q_kw + 1e-3:
             # If the thermal power is too high, recalculate the output temperature
 
             mdot_gas_kg_per_s = max_q_kw / heating_value_kj_per_kg

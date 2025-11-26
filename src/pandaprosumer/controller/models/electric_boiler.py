@@ -18,7 +18,7 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
 
     # Check parameters
-    if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
+    if max_p_kw is not None and not np.isnan(max_p_kw) and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
         # If the consumed electrical power is too high, recalculate the output temperature
         p_el_consumed_kw = max_p_kw
         q_fluid_kw = max_p_kw * (efficiency_percent / 100)
