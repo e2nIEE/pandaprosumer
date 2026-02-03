@@ -984,7 +984,7 @@ def create_controlled_converter(prosumer, cp_water=4180,
     return converter_controller.index
   
 
-def create_controlled_senergy_nets_pv_production(
+def create_controlled_pv_production(
     prosumer,
     latitude,
     longitude,
@@ -1013,7 +1013,7 @@ def create_controlled_senergy_nets_pv_production(
     **kwargs
 ):
     """
-    Creates a controlled Senergy Nets PV production component, adds it to the
+    Creates a controlled PV Production component, adds it to the
     prosumer model, and links it to a PV production controller.
 
     Parameters
@@ -1073,21 +1073,21 @@ def create_controlled_senergy_nets_pv_production(
         Controller index of the created PV production controller.
     """
 
-    pv_index = create_senergy_nets_pv_production(
+    pv_index = create_pv_production(
         prosumer,
         **{k: v for k, v in locals().items()
            if k not in {"prosumer", "period", "order", "level", "kwargs"}},
         **kwargs
     )
 
-    pv_controller_data = SenergyNetsPvProductionComponentData(
-        element_name='sn_pv_production',
+    pv_controller_data = PvProductionComponentData(
+        element_name='pv_production',
         element_index=[pv_index],
         period_index=period,
         **kwargs
     )
 
-    pv_controller = SenergyNetsPvProductionController(
+    pv_controller = PvProductionController(
         prosumer,
         pv_controller_data,
         order=order,

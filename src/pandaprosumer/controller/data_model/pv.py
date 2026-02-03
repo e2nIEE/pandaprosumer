@@ -9,12 +9,12 @@ from pandaprosumer.element.element_toolbox import enforce_types
 
 @enforce_types
 @dataclass
-class SenergyNetsPvProductionComponentData:
+class PvProductionComponentData:
     """Define format of the parameters of PV production in SenergyNets.
     """
     element_index: List[int]
     period_index: int = None
-    element_name: str = "sn_pv_production"
+    element_name: str = "pv_production"
 
 
     input_columns: List[str] = field(

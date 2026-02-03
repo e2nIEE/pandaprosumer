@@ -83,7 +83,7 @@ class TestPvHeatDemandIntegration:
         cp_index = create_controlled_const_profile(prosumer, input_params, result_params, data_source, period)
 
 
-        pv_index = create_controlled_senergy_nets_pv_production(prosumer, latitude=40.0, longitude=0.0, peakpower=5.0, loss=10.0, name="pv_rooftop_1", level=1, order=0, period=period)
+        pv_index = create_controlled_pv_production(prosumer, latitude=40.0, longitude=0.0, peakpower=5.0, loss=10.0, name="pv_rooftop_1", level=1, order=0, period=period)
 
         hd_index = create_controlled_heat_demand(
             prosumer,

@@ -943,7 +943,7 @@ def create_converter(prosumer,
     return int(index)
 
 
-def create_senergy_nets_pv_production(
+def create_pv_production(
     prosumer,
     latitude,
     longitude,
@@ -969,7 +969,7 @@ def create_senergy_nets_pv_production(
     **kwargs,
 ):
     """
-    Adds a new SenergyNets PV production element to the prosumer and defines its
+    Adds a new PV Production element to the prosumer and defines its
     PVGIS / pvlib input parameters.
 
     Parameters
@@ -1015,7 +1015,7 @@ def create_senergy_nets_pv_production(
     in_service : bool, optional
         Whether the element is in service, default True.
     index : int or None, optional
-        Zero-based index of the element in the sn_pv_production table. If None,
+        Zero-based index of the element in the pv_production table. If None,
         a new index is created.
     name : str or None, optional
         Name of the PV element. If None, a default name is generated.
@@ -1025,14 +1025,14 @@ def create_senergy_nets_pv_production(
     Returns
     -------
     int
-        Zero-based index position of the element in the `sn_pv_production` table.
+        Zero-based index position of the element in the `pv_production` table.
     """
 
-    add_new_element(prosumer, SenergyNetsPvProductionComponentData)
-    index = _get_index_with_check(prosumer, "sn_pv_production", index)
+    add_new_element(prosumer, PvProductionComponentData)
+    index = _get_index_with_check(prosumer, "pv_production", index)
 
     if name is None:
-        name = f"sn_pv_production_{index}"
+        name = f"pv_production_{index}"
 
     entries = dict(
         zip(
@@ -1083,5 +1083,5 @@ def create_senergy_nets_pv_production(
         )
     )
 
-    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
     return int(index)

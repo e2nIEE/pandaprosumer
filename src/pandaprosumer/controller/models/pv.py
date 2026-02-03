@@ -2,9 +2,9 @@ import numpy as np
 from pandaprosumer.controller.base import BasicProsumerController
 
 
-class SenergyNetsPvProductionController(BasicProsumerController):
+class PvProductionController(BasicProsumerController):
     """
-    Controller for SenergyNets PV production.
+    Controller for PV production.
 
     This controller represents a simple PV model that:
 
@@ -32,7 +32,7 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         """Name of the PV Production time series
 
         """
-        return "sn_pv_production"
+        return "pv_production"
 
     def __init__(
         self,
@@ -78,7 +78,7 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         self._idx_p_w = self._safe_input_index("p_w")
         self._idx_solar_elev = self._safe_input_index("solar_elevation_deg")
 
-        # Peak power [kW] from the element table (sn_pv_production).
+        # Peak power [kW] from the element table (pv_production).
         self._peakpower_kw = self._read_peakpower_from_element()
 
 #added new helper functions
@@ -108,7 +108,7 @@ class SenergyNetsPvProductionController(BasicProsumerController):
     def _read_peakpower_from_element(self):
         """
         Read the installed peak power (kW) from the associated
-        ``sn_pv_production`` element.
+        ``pv_production`` element.
 
         Returns
         -------

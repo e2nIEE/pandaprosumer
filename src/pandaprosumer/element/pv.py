@@ -9,10 +9,10 @@ from pandaprosumer.element.element_toolbox import enforce_types
 
 @enforce_types
 @dataclass
-class SenergyNetsPvProductionComponentData:
+class PvProductionComponentData:
     """Define format of the parameters of PV production in SenergyNets.
     """
-    name: str = "sn_pv_production"
+    name: str = "pv_production"
     input: List[tuple] = field(default_factory=lambda: [
 
         # Necessary properties

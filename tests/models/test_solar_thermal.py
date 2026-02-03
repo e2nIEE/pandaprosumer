@@ -189,13 +189,13 @@ class TestSolarThermal:
         solar_thermal_controller = pros.controller.iloc[st_idx].object
 
         solar_thermal_controller.inputs = np.array([[
-            50.0,  # beam_solar_radiation_w_m2 (sehr gering)
+            50.0,  # beam_solar_radiation_w_m2 (very low)
             20.0,  # diffuse_solar_radiation_w_m2
             5.0,  # ground_solar_radiation_w_m2
             30.0,  # radiation_incidence_angle_deg
-            10.0,  # ambient_temperature_C (kühler als inlet)
+            10.0,  # ambient_temperature_C (cooler as inlet)
             100.0,  # inlet_mass_flow_rate_kg_h
-            40.0  # inlet_temperature_C (deutlich höher als ambient)
+            40.0  # inlet_temperature_C (clearly higher than ambient)
         ]])
 
         solar_thermal_controller.time_step(pros, "2020-01-01 01:00:00")
