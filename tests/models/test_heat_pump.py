@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 
 from pandaprosumer import *
 
@@ -36,9 +37,9 @@ class TestHeatPump:
         assert hasattr(prosumer, "heat_pump")
         assert len(prosumer.heat_pump) == 1
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
-                            "max_p_comp_kw", "min_p_comp_kw", "max_t_cond_out_c", "max_cop",
-                            "cond_fluid", "evap_fluid", "in_service"]
-        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, 'water', 'water', True]
+                            "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
+                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "in_service"]
+        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 'water', 'water', True]
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -57,6 +58,8 @@ class TestHeatPump:
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 300,
                   'min_p_comp_kw': 10,
+                  'max_ramp_up_kw_per_s': 0.02,
+                  'max_ramp_down_kw_per_s': 0.03,
                   'max_t_cond_out_c': 80,
                   'max_cop': 5,
                   'evap_fluid': 'air'}
@@ -68,9 +71,9 @@ class TestHeatPump:
         assert prosumer.heat_pump.index[0] == hp_idx
 
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
-                            "max_p_comp_kw", "min_p_comp_kw", "max_t_cond_out_c", "max_cop",
-                            "cond_fluid", "evap_fluid", "in_service", "custom"]
-        expected_values = ['foo', 15., .5, 5., 10., 300, 10, 80, 5, 'water', 'air', False, 'test']
+                            "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", 
+                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "in_service", "custom"]
+        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', False, 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
 

@@ -36,7 +36,6 @@ class GasBoilerControllerData:
     element_index: List[int]
     element_name: str = 'gas_boiler'
     period_index: int = None
-    input_columns: List[str] = field(
-        default_factory=lambda: [])
-    result_columns: List[str] = field(
-        default_factory=lambda: ['q_kw', 'mdot_kg_per_s', 't_in_c', 't_out_c', 'mdot_gas_kg_per_s'])
+    input_columns: List[str] = field(default_factory=lambda: [])
+    result_columns: List[str] = field(default_factory=lambda: ['q_kw', 'mdot_kg_per_s', 't_in_c', 
+                                                               't_out_c', 'mdot_gas_kg_per_s'])

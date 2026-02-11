@@ -1,3 +1,5 @@
+import numpy as np
+
 from pandaprosumer.create import *
 from pandaprosumer.controller import *
 from pandaprosumer.supervisor import *
@@ -93,6 +95,8 @@ def create_controlled_heat_pump(prosumer,
                                 delta_t_hot_default_c=5,
                                 max_p_comp_kw=np.nan,
                                 min_p_comp_kw=np.nan,
+                                max_ramp_up_kw_per_s=np.nan,
+                                max_ramp_down_kw_per_s=np.nan,
                                 max_t_cond_out_c=np.nan,
                                 max_cop=np.nan,
                                 cond_fluid=None,
@@ -129,6 +133,10 @@ def create_controlled_heat_pump(prosumer,
             **max_p_comp_kw** (float, default None) - Power of the compressor [kW]
 
             **min_p_comp_kw** (float, default None) - Minimum working power of the compressor [kW]
+            
+            **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the compressor [kW/s]
+        
+            **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the compressor [kW/s]
 
             **max_cop** (float, default None) - Maximum COP
 
@@ -442,6 +450,8 @@ def create_controlled_heat_exchanger(prosumer,
 
 def create_controlled_electric_boiler(prosumer,
                                       max_p_kw,
+                                      max_ramp_up_kw_per_s=np.nan,
+                                      max_ramp_down_kw_per_s=np.nan,
                                       efficiency_percent=100,
                                       name=None,
                                       index=None,
@@ -459,6 +469,10 @@ def create_controlled_electric_boiler(prosumer,
             **max_p_kw** (float) - Maximal electrical power of the boiler [kW]
 
         OPTIONAL:
+            **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
+        
+            **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
+            
             **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
 
             **name** (string, default None) - The name for this electric boiler
@@ -500,6 +514,8 @@ def create_controlled_electric_boiler(prosumer,
 
 def create_controlled_gas_boiler(prosumer,
                                  max_q_kw,
+                                 max_ramp_up_kw_per_s=np.nan,
+                                 max_ramp_down_kw_per_s=np.nan,
                                  heating_value_kj_per_kg=50e3,
                                  efficiency_percent=100,
                                  name=None,
@@ -517,8 +533,11 @@ def create_controlled_gas_boiler(prosumer,
 
             **max_q_kw** (float) - Maximal heat power of the boiler [kW]
 
-
         OPTIONAL:
+            **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
+        
+            **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
+            
             **heating_value_kj_per_kg** (float, default 50e3) - Heating Value of the gas (amount of energy per kg of gas) [kJ/kg]
 
             **efficiency_percent** (float, default 100) - Boiler Efficiency [%]

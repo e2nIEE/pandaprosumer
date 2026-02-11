@@ -24,6 +24,8 @@ class ElectricBoilerElementData:
 
         # Instance properties
         ('max_p_kw', 'f8'),
+        ('max_ramp_up_kw_per_s', 'f8'),
+        ('max_ramp_down_kw_per_s', 'f8'),
         ('efficiency_percent', 'f8'),
 
         ('in_service', bool)

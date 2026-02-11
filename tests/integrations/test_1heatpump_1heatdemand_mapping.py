@@ -1,10 +1,11 @@
 import pytest
+import numpy as np
+import pandas as pd
 from pandas.testing import assert_frame_equal, assert_series_equal
 
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
-
-from pandaprosumer import *
+from pandaprosumer import create_period, DFData, create_empty_prosumer_container, create_controlled_const_profile, create_controlled_heat_pump, create_controlled_heat_demand
 
 
 class Test1HeatPump1HeatDemandMapping:
@@ -103,3 +104,93 @@ class Test1HeatPump1HeatDemandMapping:
         assert_series_equal(hp_mdot_cond_kg_per_s, mdot_demand_kg_per_s, rtol=.01, check_names=False)
         assert hp_t_cond_out_c.values == pytest.approx([76.85, 76.85, 76.85, 30.], .01)
         assert hp_t_cond_in_c.values == pytest.approx([30] * len(hp_t_cond_in_c), .01)
+
+    def test_ramp_up_and_down_variable_demand(self):
+        """
+        Test heat pump with variable demand that goes up and down
+        Verifies both ramp up and ramp down constraints are respected
+        """
+        # Create prosumer
+        prosumer = create_empty_prosumer_container()
+
+        # Create test data with variable demand (9 timesteps = 2 hours)
+        start = '2020-01-01 00:00:00'
+        resol_s = 900
+        data = pd.DataFrame({
+            't_air': [20] * 9,
+            'demand_power': [0, 100, 200, 300, 250, 150, 100, 200, 150],  # Variable
+            't_feed_demand_c': [80] * 9,
+            't_return_demand_c': [30] * 9
+        }, index=pd.date_range(start=start, periods=9, freq=f"{resol_s}s", tz='utc'))
+        
+        end = pd.Timestamp(start) + len(data["t_air"]) * pd.Timedelta(f"00:00:{resol_s}") - pd.Timedelta("00:00:01")
+        dur = pd.date_range(start, end, freq='%ss' % resol_s, tz='utc')
+        period = create_period(prosumer, resol_s, start, end, 'utc', 'default')
+        data.index = dur
+        data_source = DFData(data) 
+
+        # Create ConstProfileController
+        cp_input_columns = ["t_air", "demand_power", "t_feed_demand_c", "t_return_demand_c"]
+        cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
+        cp_controller_idx = create_controlled_const_profile(
+            prosumer, cp_input_columns, cp_result_columns, data_source, period, level=0, order=0
+        )
+
+        # Heat Pump parameters with ramp constraint
+        max_ramp_up = 0.02
+        max_ramp_down = -0.02
+        
+        hp_params_test = {
+            'carnot_efficiency': 0.5,
+            'max_p_comp_kw': 200,
+            'delta_t_evap_c': 5,
+            'pinch_c': 0,
+            'max_ramp_up_kw_per_s': max_ramp_up,
+            'max_ramp_down_kw_per_s': abs(max_ramp_down),
+            'name': 'heat_pump'
+        }
+
+        # Create Heat Pump
+        hp_controller_idx = create_controlled_heat_pump(
+            prosumer, order=0, level=1, period=period, **hp_params_test
+        )
+
+        # Create Heat Demand
+        hd_params_test = {'name': 'heat_demand'}
+        hd_controller_idx = create_controlled_heat_demand(
+            prosumer, order=1, level=1, period=period, **hd_params_test
+        )
+
+        # Mappings
+        GenericMapping(prosumer, initiator_id=cp_controller_idx, initiator_column="t_evap_in_c",
+                       responder_id=hp_controller_idx, responder_column="t_evap_in_c", order=0)
+        GenericMapping(prosumer, initiator_id=cp_controller_idx,
+                       initiator_column=["qdemand_kw", "t_feed_demand_c", "t_return_demand_c"],
+                       responder_id=hd_controller_idx,
+                       responder_column=["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"], order=1)
+        FluidMixMapping(prosumer, initiator_id=hp_controller_idx, responder_id=hd_controller_idx, order=0)
+
+        # Run simulation
+        run_timeseries(prosumer, period)
+
+        # Get results
+        hp_results = prosumer.time_series.data_source.iloc[0].df
+        p_comp = hp_results.p_comp_kw.values
+
+        # Calculate ramp rates
+        delta_p_comp = np.diff(p_comp)
+        ramp_rate_kw_per_s = delta_p_comp / resol_s
+
+        # Verify both ramp up and ramp down constraints
+        for i, rate in enumerate(ramp_rate_kw_per_s):
+            if rate > 0:  # Ramp up
+                assert rate <= max_ramp_up + 1e-6, \
+                    f"Ramp up violated at step {i}: {rate:.6f} > {max_ramp_up}"
+            elif rate < 0:  # Ramp down
+                assert rate >= max_ramp_down - 1e-6, \
+                    f"Ramp down violated at step {i}: {rate:.6f} < {max_ramp_down}"
+
+        # Verify power is within bounds
+        assert np.all(p_comp >= 0), "Compressor power should be non-negative"
+        assert np.all(p_comp <= 200 + 1e-6), "Compressor power should not exceed max power"
+        
