@@ -110,7 +110,6 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
         }
         hd_expected = pd.DataFrame(dmd_data, index=data.index)
 
-        print(prosumer.time_series.loc[1].data_source.df)
         assert not np.isnan(prosumer.time_series.loc[0, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[1, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[2, "data_source"].df).any().any()

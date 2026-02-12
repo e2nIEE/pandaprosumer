@@ -10,8 +10,11 @@ from pandaprosumer.controller.base import BasicProsumerController
 
 
 def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, heating_value_kj_per_kg, 
-                               efficiency_percent, max_q_kw, q_previous_kw, 
+                               efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
                                max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s):
+        # FixMe: q_fluid_kw reaches zero only if the max_ramp_down allows it
+        # FixMe: It doesn't prevent fast turn on / turn off of the boiler
+        
         # Calculate the demand heating power
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
         
@@ -27,7 +30,20 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
                 # Limit ramp down speed
                 q_fluid_kw = q_previous_kw - max_ramp_down_kw_per_s * time_step_s
                 # Recalculate the affected outputs
-                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                # Recalculate the fluid mass flow is the temperature difference is > 0
+                if t_out_c - t_in_c > 1e-3:
+                    mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                elif mdot_kg_per_s > 1e-3:
+                    # If not, recalculate the output temperature instead
+                    t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+                elif not np.isnan(delta_t_previous_c):
+                    # If the mass flow is also null, recalculate it considering the same temperature difference as the previous timestep
+                    t_out_c = t_in_c + delta_t_previous_c
+                    mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                else:
+                    mdot_kg_per_s = 0
+                    q_fluid_kw = 0
+                    t_out_c = t_in_c
         
         # Calculate the necessary amount of fuel from heat value    
         mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
@@ -35,11 +51,22 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         # Check parameters
         if max_q_kw and q_fluid_kw > max_q_kw + 1e-3:
             # If the thermal power is too high, recalculate the output mass flow rate
-            mdot_fuel_kg_per_s = max_q_kw / heating_value_kj_per_kg
             q_fluid_kw = max_q_kw
+            mdot_fuel_kg_per_s = q_fluid_kw / heating_value_kj_per_kg
             # FixMe: Should update the output temperature or the mass flow rate ?
             # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
             mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+            
+        if min_q_kw and 1e-3 < q_fluid_kw < min_q_kw - 1e-3:
+            # If the thermal power is too low but not null, apply min power constraint
+            q_fluid_kw = min_q_kw
+            mdot_fuel_kg_per_s = q_fluid_kw / heating_value_kj_per_kg
+            # Recalculate the fluid mass flow is the temperature difference is > 0
+            if t_out_c - t_in_c > 1e-3:
+                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+            else:
+                # If not, recalculate the output temperature instead
+                t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s
 
@@ -68,6 +95,11 @@ class GasBoilerController(BasicProsumerController):
         super().__init__(prosumer, gas_boiler_object, order=order, level=level, in_service=in_service,
                          index=index, name=name, **kwargs)
         self.fluid = prosumer.fluid
+        max_q_kw = self._get_element_param(prosumer, 'max_q_kw')
+        min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
+        if not np.isnan(max_q_kw) and not np.isnan(min_q_kw) and min_q_kw > max_q_kw:
+            raise ValueError(f"Gas Boiler {self.name} in prosumer {prosumer.name} has min_q_kw > max_q_kw ({min_q_kw} > {max_q_kw})")
+
 
     def _calculate_gas_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c):
         """
@@ -80,11 +112,13 @@ class GasBoilerController(BasicProsumerController):
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         max_q_kw = self._get_element_param(prosumer, 'max_q_kw')
+        min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         heating_value_kj_per_kg = self._get_element_param(prosumer, 'heating_value_kj_per_kg')
         max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
         q_previous_kw = self.last_result.get('q_kw', np.nan)
+        delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
 
         q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s = _calculate_gas_boiler_temp(mdot_kg_per_s, 
                                                                                                     t_out_c, 
@@ -92,8 +126,10 @@ class GasBoilerController(BasicProsumerController):
                                                                                                     cp_fluid_kj_per_kgk,
                                                                                                     heating_value_kj_per_kg,
                                                                                                     efficiency_percent, 
-                                                                                                    max_q_kw, 
-                                                                                                    q_previous_kw, 
+                                                                                                    max_q_kw,
+                                                                                                    min_q_kw,
+                                                                                                    q_previous_kw,
+                                                                                                    delta_t_previous_c,
                                                                                                     max_ramp_up_kw_per_s,
                                                                                                     max_ramp_down_kw_per_s, 
                                                                                                     self.resol)

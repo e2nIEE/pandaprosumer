@@ -564,6 +564,7 @@ def create_electric_boiler(prosumer,
 
 def create_gas_boiler(prosumer,
                       max_q_kw,
+                      min_q_kw=np.nan,
                       max_ramp_up_kw_per_s=np.nan,
                       max_ramp_down_kw_per_s=np.nan,                      
                       heating_value_kj_per_kg=50e3,
@@ -581,6 +582,8 @@ def create_gas_boiler(prosumer,
         **max_q_kw** (float) - Maximal heat power of the boiler [kW]
 
     OPTIONAL:
+        **min_q_kw** (float, default None) - Minimal working heat power of the boiler [kW]
+
         **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
         
         **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
@@ -606,8 +609,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
-                       [name, max_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)

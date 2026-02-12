@@ -514,6 +514,7 @@ def create_controlled_electric_boiler(prosumer,
 
 def create_controlled_gas_boiler(prosumer,
                                  max_q_kw,
+                                 min_q_kw=np.nan,
                                  max_ramp_up_kw_per_s=np.nan,
                                  max_ramp_down_kw_per_s=np.nan,
                                  heating_value_kj_per_kg=50e3,
@@ -534,6 +535,8 @@ def create_controlled_gas_boiler(prosumer,
             **max_q_kw** (float) - Maximal heat power of the boiler [kW]
 
         OPTIONAL:
+            **min_q_kw** (float, default None) - Minimum working heat power of the boiler [kW]
+
             **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
         
             **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]

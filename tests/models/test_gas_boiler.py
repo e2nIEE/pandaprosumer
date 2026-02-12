@@ -32,8 +32,8 @@ class TestGasBoiler:
         create_gas_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "gas_boiler")
         assert len(prosumer.gas_boiler) == 1
-        expected_columns = ["name", "max_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"]
-        expected_values = [None, 100, np.nan, np.nan, 20e3, 100, True]
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"]
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True]
 
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
 
@@ -47,6 +47,7 @@ class TestGasBoiler:
         create_period(prosumer, 1)
 
         params = {'max_q_kw': 250,
+                  'min_q_kw': 20,
                   'max_ramp_up_kw_per_s': 0.02,
                   'max_ramp_down_kw_per_s': 0.03,
                   'efficiency_percent': 75,
@@ -58,8 +59,8 @@ class TestGasBoiler:
         assert gsb_idx == 4
         assert prosumer.gas_boiler.index[0] == gsb_idx
 
-        expected_columns = ["name", "max_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service", "custom"]
-        expected_values = ['foo', 250, 0.02, 0.03, 18e3, 75, False, 'test']
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service", "custom"]
+        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 'test']
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
         assert prosumer.gas_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
@@ -241,4 +242,38 @@ class TestGasBoiler:
         # FixMe: The mapped mass flow is 1 only, so the difference disappeared
         assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
                                                               FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.)}]
+        
+    def test_controller_run_control_min_power(self):
+        """
+        Test the Gas Boiler run control method with a demand below the minimum boiler power.
+        """
+        min_power_kw = 20
+        max_ramp_up_kw_per_s = 100
+        max_ramp_down_kw_per_s = 50
+        lhv = 20e3
+        params = {'max_q_kw': 500,
+                  'min_q_kw': min_power_kw,
+                  'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
+                  'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
+                  'heating_value_kj_per_kg': lhv}
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        t_high_c = 80
+        t_low_c = 20
+        mdot_dmd = 0.05
+
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+
+        mdot_mini = min_power_kw / (4.186 * (t_high_c - t_low_c))
+        expected = [min_power_kw, mdot_mini, t_low_c, t_high_c, min_power_kw / lhv]
+        assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        # FixMe: The mapped mass flow is 0.05 only, so the difference with mdot_mini (0.079) disappeared
+        assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_dmd, .01)}]
         
