@@ -1,4 +1,6 @@
 import pytest
+import numpy as np
+
 from pandaprosumer import *
 
 
@@ -29,12 +31,12 @@ class TestElectricBoiler:
         create_electric_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
-        expected_columns = ["name", "max_p_kw", "efficiency_percent", "in_service"]
-        expected_values = [None, 100, 100, True]
+        expected_columns = ["name", "max_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "in_service"]
+        expected_values = [None, 100, np.nan, np.nan, 100, True]
 
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
 
-        assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values)
+        assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
     def test_define_element_with_parameters(self):
         """
@@ -44,6 +46,8 @@ class TestElectricBoiler:
         create_period(prosumer, 1)
 
         params = {'max_p_kw': 250,
+                  'max_ramp_up_kw_per_s': 0.02,
+                  'max_ramp_down_kw_per_s': 0.03,
                   'efficiency_percent': 75}
 
         elb_idx = create_electric_boiler(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
@@ -52,10 +56,10 @@ class TestElectricBoiler:
         assert elb_idx == 4
         assert prosumer.electric_boiler.index[0] == elb_idx
 
-        expected_columns = ["name", "max_p_kw", "efficiency_percent", "in_service", "custom"]
-        expected_values = ['foo', 250, 75, False, 'test']
+        expected_columns = ["name", "max_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "in_service", "custom"]
+        expected_values = ['foo', 250, 0.02, 0.03, 75, False, 'test']
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
-        assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values)
+        assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
     def test_define_controller(self):
         """
@@ -179,3 +183,57 @@ class TestElectricBoiler:
             {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(80, .01),
              FluidMixMapping.MASS_FLOW_KEY: 0.}
         ]
+
+    def test_controller_run_control_ramp_speed(self):
+        """
+        Test the Electric Boiler run control method with a demand with a constraint on the ramp up and ramp down speeds.
+        """
+        max_ramp_up_kw_per_s = 100
+        max_ramp_down_kw_per_s = 50
+        resol_s = 1
+        params = {'max_p_kw': 500,
+                  'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
+                  'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s}
+        prosumer = create_empty_prosumer_container()
+        elb_controller_index = create_controlled_electric_boiler(prosumer,
+                                                                period=_default_period(prosumer),
+                                                                **params)
+        elb_controller = prosumer.controller.iloc[elb_controller_index].object
+        
+        t_high_c = 80
+        t_low_c = 20
+        mdot_init = 1.5
+
+        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_init])
+        elb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        elb_controller.control_step(prosumer)
+
+        power_init_kw = mdot_init * 4.186 * (t_high_c - t_low_c)
+        expected = [power_init_kw, mdot_init, t_low_c, t_high_c, power_init_kw]
+        assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                              FluidMixMapping.MASS_FLOW_KEY: mdot_init}]
+        
+        # Increase the heat demand faster than the max ramp up speed
+        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [3])
+        elb_controller.time_step(prosumer, "2020-01-01 00:00:01")
+        elb_controller.control_step(prosumer)
+
+        power_up_kw = power_init_kw + max_ramp_up_kw_per_s * resol_s
+        expected = [power_up_kw, 1.8985759, t_low_c, t_high_c, power_up_kw]
+        assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.8985759042371968)}]
+        
+        # Decrease the heat demand faster than the max ramp down speed
+        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [1])
+        elb_controller.time_step(prosumer, "2020-01-01 00:00:02")
+        elb_controller.control_step(prosumer)
+        
+        power_down_kw = power_up_kw - max_ramp_down_kw_per_s * resol_s
+        expected = [power_down_kw, 1.6992879521185984, t_low_c, t_high_c, power_down_kw]
+        assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        # FixMe: The mapped mass flow is 1 only, so the difference disappeared
+        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.)}]
+        

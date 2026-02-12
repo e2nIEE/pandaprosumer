@@ -380,3 +380,74 @@ class TestHeatPump:
         assert hp_controller.step_results == pytest.approx(np.array([expected]))
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.7722965, .001)}]
+
+    def test_controller_run_control_ramp_speed(self):
+        """
+        Test the Heat Pump run control method with a demand with a constraint on the compressor ramp up and ramp down speeds.
+        """
+        max_ramp_up_kw_per_s = 50
+        max_ramp_down_kw_per_s = 60
+        resol_s = 1
+        params = {'carnot_efficiency': 0.5,
+                  'pinch_c': 0,
+                  'delta_t_evap_c': 15,
+                  'max_p_comp_kw': 500,
+                  'min_p_comp_kw': .01,
+                  'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
+                  'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
+                  'max_t_cond_out_c': 100,
+                  'max_cop': 10}
+        prosumer = create_empty_prosumer_container()
+        hp_controller_index = create_controlled_heat_pump(prosumer,
+                                                          period=_default_period(prosumer),
+                                                          **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_index].object
+        
+        t_high_c = 80
+        t_low_c = 30
+        t_amb_c = 20
+        t_out_c = t_amb_c - params['delta_t_evap_c']
+        mdot_init = 1.5
+
+        hp_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_init])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.inputs = np.array([[t_amb_c]])
+        hp_controller.control_step(prosumer)
+
+        q_cond_init_kw = 313.75155  # mdot_init * 4.186 * (t_high_c - t_low_c)
+        power_comp_init_kw = 106.6124479
+        q_evap_init_kw = q_cond_init_kw - power_comp_init_kw
+        expected = [q_cond_init_kw, power_comp_init_kw, q_evap_init_kw, 2.942916, mdot_init, t_low_c, t_high_c, 3.29375808799, t_amb_c, t_out_c]
+        assert hp_controller.step_results == pytest.approx(np.array([expected]))
+        assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                             FluidMixMapping.MASS_FLOW_KEY: mdot_init}]
+        
+        # Increase the heat demand faster than the max ramp up speed
+        hp_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [3.])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:01")
+        hp_controller.inputs = np.array([[t_amb_c]])
+        hp_controller.control_step(prosumer)
+
+        power_comp_up_kw = power_comp_init_kw + max_ramp_up_kw_per_s * resol_s
+        q_cond_up_kw = 460.89738333
+        q_evap_up_kw = q_cond_up_kw - power_comp_up_kw
+        expected = [q_cond_up_kw, power_comp_up_kw, q_evap_up_kw, 2.942916, 2.203482580, t_low_c, t_high_c, 4.838492380, t_amb_c, t_out_c]
+        assert hp_controller.step_results == pytest.approx(np.array([expected]))
+        assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(2.203482580, .01)}]
+        
+        # Decrease the heat demand faster than the max ramp down speed
+        hp_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [1.])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:02")
+        hp_controller.inputs = np.array([[t_amb_c]])
+        hp_controller.control_step(prosumer)
+        
+        power_comp_down_kw = power_comp_up_kw - max_ramp_down_kw_per_s * resol_s
+        q_cond_down_kw = 284.3223833
+        q_evap_down_kw = q_cond_down_kw - power_comp_down_kw
+        expected = [q_cond_down_kw, power_comp_down_kw, q_evap_down_kw, 2.942916, 1.3593034839, t_low_c, t_high_c, 2.98481122, t_amb_c, t_out_c]
+        assert hp_controller.step_results == pytest.approx(np.array([expected]))
+        # FixMe: The mapped mass flow is 1 only, so the difference disappeared
+        assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
+                                                             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1., .01)}]
+        

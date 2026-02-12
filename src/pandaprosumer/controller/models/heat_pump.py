@@ -265,27 +265,28 @@ class HeatPumpController(BasicProsumerController):
                                                                                         pinch_c)
         
         # 9. Apply ramp up/down constraints
-        max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
-        max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
-        delta_p = (p_comp_kw - self.p_comp_previous_kw)
-        time_step_s = self.resol
-        if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * time_step_s:
-             # Limit ramp up
-            p_comp_kw = self.p_comp_previous_kw + max_ramp_up_kw_per_s * time_step_s
-            # Recalculate only the affected outputs
-            q_cond_kw = p_comp_kw * cop_hp
-            mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
-            q_evap_kw = q_cond_kw - p_comp_kw
-            mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+        if not np.isnan(self.p_comp_previous_kw):  # No constraint for the first timestep
+            max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
+            max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
+            delta_p = (p_comp_kw - self.p_comp_previous_kw)
+            time_step_s = self.resol
+            if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * time_step_s:
+                # Limit ramp up
+                p_comp_kw = self.p_comp_previous_kw + max_ramp_up_kw_per_s * time_step_s
+                # Recalculate only the affected outputs
+                q_cond_kw = p_comp_kw * cop_hp
+                mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                q_evap_kw = q_cond_kw - p_comp_kw
+                mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
 
-        elif max_ramp_down_kw_per_s and delta_p < -max_ramp_down_kw_per_s * time_step_s:
-            # Limit ramp down
-            p_comp_kw = self.p_comp_previous_kw - max_ramp_down_kw_per_s * time_step_s
-            # Recalculate only the affected outputs
-            q_cond_kw = p_comp_kw * cop_hp
-            mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
-            q_evap_kw = q_cond_kw - p_comp_kw
-            mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+            elif max_ramp_down_kw_per_s and delta_p < -1 * max_ramp_down_kw_per_s * time_step_s:
+                # Limit ramp down
+                p_comp_kw = self.p_comp_previous_kw - max_ramp_down_kw_per_s * time_step_s
+                # Recalculate only the affected outputs
+                q_cond_kw = p_comp_kw * cop_hp
+                mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                q_evap_kw = q_cond_kw - p_comp_kw
+                mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
 
         return (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,

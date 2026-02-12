@@ -9,18 +9,36 @@ from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
 
 
-def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, efficiency_percent, max_p_kw):
+def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, 
+                                    efficiency_percent, max_p_kw, p_el_consumed_previous_kw,
+                                    max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s):
     # Calculate thermal power
     q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
     # Calculate electric power
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
+    
+    # Apply ramp up/down constraints
+    if not np.isnan(p_el_consumed_previous_kw):  # Constraint not applicable for the first timestep
+        delta_p = (p_el_consumed_kw - p_el_consumed_previous_kw)
+        if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * time_step_s:
+            # Limit ramp up speed
+            p_el_consumed_kw = p_el_consumed_previous_kw + max_ramp_up_kw_per_s * time_step_s
+            # Recalculate the affected outputs
+            q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
+            mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+        if max_ramp_down_kw_per_s and delta_p < -1 * max_ramp_down_kw_per_s * time_step_s:
+            # Limit ramp down speed
+            p_el_consumed_kw = p_el_consumed_previous_kw - max_ramp_down_kw_per_s * time_step_s
+            # Recalculate the affected outputs
+            q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
+            mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
 
-    # Check parameters
+    # Check maximum power constraint
     if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
-        # If the consumed electrical power is too high, recalculate the output temperature
+        # If the consumed electrical power is too high, recalculate the output mass flow rate
         p_el_consumed_kw = max_p_kw
-        q_fluid_kw = max_p_kw * (efficiency_percent / 100)
+        q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
         # FixMe: Should update the output temperature or the mass flow rate ?
         # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
         mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
@@ -65,17 +83,20 @@ class ElectricBoilerController(BasicProsumerController):
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-
-        q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
-
-        p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
+        p_el_consumed_previous_kw = self.last_result.get('p_kw', np.nan)
+        max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
+        max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
 
         q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw = _calculate_electric_boiler_temp(mdot_kg_per_s,
                                                                                                        t_out_c,
                                                                                                        t_in_c,
                                                                                                        cp_fluid_kj_per_kgk,
                                                                                                        efficiency_percent,
-                                                                                                       max_p_kw)
+                                                                                                       max_p_kw,
+                                                                                                       p_el_consumed_previous_kw,
+                                                                                                       max_ramp_up_kw_per_s,
+                                                                                                       max_ramp_down_kw_per_s,
+                                                                                                       self.resol)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 

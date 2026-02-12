@@ -39,6 +39,7 @@ class BasicProsumerController(MappedController):
         """
         super().__init__(container, basic_prosumer_object, order, level, in_service, index,
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
+        self.last_result = {}
 
     def control_step(self, prosumer):
         """
