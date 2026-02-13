@@ -41,6 +41,10 @@ These are the physical parameters required for the Gas Boiler element to enable 
 
    "name", "Unique name or identifier for the gas boiler element.", "N/A"
    "max_q_kw", "Maximum heat power of the boiler.", "kW"
+   "min_q_kw", "Minimum heat power of the boiler. If the requested thermal power is positive but below this value, the boiler runs at this minimum power.", "kW"
+   "max_ramp_up_kw_per_s", "Maximum allowed increase of thermal power between two time steps.", "kW/s"
+   "max_ramp_down_kw_per_s", "Maximum allowed decrease of thermal power between two time steps.", "kW/s"
+   "heating_value_kj_per_kg", "Lower heating value of the fuel used by the boiler.", "kJ/kg"
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
 
 

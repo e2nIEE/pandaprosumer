@@ -1,4 +1,4 @@
-﻿.. _electric_boiler_element:
+.. _electric_boiler_element:
 
 ==================
 Electric Boiler
@@ -39,6 +39,8 @@ These are the physical parameters required for the Electric Boiler element to en
 
    "name", "Unique name or identifier for the electric boiler element.", "N/A"
    "max_p_kw", "Maximum electrical power of the boiler.", "kW"
+   "max_ramp_up_kw_per_s", "Maximum allowed increase of electrical power between two time steps.", "kW/s"
+   "max_ramp_down_kw_per_s", "Maximum allowed decrease of electrical power between two time steps.", "kW/s"
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
 
 
@@ -58,7 +60,7 @@ Output Time Series
    "mdot_kg_per_s", "The water mass flow rate through the boiler.", "kg/s"
    "t_in_c", "The temperature at the inlet of the electric boiler (cold return pipe).", "Degree Celsius"
    "t_out_c", "The temperature at the outlet of the electric boiler (hot feed pipe).", "Degree Celsius"
-   "p_kW", "The boiler consumed electrical power.", "kW"
+   "p_kw", "The boiler consumed electrical power.", "kW"
 
 
 Mapping

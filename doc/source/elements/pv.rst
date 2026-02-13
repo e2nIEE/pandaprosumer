@@ -92,7 +92,7 @@ Typical usage:
 Model
 =================
 
-.. autoclass:: pandaprosumer.controller.models.pv.SenergyNetsPvProductionController
+.. autoclass:: pandaprosumer.controller.models.pv.PvProductionController
     :members:
 
 

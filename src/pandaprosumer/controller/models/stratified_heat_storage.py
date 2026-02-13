@@ -622,15 +622,16 @@ class StratifiedHeatStorageController(BasicProsumerController):
         cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
         q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
 
+        # Store the total heat delivered to the downstream elements (bypass + discharge)
         result = np.array([[mdot_discharge_kg_per_s,
                             t_discharge_out_c,
-                            q_discharge_kw,
+                            q_delivered_kw,
                             e_stored_kwh]])
 
         self.last_result = {
             "mdot_discharge_kg_per_s": mdot_discharge_kg_per_s,
             "t_discharge_out_c": t_discharge_out_c,
-            "q_discharge_kw": q_discharge_kw,
+            "q_delivered_kw": q_delivered_kw,
             "e_stored_kwh": e_stored_kwh,
         }
 

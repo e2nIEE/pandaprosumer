@@ -1,4 +1,4 @@
-﻿.. _heat_pump_element:
+.. _heat_pump_element:
 
 =============
 Heat Pump
@@ -41,10 +41,10 @@ Input Static Data
     "name", "A custom name for this heat pump", "N/A"
     "delta_t_evap_c", "Constant temperature difference at the evaporator", "Degree Celsius"
     "carnot_efficiency", "Carnot efficiency, usually between 0.4-0.6, used to simplify the calculation of the heat pump COP", "N/A"
-    "pinch_c", "description", "Degree Celsius"
-    "delta_t_hot_default_c", "Default difference between the hot (feed)", "Degree Celsius"
-    "max_p_comp_kw", "Maximum Power of the compressor", "kW"
-    "min_p_cond_out_c", "Minimum working power of the compressor", "Degree Celsius"
+    "pinch_c", "Minimum temperature difference between the heat pump and the heat source/sink (pinch temperature)", "Degree Celsius"
+    "delta_t_hot_default_c", "Default temperature difference between condenser outlet and inlet on the hot side", "Degree Celsius"
+    "max_p_comp_kw", "Maximum power of the compressor", "kW"
+    "min_p_comp_kw", "Minimum working power of the compressor", "kW"
     "max_cop", "Maximum COP", "N/A"
     "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
     "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
@@ -97,7 +97,7 @@ The Heat Pump Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapp
 Model
 =================
 
-.. autoclass:: pandaprosumer.controller.models.HeatPumpController
+.. autoclass:: pandaprosumer.controller.models.heat_pump.HeatPumpController
     :members:
 
 
