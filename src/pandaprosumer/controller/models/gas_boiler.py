@@ -158,14 +158,18 @@ class GasBoilerController(BasicProsumerController):
 
         rerun = True
         while rerun:
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(prosumer,
-                                                                                                           mdot_required_kg_per_s,
-                                                                                                           t_out_required_c,
-                                                                                                           t_in_required_c)
+            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
+                prosumer,
+                mdot_required_kg_per_s,
+                t_out_required_c,
+                t_in_required_c,
+            )
 
-            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
-                                                                   mdot_delivered_kg_per_s,
-                                                                   mdot_tab_required_kg_per_s)
+            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(
+                prosumer,
+                mdot_delivered_kg_per_s,
+                mdot_tab_required_kg_per_s,
+            )
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
@@ -183,7 +187,22 @@ class GasBoilerController(BasicProsumerController):
                     t_in_required_c = t_in_new_c
                     rerun = True
 
-        assert q_kw >= 0, f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        # After merit-order capping, ensure mass and energy balance at the interface:
+        # use the actually delivered mass flow (sum of responder flows) and, if necessary,
+        # increase the outlet temperature so that the same thermal power q_kw is carried
+        # by this mass flow.
+        mdot_used_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
+        tol = 1e-9
+        if mdot_used_kg_per_s > tol and mdot_delivered_kg_per_s - mdot_used_kg_per_s > tol:
+            cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(
+                CELSIUS_TO_K + (t_out_c + t_in_c) / 2
+            ) / 1000
+            t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+            mdot_delivered_kg_per_s = mdot_used_kg_per_s
+
+        assert q_kw >= 0, (
+            f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        )
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
