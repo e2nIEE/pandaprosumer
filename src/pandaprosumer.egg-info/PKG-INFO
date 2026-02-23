@@ -1,0 +1,148 @@
+Metadata-Version: 2.4
+Name: pandaprosumer
+Version: 0.1.2
+Summary: A prosumer simulation tool that complements pandapower and pandapipes in the simulation of multi energy systems
+Author-email: Pratikshya Mohanty <pratikshya.mohanty@iee.fraunhofer.de>, Erik Prade <erik.prade@iee.fraunhofer.de>
+License: Copyright (c) 2025 by Fraunhofer Institute for Energy Economics
+        and Energy System Technology (IEE), Kassel, and University of Kassel. Further
+        contributions by individual contributors (see AUTHORS file for details). All rights reserved.
+        
+        Redistribution and use in source and binary forms, with or without modification, are permitted 
+        provided that the following conditions are met:
+        
+        1. Redistributions of source code must retain the above copyright notice, this list of conditions
+        and the following disclaimer.
+        
+        2. Redistributions in binary form must reproduce the above copyright notice, this list of
+        conditions and the following disclaimer in the documentation and/or other materials provided
+        with the distribution.
+        
+        3. Neither the name of the copyright holder nor the names of its contributors may be used to 
+        endorse or promote products derived from this software without specific prior written permission.
+        
+        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR 
+        IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND 
+        FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR 
+        CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+        DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, 
+        DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+        WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY
+        WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+        
+Project-URL: Documentation, https://pandaprosumer.readthedocs.io
+Project-URL: Source, https://github.com/e2nIEE/pandaprosumer
+Project-URL: Repository, https://github.com/e2nIEE/pandaprosumer.git
+Project-URL: Issues, https://github.com/e2nIEE/pandaprosumer/issues
+Project-URL: Download, https://pypi.org/project/pandaprosumer/#files
+Project-URL: Changelog, https://github.com/e2nIEE/pandaprosumer/blob/develop/CHANGELOG.rst
+Keywords: prosumer,analysis,controller,automation,grid,energy,engineering,simulation,flexiblity,system
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Requires-Python: <3.12,>=3.10
+Description-Content-Type: text/x-rst
+License-File: LICENSE
+License-File: AUTHORS
+Requires-Dist: astral==3.2
+Requires-Dist: converter==1.0.0
+Requires-Dist: matplotlib>=3.9.0
+Requires-Dist: numpy>=1.25.0
+Requires-Dist: pandapipes>=0.12.0
+Requires-Dist: pandapower>=2.14.11
+Requires-Dist: pandas>=1.5.3
+Requires-Dist: savReaderWriter==3.4.2
+Requires-Dist: scipy>=1.11.0
+Requires-Dist: seaborn==0.12.2
+Requires-Dist: simbench==1.4.0
+Requires-Dist: tqdm==4.65.0
+Requires-Dist: numba==0.59.1
+Requires-Dist: openpyxl==3.1.5
+Requires-Dist: CoolProp==6.7.0
+Requires-Dist: pyomo==6.6.1
+Provides-Extra: docs
+Requires-Dist: numpydoc>=1.5.0; extra == "docs"
+Requires-Dist: sphinx>=5.3.0; extra == "docs"
+Requires-Dist: sphinx_rtd_theme>=1.1.1; extra == "docs"
+Requires-Dist: sphinxcontrib.bibtex>=2.5.0; extra == "docs"
+Requires-Dist: sphinx-pyproject; extra == "docs"
+Provides-Extra: plotting
+Requires-Dist: plotly; extra == "plotting"
+Requires-Dist: igraph; extra == "plotting"
+Provides-Extra: test
+Requires-Dist: pytest==8.3.3; extra == "test"
+Requires-Dist: pytest-xdist; extra == "test"
+Requires-Dist: pytest-split; extra == "test"
+Requires-Dist: nbmake; extra == "test"
+Requires-Dist: setuptools; python_version >= "3.10" and extra == "test"
+Provides-Extra: all
+Requires-Dist: numpydoc>=1.5.0; extra == "all"
+Requires-Dist: sphinx>=5.3.0; extra == "all"
+Requires-Dist: sphinx_rtd_theme>=1.1.1; extra == "all"
+Requires-Dist: sphinxcontrib.bibtex>=2.5.0; extra == "all"
+Requires-Dist: sphinx-pyproject; extra == "all"
+Requires-Dist: plotly; extra == "all"
+Requires-Dist: igraph; extra == "all"
+Requires-Dist: pytest==8.3.3; extra == "all"
+Requires-Dist: pytest-xdist; extra == "all"
+Requires-Dist: pytest-split; extra == "all"
+Requires-Dist: nbmake; extra == "all"
+Requires-Dist: setuptools; python_version >= "3.10" and extra == "all"
+Dynamic: license-file
+
+##########################
+About pandaprosumer
+##########################
+
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/prosumer.png
+	:width: 200em
+	:align: left
+
+
+
+
+pandaprosumer is an open-source modeling tool, that enables modeling of sector-coupling prosumer components in energy systems.
+The framework comes with a library of different predefined sector-coupling components, but also enables users to create
+own components based on the pandaprosumer framework.
+It also comes with a logic to simulate different combinations of these components with each other and different
+inputs (e.g. a heat demand timeseries) and outputs (e.g. power load timeseries on the powergrid).
+
+It extends the libraries `pandapower <http://pandapower.org>`_ and `pandapipes <https:/pandapipes.org>`_ ,
+was created at Universität Kassel, Fraunhofer IEE and has received support from the European Institute for Energy Research in the frame of the "Senergy Nets" project, funded by the European Union.
+
+Getting started:
+
+- `Documentation <https://pandaprosumer.readthedocs.io/en/latest/>`_
+- `Tutorials on github <https://github.com/e2nIEE/pandaprosumer/blob/main/tutorials>`_
+- `Interactive tutorials on Binder <https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=%2Fdoc%2Ftree%2Ftutorials>`_
+- `How to contribute <https://github.com/e2nIEE/pandaprosumer/blob/main/CONTRIBUTING.rst>`_
+
+
+.. image:: https://mybinder.org/badge_logo.svg
+ :target: https://mybinder.org/v2/gh/e2nIEE/pandaprosumer/develop?urlpath=https%3A%2F%2Fgithub.com%2Fe2nIEE%2Fpandaprosumer%2Ftree%2Fdevelop%2Ftutorials
+ :alt: binder
+
+
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/e2n.png
+	:target: https://www.uni-kassel.de/
+	:width: 200em
+	:align: center
+
+
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/iee.png
+	:target: https://www.iee.fraunhofer.de/en.html
+	:width: 200em
+	:align: left
+
+
+.. image:: https://github.com/e2nIEE/pandaprosumer/raw/develop/doc/source/pics/senergy.png
+	:width: 200em
+	:align: right
