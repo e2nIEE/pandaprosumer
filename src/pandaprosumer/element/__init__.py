@@ -1,5 +1,6 @@
 from .heat_storage import *
 from .ice_chp import *
+from .mdu_chp import *
 from .booster_heat_pump import *
 from .heat_pump import *
 from .heat_demand import *
