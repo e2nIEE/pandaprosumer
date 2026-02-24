@@ -233,7 +233,7 @@ class TestGasBoiler:
         
         # Decrease the heat demand faster than the max ramp down speed
         gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [1])
-        gsb_controller.time_step(prosumer, "2020-01-01 00:00:01")
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:02")
         gsb_controller.control_step(prosumer)
         
         power_down_kw = power_up_kw - max_ramp_down_kw_per_s * resol_s

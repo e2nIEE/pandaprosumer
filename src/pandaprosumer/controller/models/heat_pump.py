@@ -478,17 +478,42 @@ class HeatPumpController(BasicProsumerController):
                     # with the new temperature
                     t_cond_in_required_c = t_cond_in_new_c
                     rerun = True
-            
+
+        # After merit-order capping, ensure mass and energy balance at the interface.
+        # If the effective condenser mass flow differs from what the model used, re-run the
+        # heat pump physics with the new mdot_cond so COP, p_comp, t_cond_out, etc. are consistent.
         mdot_used_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
         tol = 1e-9
-        if abs(mdot_cond_kg_per_s - mdot_used_kg_per_s) > tol and  -tol < mdot_used_kg_per_s < tol and q_cond_kw > tol:
-            # update result_mdot_tab_kg_per_s with the new mass flow, distribute evenly if several responders
-            if len(result_mdot_tab_kg_per_s) > 0:
-                result_mdot_tab_kg_per_s = np.array(result_mdot_tab_kg_per_s) + (mdot_cond_kg_per_s - mdot_used_kg_per_s) / len(result_mdot_tab_kg_per_s)
-            else:
-                # FIXME: in this case there is no responder, result_mdot_tab_kg_per_s should be empty
-                result_mdot_tab_kg_per_s = np.array([mdot_cond_kg_per_s])
-                
+        mdot_cond_new = None
+        if abs(mdot_cond_kg_per_s - mdot_used_kg_per_s) > tol:
+            if mdot_used_kg_per_s > tol:
+                mdot_cond_new = mdot_used_kg_per_s
+            elif -tol < mdot_used_kg_per_s < tol and q_cond_kw > tol:
+                cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(
+                    CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2
+                ) / 1000
+                mdot_cond_new = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                # distribute new mass flow evenly to responders
+                if len(result_mdot_tab_kg_per_s) > 0:
+                    result_mdot_tab_kg_per_s = np.array(result_mdot_tab_kg_per_s) + (
+                        mdot_cond_new - mdot_used_kg_per_s
+                    ) / len(result_mdot_tab_kg_per_s)
+                else:
+                    result_mdot_tab_kg_per_s = np.array([mdot_cond_new])
+
+        if mdot_cond_new is not None:
+            pinch_c = self._get_element_param(prosumer, 'pinch_c')
+            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(
+                prosumer,
+                mdot_cond_new,
+                t_cond_out_required_c,
+                t_cond_in_required_c,
+                self._t_evap_in_c,
+                pinch_c,
+            )
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,

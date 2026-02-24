@@ -410,6 +410,9 @@ class HeatExchangerController(BasicProsumerController):
                  f"({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)}) for"
                  f" timestep {self.time} in prosumer {prosumer.name}")
 
+        cp_1_kj_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2) / 1000
+        q_exchanged_kw = mdot_1_kg_per_s * cp_1_kj_per_kg_k * (t_1_in_c - t_1_out_c)
+
         result = np.array(
             [[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]]
         )

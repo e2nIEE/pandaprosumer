@@ -52,7 +52,7 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         if max_q_kw and q_fluid_kw > max_q_kw + 1e-3:
             # If the thermal power is too high, recalculate the output mass flow rate
             q_fluid_kw = max_q_kw
-            mdot_fuel_kg_per_s = q_fluid_kw / heating_value_kj_per_kg
+            mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
             # FixMe: Should update the output temperature or the mass flow rate ?
             # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
             mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
@@ -60,7 +60,7 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         if min_q_kw and 1e-3 < q_fluid_kw < min_q_kw - 1e-3:
             # If the thermal power is too low but not null, apply min power constraint
             q_fluid_kw = min_q_kw
-            mdot_fuel_kg_per_s = q_fluid_kw / heating_value_kj_per_kg
+            mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
             # Recalculate the fluid mass flow is the temperature difference is > 0
             if t_out_c - t_in_c > 1e-3:
                 mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
