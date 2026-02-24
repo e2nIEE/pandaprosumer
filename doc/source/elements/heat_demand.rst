@@ -92,7 +92,8 @@ The Heat Demand Controller can be mapped using :ref:`FluidMixMapping <FluidMixMa
 Model
 =================
 
-.. autofunction:: pandaprosumer.controller.models.HeatDemandController
+.. autoclass:: pandaprosumer.controller.models.heat_demand.HeatDemandController
+    :members:
 
 The heat demand model take four inputs :math:`Q`, :math:`\dot{m}`, :math:`T_\text{feed}` and :math:`T_\text{return}`
 

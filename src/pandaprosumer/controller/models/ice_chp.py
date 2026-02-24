@@ -29,13 +29,12 @@ class IceChpController(BasicProsumerController):
 
         Parameters
         ----------
-        prosumer: prosumer container
-        chp_object: chp component - Chp()
-        data_source: object of type pandas.DataFrame ---> dataset in pandas format
-        order: order of the chp object in the network (list) ---> default: 0 
-        level:
-        in_service: (bool) optional ---> default: True
-        index: optional ---> default: None
+        prosumer : prosumer container
+        chp_object : chp controller data object (e.g. IceChpControllerData)
+        order : order of the chp object in the network (list), default 0
+        level : controller level
+        in_service : bool, optional, default True
+        index : optional, default None
         """
         super().__init__(
             prosumer,

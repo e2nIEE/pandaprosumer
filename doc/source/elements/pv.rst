@@ -18,7 +18,7 @@ SenergyNets PV Production
 Create Controlled Function
 ===========================
 
-.. autofunction:: pandaprosumer.create_controlled_senergy_nets_pv_production
+.. autofunction:: pandaprosumer.create_controlled_pv_production
 
 
 

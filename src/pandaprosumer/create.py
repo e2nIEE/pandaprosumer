@@ -626,11 +626,14 @@ def create_booster_heat_pump(
     **kwargs
 ):
     """
-    :param prosumer:
-    :param in_service:  (Default value = True)
-    :param name:  (Default value = None)
-    :param index:  (Default value = None)
-    :param q_max_kw: (Default value = None):
+    Creates a booster heat pump element in prosumer["booster_heat_pump"].
+
+    :param prosumer: The prosumer container
+    :param bhp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
+    :param q_max_kw: Maximum thermal power [kW], default None
+    :param in_service: True for in_service or False for out of service, default True
+    :param name: Name of the BHP instance, default None
+    :param index: Force a specified ID if available; if None, next free index is used, default None
     """
     add_new_element(prosumer, BoosterHeatPumpElementData)
 
@@ -658,6 +661,7 @@ def create_booster_heat_pump(
 
 
 def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None, index=None, **kwargs):
+    """Create an ICE CHP element in prosumer[\"ice_chp\"]. Parameters: size (kW), fuel, altitude (m), in_service, name, index."""
     add_new_element(prosumer, IceChpElementData)
 
     index = _get_index_with_check(prosumer, "ice_chp", index)
@@ -691,6 +695,7 @@ def create_heat_storage(prosumer,
                         index=None,
                         name=None,
                         **kwargs):
+    """Create a simple heat storage element with given thermal capacity (kWh)."""
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)

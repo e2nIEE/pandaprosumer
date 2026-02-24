@@ -20,7 +20,6 @@ class HeatDemandController(BasicProsumerController):
     :param heat_demand_object: The heat demand object
     :param order: The order of the controller
     :param level: The level of the controller
-    :param scale_factor: The scale factor for the controller
     :param in_service: The in-service status of the controller
     :param index: The index of the controller
     :param name: The name of the controller
@@ -201,6 +200,7 @@ class HeatDemandController(BasicProsumerController):
             return
 
         if not np.isnan(self._get_input('q_received_kw')):
+            # Case where the Heat Demand is mapped from another controller with a Generic Mapping
             q_received_kw = self._get_input('q_received_kw')
             q_uncovered_kw = self._q_demand_kw - q_received_kw
             result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
@@ -215,6 +215,8 @@ class HeatDemandController(BasicProsumerController):
             self.finalize(prosumer, result)
             self.applied = True
             return
+        
+        # Case where the Heat Demand is mapped from another controller with a FluidMix Mapping
 
         q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
 

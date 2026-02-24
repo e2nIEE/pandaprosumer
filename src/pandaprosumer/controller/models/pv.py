@@ -50,13 +50,15 @@ class PvProductionController(BasicProsumerController):
         Parameters
         ----------
         prosumer : object of type prosumer
-            pv_production_object container
-        chiller_object : _object of type SenergyNetsChillerController
-            PV Production object, where PV Production inputs are defined
+            Prosumer container
+        pv_production_object : object of type PvProductionControllerData
+            PV production controller data object, where PV production inputs are defined
         order : list
             _description_
-        level :list
+        level : list
             _description_
+        data_source : object, optional
+            Optional data source (e.g. DataFrame) for PV time series
         in_service : bool, optional
             _description_, by default True
         index : _type_, optional

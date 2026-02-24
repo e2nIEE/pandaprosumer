@@ -235,7 +235,7 @@ class SolarThermalController(BasicProsumerController):
     def __init__(
             self,
             prosumer,
-            solar_themal_object,
+            solar_thermal_object,
             # data_source,
             order,
             level,
@@ -249,13 +249,11 @@ class SolarThermalController(BasicProsumerController):
         ----------
         prosumer : object of type prosumer
             Prosumer container
-        solar_themal_object : _object of type SenergyNetsSolarThermalController
-            Solar Thermal object, where solar thermal inputs are defined
-        data_source : object of type pandas.DataFrame
-            Dataset with pandas format
+        solar_thermal_object : object of type SolarThermalControllerData
+            Solar thermal controller data object, where solar thermal inputs are defined
         order : list
             _description_
-        level :list
+        level : list
             _description_
         in_service : bool, optional
             _description_, by default True
@@ -264,7 +262,7 @@ class SolarThermalController(BasicProsumerController):
         """
         super().__init__(
             prosumer,
-            solar_themal_object,
+            solar_thermal_object,
             order=order,
             level=level,
             in_service=in_service,

@@ -19,6 +19,7 @@ def create_controlled_network_coupling(net,
                                        level=0,
                                        order=0,
                                        name=None):
+    """Create a network coupling controller for coupling a network and a prosumer."""
     if isinstance(element_index, (np.integer, int)):
         element_index = [int(element_index)]
     elif isinstance(element_index, np.ndarray):
@@ -53,6 +54,22 @@ def create_controlled_const_profile(prosumer,
                                     in_service=True,
                                     temp_fluid_map_idx=None,
                                     mdot_fluid_map_idx=None):
+    """
+    Creates a constant-profile controller that supplies time-series data from a DataFrame to the prosumer.
+
+    :param prosumer: The prosumer container
+    :param input_columns: Column names for inputs (must match columns in data_source)
+    :param result_columns: Column names for results written into the controller
+    :param data_source: DataFrame containing the profile time series (e.g. demand, setpoints)
+    :param period: Period index, default 0
+    :param level: Controller level, default 0
+    :param order: Controller order, default 0
+    :param name: Controller name, default None
+    :param in_service: True for in_service or False for out of service, default True
+    :param temp_fluid_map_idx: Temperature fluid mapping index, default None
+    :param mdot_fluid_map_idx: Mass flow fluid mapping index, default None
+    :return: Index of the created const profile controller
+    """
     const_controller_data = ConstProfileControllerData(
         input_columns=input_columns,
         result_columns=result_columns,
@@ -75,6 +92,16 @@ def create_controlled_supervisor(prosumer,
                                  period=0,
                                  level=0,
                                  order=0):
+    """
+    Creates a supervisor controller that coordinates other controllers based on input_columns.
+
+    :param prosumer: The prosumer container
+    :param input_columns: Column names used as inputs and results for the supervisor
+    :param period: Period index, default 0
+    :param level: Controller level, default 0
+    :param order: Controller order, default 0
+    :return: Index of the created supervisor controller
+    """
     spdata = SupervisorData(
         input_columns=input_columns,
         result_columns=input_columns
@@ -670,38 +697,38 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, bhp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
-               Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
+    Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller.
 
-           INPUT:
-               **prosumer** - The prosumer within this booster_heat_pump should be created
+    INPUT:
+        **prosumer** - The prosumer within this booster_heat_pump should be created
 
-               **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
+        **bhp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
 
-           OPTIONAL:
-                **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
+    OPTIONAL:
+        **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
 
-               **name** (string, default None) - The name of the BHP instance
+        **name** (string, default None) - The name of the BHP instance
 
-               **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
-                   higher than the highest already existing index is selected.
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one
+            higher than the highest already existing index is selected.
 
-               **in_service** (boolean, default True) - True for in_service or False for out of service
+        **in_service** (boolean, default True) - True for in_service or False for out of service
 
-               **level** (int, default 0) - The level of the controller
+        **level** (int, default 0) - The level of the controller
 
-                **order** (int, default 0) - The order of the controller
+        **order** (int, default 0) - The order of the controller
 
-                **period** (int, default 0) - Index of the period, default is 0
+        **period** (int, default 0) - Index of the period, default is 0
 
-           OUTPUT:
-               **index** (int) - The unique ID of the created BHP
+    OUTPUT:
+        **index** (int) - The unique ID of the created BHP
 
-           EXAMPLE:
-               create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
-           """
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, q_max_kw, in_service, name, index, **kwargs)
+    EXAMPLE:
+        create_controlled_booster_heat_pump(prosumer, 'water-water1', name='example_bhp')
+    """
+    bhp_index = create_booster_heat_pump(prosumer, bhp_type, q_max_kw, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
         period_index=period
@@ -921,7 +948,7 @@ def create_controlled_solar_thermal(prosumer,
                                     order=0,
                                     period=0,
                                     **kwargs):
-
+    """Create a solar thermal element and solar thermal controller in the prosumer."""
     solar_thermal_index = create_solar_thermal(
         prosumer,
         **{k: v for k, v in locals().items()
