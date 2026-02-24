@@ -150,6 +150,25 @@ class ElectricBoilerController(BasicProsumerController):
                     t_in_required_c = t_in_new_c
                     rerun = True
 
+        # After merit-order capping, ensure mass and energy balance at the interface:
+        # use the actually delivered mass flow (sum of responder flows) and, if necessary,
+        # increase the outlet temperature so that the same thermal power q_kw is carried
+        # by this mass flow.
+        mdot_used_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
+        tol = 1e-9
+        if abs(mdot_delivered_kg_per_s - mdot_used_kg_per_s) > tol:
+            cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
+            if mdot_used_kg_per_s > tol:
+                t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                mdot_delivered_kg_per_s = mdot_used_kg_per_s
+            elif -tol < mdot_used_kg_per_s < tol and q_kw > tol:
+                mdot_delivered_kg_per_s = q_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                # update result_mdot_tab_kg_per_s with the new mass flow, distribute evenly if several responders
+                if len(result_mdot_tab_kg_per_s) > 0:
+                    result_mdot_tab_kg_per_s = np.array(result_mdot_tab_kg_per_s) + (mdot_delivered_kg_per_s - mdot_used_kg_per_s) / len(result_mdot_tab_kg_per_s)
+                else:
+                    result_mdot_tab_kg_per_s = np.array([mdot_delivered_kg_per_s])
+
         assert q_kw >= 0, f"Electric Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
         assert p_kw >= 0, f"Electric Boiler {self.name} p_kw is negative ({p_kw}) for timestep {self.time} in prosumer {prosumer.name}"
 

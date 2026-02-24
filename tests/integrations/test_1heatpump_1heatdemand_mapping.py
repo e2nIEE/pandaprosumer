@@ -116,12 +116,13 @@ class Test1HeatPump1HeatDemandMapping:
         # Create test data with variable demand (9 timesteps = 2 hours)
         start = '2020-01-01 00:00:00'
         resol_s = 900
+        length = 13
         data = pd.DataFrame({
-            't_air': [20] * 9,
-            'demand_power': [0, 100, 200, 300, 250, 150, 100, 200, 150],  # Variable
-            't_feed_demand_c': [80] * 9,
-            't_return_demand_c': [30] * 9
-        }, index=pd.date_range(start=start, periods=9, freq=f"{resol_s}s", tz='utc'))
+            't_air': [20] * length,
+            'demand_power': [0, 100, 200, 300, 250, 150, 100, 200, 150, 0, 60, 20, 0],  # Variable
+            't_feed_demand_c': [80] * length,
+            't_return_demand_c': [30] * length
+        }, index=pd.date_range(start=start, periods=length, freq=f"{resol_s}s", tz='utc'))
         
         end = pd.Timestamp(start) + len(data["t_air"]) * pd.Timedelta(f"00:00:{resol_s}") - pd.Timedelta("00:00:01")
         dur = pd.date_range(start, end, freq='%ss' % resol_s, tz='utc')
@@ -144,6 +145,7 @@ class Test1HeatPump1HeatDemandMapping:
             'carnot_efficiency': 0.5,
             'max_p_comp_kw': 200,
             'delta_t_evap_c': 5,
+            'min_p_comp_kw': 10,
             'pinch_c': 0,
             'max_ramp_up_kw_per_s': max_ramp_up,
             'max_ramp_down_kw_per_s': abs(max_ramp_down),
@@ -180,6 +182,10 @@ class Test1HeatPump1HeatDemandMapping:
         # Calculate ramp rates
         delta_p_comp = np.diff(p_comp)
         ramp_rate_kw_per_s = delta_p_comp / resol_s
+        
+        pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
+        print(prosumer.time_series.data_source.iloc[0].df)
+        print(prosumer.time_series.data_source.iloc[1].df)
 
         # Verify both ramp up and ramp down constraints
         for i, rate in enumerate(ramp_rate_kw_per_s):

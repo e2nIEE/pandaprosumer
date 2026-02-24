@@ -74,18 +74,18 @@ class Test1GasBoiler1HeatDemandMapping:
 
         gb_data = {
             'q_kw': [0.0, 20.0, 20.0, 70.0, 100.0, 40.0, 90.0, 30.0, 20.0, 0.0],
-            'mdot_kg_per_s': [0.000000, 0.102060, 0.102060, 0.357209, 0.510299, 0.204251, 0.459269, 0.153090, 0.102060, 0.000000],
+            'mdot_kg_per_s': [0., 0.051030, 0.10206, 0.357209, 0.510299, 0.2041195708, 0.459269, 0.153090, 0.025515, 0.],
             't_in_c': [30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0, 30.0],
-            't_out_c': [30.00, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 30.00],
+            't_out_c': [30., 123.7, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 217.4, 30.],
             'mdot_gas_kg_per_s': [0.0000, 0.0010, 0.0010, 0.0035, 0.0050, 0.0020, 0.0045, 0.0015, 0.0010, 0.0000]
         }
         gb_expected = pd.DataFrame(gb_data, index=data.index)
 
         dmd_data = {
-            'q_received_kw': [0., 10., 20., 70., 100., 0., 90., 30., 5., 0.],
-            'q_uncovered_kw': [0., 0., 0., 20., 10., 0., 30., 0., 0., 0.],
-            'mdot_kg_per_s': [0., 0.051030, 0.10206, 0.357209, 0.510299, 0., 0.459269, 0.153090, 0.025515, 0.],
-            't_in_c': [30., 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 30.],
+            'q_received_kw': [0., 20.05787, 20., 70., 100., 40., 90., 30., 20.24360, 0.],
+            'q_uncovered_kw': [0., -10.05787, 0.0, 20.0, 10., -40., 30., 0.0, -15.243603, 0.],
+            'mdot_kg_per_s': [0., 0.051030, 0.10206, 0.357209, 0.510299, 0.20411957, 0.459269, 0.153090, 0.025515, 0.],
+            't_in_c': [30., 123.7, 76.85, 76.85, 76.85, 76.85, 76.85, 76.85, 217.4, 30.],
             't_out_c': [30.] * 10
         }
         hd_expected = pd.DataFrame(dmd_data, index=data.index)
@@ -93,9 +93,17 @@ class Test1GasBoiler1HeatDemandMapping:
         assert not np.isnan(prosumer.time_series.loc[0, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[1, "data_source"].df).any().any()
         assert_frame_equal(prosumer.time_series.loc[0].data_source.df, gb_expected, atol=0.0001, check_dtype=False)
-        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, hd_expected, check_dtype=False)
+        assert_frame_equal(prosumer.time_series.loc[1].data_source.df, hd_expected, atol=0.0001, check_dtype=False)
         
         gb_mdot_kg_per_s = prosumer.time_series.loc[0].data_source.df.mdot_kg_per_s
         dmd_mdot_kg_per_s = prosumer.time_series.loc[1].data_source.df.mdot_kg_per_s
-
-        assert (gb_mdot_kg_per_s == dmd_mdot_kg_per_s).all()  # FixMe: not equal to gb results!
+        gb_power_kw = prosumer.time_series.loc[0].data_source.df.q_kw
+        dmd_power_kw = prosumer.time_series.loc[1].data_source.df.q_received_kw
+        gb_out_temp_c = prosumer.time_series.loc[0].data_source.df.t_out_c
+        gb_in_temp_c = prosumer.time_series.loc[0].data_source.df.t_in_c
+        dmd_in_temp_c = prosumer.time_series.loc[1].data_source.df.t_in_c
+        dmd_out_temp_c = prosumer.time_series.loc[1].data_source.df.t_out_c
+        assert (gb_mdot_kg_per_s == dmd_mdot_kg_per_s).all()
+        assert (gb_power_kw == dmd_power_kw).all()
+        assert (gb_out_temp_c == dmd_in_temp_c).all()
+        assert (dmd_out_temp_c == gb_in_temp_c).all()

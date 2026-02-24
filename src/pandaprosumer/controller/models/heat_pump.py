@@ -111,7 +111,7 @@ class HeatPumpController(BasicProsumerController):
             return self.t_previous_evap_in_c, self.t_previous_evap_out_c, self.mdot_previous_evap_kg_per_s
         return t_feed_c, t_evap_out_c, mdot_evap_kg_per_s
     
-    def _ramp_down(self, t_cond_out_c, t_cond_in_c, t_evap_in_c, carnot_efficiency, default_delta_t_evap_c, max_decrease):
+    def _ramp_down(self, prosumer, t_cond_out_c, t_cond_in_c, t_evap_in_c, carnot_efficiency, default_delta_t_evap_c, max_decrease, pinch_c):
          # Need to ramp down gradually - maintain proportional operation
         p_comp_kw = max(0, self.p_comp_previous_kw - max_decrease)
 
@@ -119,6 +119,7 @@ class HeatPumpController(BasicProsumerController):
         operating_ratio = p_comp_kw / self.p_comp_previous_kw
 
         # Maintain proportional temperatures (percentage of previous delta)
+        # FIXME: use self.last_result['t_previous_evap_out_c'] instead
         if not np.isnan(self.t_previous_evap_out_c) and not np.isnan(self.t_previous_evap_in_c):
             delta_t_evap_previous = self.t_previous_evap_in_c - self.t_previous_evap_out_c
             delta_t_evap_c = delta_t_evap_previous * operating_ratio
@@ -141,7 +142,20 @@ class HeatPumpController(BasicProsumerController):
         q_evap_kw = q_cond_kw - p_comp_kw
 
         # Maintain proportional condenser delta T
-        delta_t_cond = (t_cond_out_c - t_cond_in_c) * operating_ratio
+        if t_cond_out_c - t_cond_in_c > 1e-3:
+            delta_t_cond = (t_cond_out_c - t_cond_in_c) * operating_ratio
+        else:
+            delta_t_cond_previous_c = self.last_result.get('t_cond_out_c', np.nan) - self.last_result.get('t_cond_in_c', np.nan)
+            delta_t_cond = delta_t_cond_previous_c
+            t_cond_out_c = t_cond_in_c + delta_t_cond
+            cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+            mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * delta_t_cond) if delta_t_cond > 0.1 else 0
+            return self._calculate_heat_pump(prosumer,
+                                             mdot_cond_kg_per_s,
+                                             t_cond_out_c,
+                                             t_cond_in_c,
+                                             t_evap_in_c,
+                                             pinch_c)
         t_cond_out_c = t_cond_in_c + delta_t_cond
 
         # Calculate mass flows
@@ -184,7 +198,7 @@ class HeatPumpController(BasicProsumerController):
                 if delta_p < -max_decrease:
                     # Need to ramp down gradually - maintain proportional operation
                     default_delta_t_evap_c = self._get_element_param(prosumer, 'delta_t_evap_c')
-                    return self._ramp_down(t_cond_out_c, t_cond_in_c, t_evap_in_c, carnot_efficiency, default_delta_t_evap_c, max_decrease)
+                    return self._ramp_down(prosumer, t_cond_out_c, t_cond_in_c, t_evap_in_c, carnot_efficiency, default_delta_t_evap_c, max_decrease, pinch_c)
                    
             # Complete shutdown (no ramp constraint or already at zero)
             return (0, 0, 0, 0,
@@ -245,10 +259,25 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_cond_in_c,
                                                                                         t_evap_in_c,
                                                                                         pinch_c)
-        min_pcomp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
-        if min_pcomp_kw and p_comp_kw < min_pcomp_kw - 1e-3:
+        min_p_comp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
+        if min_p_comp_kw and p_comp_kw < min_p_comp_kw - 1e-3:
             # If the compressor power is too low, the Heat Pump cannot run
-            return 0, 0, 0, 0, 0, t_cond_in_c, t_cond_in_c, 0, t_evap_in_c, t_evap_in_c
+            if self.p_comp_previous_kw < p_comp_kw:
+                # If it was off before, it stays off
+                return 0, 0, 0, 0, 0, t_cond_in_c, t_cond_in_c, 0, t_evap_in_c, t_evap_in_c
+            else:
+                # If it was on, it stays on at the minimum compressor power
+                p_comp_kw = min_p_comp_kw
+                mdot_cond_kg_per_s = p_comp_kw * cop_hp / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+                mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+                mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
+                                                                                            mdot_cond_kg_per_s,
+                                                                                            t_cond_out_c,
+                                                                                            t_cond_in_c,
+                                                                                            t_evap_in_c,
+                                                                                            pinch_c)
+                
 
         max_p_comp_kw = self._get_element_param(prosumer, 'max_p_comp_kw')
         if max_p_comp_kw and p_comp_kw > max_p_comp_kw + 1e-3:
@@ -269,24 +298,48 @@ class HeatPumpController(BasicProsumerController):
             max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
             delta_p = (p_comp_kw - self.p_comp_previous_kw)
-            time_step_s = self.resol
-            if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * time_step_s:
+            delta_t_cond_previous_c = self.last_result.get('t_cond_out_c', np.nan) - self.last_result.get('t_cond_in_c', np.nan)
+            if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * self.resol:
                 # Limit ramp up
-                p_comp_kw = self.p_comp_previous_kw + max_ramp_up_kw_per_s * time_step_s
+                p_comp_kw = self.p_comp_previous_kw + max_ramp_up_kw_per_s * self.resol
                 # Recalculate only the affected outputs
                 q_cond_kw = p_comp_kw * cop_hp
-                mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
-                q_evap_kw = q_cond_kw - p_comp_kw
-                mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+                if t_cond_out_c - t_cond_in_c > 1e-3:
+                    mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                    q_evap_kw = q_cond_kw - p_comp_kw
+                    mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+                else:
+                    t_cond_out_c = t_cond_in_c + delta_t_cond_previous_c
+                    mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                    (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+                     mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+                     mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
+                                                                                                mdot_cond_kg_per_s,
+                                                                                                t_cond_out_c,
+                                                                                                t_cond_in_c,
+                                                                                                t_evap_in_c,
+                                                                                                pinch_c)
 
-            elif max_ramp_down_kw_per_s and delta_p < -1 * max_ramp_down_kw_per_s * time_step_s:
+            elif max_ramp_down_kw_per_s and delta_p < -1 * max_ramp_down_kw_per_s * self.resol:
                 # Limit ramp down
-                p_comp_kw = self.p_comp_previous_kw - max_ramp_down_kw_per_s * time_step_s
+                p_comp_kw = self.p_comp_previous_kw - max_ramp_down_kw_per_s * self.resol
                 # Recalculate only the affected outputs
                 q_cond_kw = p_comp_kw * cop_hp
-                mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
-                q_evap_kw = q_cond_kw - p_comp_kw
-                mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+                if t_cond_out_c - t_cond_in_c > 1e-3:
+                    mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                    q_evap_kw = q_cond_kw - p_comp_kw
+                    mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
+                else:
+                    t_cond_out_c = t_cond_in_c + delta_t_cond_previous_c
+                    mdot_cond_kg_per_s = q_cond_kw / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
+                    (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
+                     mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
+                     mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
+                                                                                                mdot_cond_kg_per_s,
+                                                                                                t_cond_out_c,
+                                                                                                t_cond_in_c,
+                                                                                                t_evap_in_c,
+                                                                                                pinch_c)
 
         return (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
@@ -425,7 +478,17 @@ class HeatPumpController(BasicProsumerController):
                     # with the new temperature
                     t_cond_in_required_c = t_cond_in_new_c
                     rerun = True
-
+            
+        mdot_used_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
+        tol = 1e-9
+        if abs(mdot_cond_kg_per_s - mdot_used_kg_per_s) > tol and  -tol < mdot_used_kg_per_s < tol and q_cond_kw > tol:
+            # update result_mdot_tab_kg_per_s with the new mass flow, distribute evenly if several responders
+            if len(result_mdot_tab_kg_per_s) > 0:
+                result_mdot_tab_kg_per_s = np.array(result_mdot_tab_kg_per_s) + (mdot_cond_kg_per_s - mdot_used_kg_per_s) / len(result_mdot_tab_kg_per_s)
+            else:
+                # FIXME: in this case there is no responder, result_mdot_tab_kg_per_s should be empty
+                result_mdot_tab_kg_per_s = np.array([mdot_cond_kg_per_s])
+                
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,
@@ -462,7 +525,7 @@ class HeatPumpController(BasicProsumerController):
             # If the actual output temperature is the same as the promised one, the storage is correctly applied
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
-            self.t_previous_evap_out_c = np.nan
+            self.t_previous_evap_out_c = np.nan  # FIXME: should be nan ?
             self.t_previous_evap_in_c = np.nan
             self.mdot_previous_evap_kg_per_s = np.nan
             self.p_comp_previous_kw = p_comp_kw  # Store the last compressor power value
