@@ -215,25 +215,28 @@ class TestElectricBoiler:
                                                               FluidMixMapping.MASS_FLOW_KEY: mdot_init}]
         
         # Increase the heat demand faster than the max ramp up speed
-        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [3])
+        mdot_demand_high_kg_per_s = 3.
+        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_demand_high_kg_per_s])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:01")
         elb_controller.control_step(prosumer)
 
         power_up_kw = power_init_kw + max_ramp_up_kw_per_s * resol_s
-        expected = [power_up_kw, 1.8985759, t_low_c, t_high_c, power_up_kw]
+        mdot_provided_high_kg_per_s = power_up_kw / (4.186 * (t_high_c - t_low_c))
+        expected = [power_up_kw, mdot_provided_high_kg_per_s, t_low_c, t_high_c, power_up_kw]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
-                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.8985759042371968)}]
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_provided_high_kg_per_s, .01)}]
         
         # Decrease the heat demand faster than the max ramp down speed
-        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [1])
+        mdot_demand_low_kg_per_s = 1.
+        elb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_demand_low_kg_per_s])
         elb_controller.time_step(prosumer, "2020-01-01 00:00:02")
         elb_controller.control_step(prosumer)
         
         power_down_kw = power_up_kw - max_ramp_down_kw_per_s * resol_s
-        expected = [power_down_kw, 1.6992879521185984, t_low_c, t_high_c, power_down_kw]
+        t_high_recalculated_c = t_low_c + power_down_kw / (mdot_demand_low_kg_per_s * 4.186)
+        expected = [power_down_kw, mdot_demand_low_kg_per_s, t_low_c, t_high_recalculated_c, power_down_kw]
         assert elb_controller.step_results == pytest.approx(np.array([expected]), .01)
-        # FixMe: The mapped mass flow is 1 only, so the difference disappeared
-        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: t_high_c,
-                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(1.)}]
+        assert elb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_high_recalculated_c, .01),
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_demand_low_kg_per_s, .01)}]
         

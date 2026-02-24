@@ -178,7 +178,8 @@ def create_heat_pump(prosumer,
 
 
 def create_heat_demand(prosumer,
-                       scaling=1.0,
+                       t_in_set_c=np.nan,
+                       t_out_set_c=np.nan,
                        name=None,
                        index=None,
                        in_service=True,
@@ -190,8 +191,7 @@ def create_heat_demand(prosumer,
         **prosumer** - The prosumer within this heat demand should be created
 
     OPTIONAL:
-        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
-        Multiply the demanded power by this factor
+        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
 
         **t_in_set_c** (float, default nan) - The default required input temperature level [C]
 
@@ -214,8 +214,8 @@ def create_heat_demand(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_demand", index)
 
-    entries = dict(zip(["name", "scaling", "in_service"],
-                       [name, scaling, in_service]))
+    entries = dict(zip(["name", "t_in_set_c", "t_out_set_c", "in_service"],
+                       [name, t_in_set_c, t_out_set_c, in_service]))
 
     _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
 
@@ -618,7 +618,7 @@ def create_gas_boiler(prosumer,
 
 def create_booster_heat_pump(
     prosumer,
-    bhp_type,
+    hp_type,
     q_max_kw = None,
     in_service=True,
     name=None,
@@ -629,7 +629,7 @@ def create_booster_heat_pump(
     Creates a booster heat pump element in prosumer["booster_heat_pump"].
 
     :param prosumer: The prosumer container
-    :param bhp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
+    :param hp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
     :param q_max_kw: Maximum thermal power [kW], default None
     :param in_service: True for in_service or False for out of service, default True
     :param name: Name of the BHP instance, default None
@@ -643,13 +643,13 @@ def create_booster_heat_pump(
         zip(
             [
                 "name",
-                "bhp_type",
+                "hp_type",
                 "q_max_kw",
                 "in_service",
             ],
             [
                 name,
-                bhp_type,
+                hp_type,
                 q_max_kw,
                 in_service,
             ],
@@ -759,7 +759,7 @@ def create_chiller(
         prosumer, ChillerElementData
     )
 
-    index = _get_index_with_check(prosumer, "sn_chiller", index)
+    index = _get_index_with_check(prosumer, "chiller", index)
 
     entries = dict(
         zip(
@@ -796,7 +796,7 @@ def create_chiller(
         )
     )
 
-    _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
+    _set_entries(prosumer, "chiller", index, **entries, **kwargs)
     return int(index)
 
 

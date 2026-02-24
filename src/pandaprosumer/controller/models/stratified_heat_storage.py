@@ -612,26 +612,21 @@ class StratifiedHeatStorageController(BasicProsumerController):
                     t_demand_in_c = t_return_demand_new_c
                     rerun = True
 
-        # result = np.array([[mdot_discharge_kg_per_s,
-        #                     t_discharge_out_c,
-        #                     q_delivered_kw,
-        #                     e_stored_kwh]])
-
         cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
         q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
         cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
         q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
 
-        # Store the total heat delivered to the downstream elements (bypass + discharge)
+        # FIXME: q_delivered_kw is the discharge heat, not the total heat delivered to the downstream elements (bypass + discharge)
         result = np.array([[mdot_discharge_kg_per_s,
                             t_discharge_out_c,
-                            q_delivered_kw,
+                            q_discharge_kw,
                             e_stored_kwh]])
 
         self.last_result = {
             "mdot_discharge_kg_per_s": mdot_discharge_kg_per_s,
             "t_discharge_out_c": t_discharge_out_c,
-            "q_delivered_kw": q_delivered_kw,
+            "q_delivered_kw": q_discharge_kw,
             "e_stored_kwh": e_stored_kwh,
         }
 

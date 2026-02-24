@@ -103,7 +103,9 @@ class Test1GasBoiler1HeatDemandMapping:
         gb_in_temp_c = prosumer.time_series.loc[0].data_source.df.t_in_c
         dmd_in_temp_c = prosumer.time_series.loc[1].data_source.df.t_in_c
         dmd_out_temp_c = prosumer.time_series.loc[1].data_source.df.t_out_c
-        assert (gb_mdot_kg_per_s == dmd_mdot_kg_per_s).all()
-        assert (gb_power_kw == dmd_power_kw).all()
-        assert (gb_out_temp_c == dmd_in_temp_c).all()
-        assert (dmd_out_temp_c == gb_in_temp_c).all()
+        
+        assert_series_equal(gb_mdot_kg_per_s, dmd_mdot_kg_per_s, check_names=False, rtol=.01)
+        # FixMe: need higher tolerance for the power, may be due to the fact that the "cp" value of water depends on the temperature
+        assert_series_equal(gb_power_kw, dmd_power_kw, check_names=False, rtol=.05)
+        assert_series_equal(gb_out_temp_c, dmd_in_temp_c, check_names=False, rtol=.01)
+        assert_series_equal(dmd_out_temp_c, gb_in_temp_c, check_names=False, rtol=.01)

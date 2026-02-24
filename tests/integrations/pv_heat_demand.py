@@ -12,7 +12,7 @@ class TestPvHeatDemandIntegration:
         Integration test:
 
         - ConstProfileController reads a combined PV + heat-demand profile.
-        - SenergyNetsPvProductionController receives PV inputs via GenericMapping
+        - PVProductionController receives PV inputs via GenericMapping
           and produces a PV time series
         - HeatDemandController receives:
             • q_demand_kw   from ConstProfileController

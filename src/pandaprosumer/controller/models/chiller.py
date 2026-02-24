@@ -8,14 +8,14 @@ class ChillerController(BasicProsumerController):
 
     def name_class(self):
         """Name of the chiller"""
-        return "sn_chiller_controller"
+        return "chiller_controller"
 
-    def __init__(self, prosumer, sn_chiller_object, order, level, data_source=None, in_service=True, index=None,
+    def __init__(self, prosumer, chiller_object, order, level, data_source=None, in_service=True, index=None,
                  name=None, **kwargs):
         """Initialise the attributes of the object"""
         super(ChillerController, self).__init__(
             prosumer,
-            basic_prosumer_object=sn_chiller_object,
+            basic_prosumer_object=chiller_object,
             order=order,
             level=level,
             data_source=data_source,
@@ -25,7 +25,7 @@ class ChillerController(BasicProsumerController):
             **kwargs,
         )
 
-        self.obj = sn_chiller_object
+        self.obj = chiller_object
         self.element = self.obj.element_name
         self.element_index = self.obj.element_index
         self.input_columns = self.obj.input_columns

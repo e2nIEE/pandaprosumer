@@ -95,8 +95,8 @@ Functions
     * Avoid: other adjectives like **mdot_demanded_kg_per_s** or **mdot_toprovide_kg_per_s**
 
 - Function names should avoid redundancies.
-    * Use: **t_get_degc**
-    * Avoid: **t_feedin_supplied_degc**
+    * Use: **t_get_c**
+    * Avoid: **t_feedin_supplied_c**
 
 Files
 ------

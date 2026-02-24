@@ -41,7 +41,6 @@ Input Static Data
    :header: "Parameter", "Description", "Unit"
 
    "name", "Unique name or identifier for the heat demand element.", "N/A"
-   "scaling", "Scaling factor applied to the demand time series.", "N/A"
    "t_in_set_c", "Default feed temperature level used if no time-series value is provided.", "Degree Celsius"
    "t_out_set_c", "Default return temperature level used if no time-series value is provided.", "Degree Celsius"
    "in_service", "True for in_service or False for out of service", "boolean"

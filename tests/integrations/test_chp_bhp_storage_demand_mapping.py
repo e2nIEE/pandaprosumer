@@ -242,3 +242,4 @@ class TestChpBhpStorageDemandMapping:
         soc = prosumer.time_series.loc[2].data_source.df.soc
 
         assert ((1.0 >= soc) & (soc >= 0.0)).all()
+        

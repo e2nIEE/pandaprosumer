@@ -10,7 +10,7 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @enforce_types
 @dataclass
 class PvProductionComponentData:
-    """Define format of the parameters of PV production in SenergyNets.
+    """Define format of the parameters of the PV production controller.
     """
     element_index: List[int]
     period_index: int = None

@@ -205,7 +205,8 @@ def create_controlled_heat_pump(prosumer,
 
 
 def create_controlled_heat_demand(prosumer,
-                                  scaling=1.0,
+                                  t_in_set_c=np.nan,
+                                  t_out_set_c=np.nan,
                                   name=None,
                                   index=None,
                                   in_service=True,
@@ -220,9 +221,6 @@ def create_controlled_heat_demand(prosumer,
             **prosumer** - The prosumer within this heat demand should be created
 
         OPTIONAL:
-            **scaling** (float, default 1) - A scaling factor applied to the heat demand.
-            Multiply the demanded power by this factor
-
             **t_in_set_c** (float, default nan) - The default required input temperature level [C]
 
             **t_out_set_c** (float, default nan) - The default required output temperature level [C]
@@ -697,14 +695,14 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, bhp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
     Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller.
 
     INPUT:
         **prosumer** - The prosumer within this booster_heat_pump should be created
 
-        **bhp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
+        **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
 
     OPTIONAL:
         **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
@@ -728,7 +726,7 @@ def create_controlled_booster_heat_pump(prosumer, bhp_type, name=None, q_max_kw=
     EXAMPLE:
         create_controlled_booster_heat_pump(prosumer, 'water-water1', name='example_bhp')
     """
-    bhp_index = create_booster_heat_pump(prosumer, bhp_type, q_max_kw, in_service, name, index, **kwargs)
+    bhp_index = create_booster_heat_pump(prosumer, hp_type, q_max_kw, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
         period_index=period
@@ -848,7 +846,7 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_co
         **kwargs)
 
     chiller_controller_data = ChillerControllerData(
-        element_name='sn_chiller',
+        element_name='chiller',
         element_index=[chiller_index],
         period_index=period
     )

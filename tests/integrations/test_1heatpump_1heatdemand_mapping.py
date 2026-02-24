@@ -182,10 +182,6 @@ class Test1HeatPump1HeatDemandMapping:
         # Calculate ramp rates
         delta_p_comp = np.diff(p_comp)
         ramp_rate_kw_per_s = delta_p_comp / resol_s
-        
-        pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
-        print(prosumer.time_series.data_source.iloc[0].df)
-        print(prosumer.time_series.data_source.iloc[1].df)
 
         # Verify both ramp up and ramp down constraints
         for i, rate in enumerate(ramp_rate_kw_per_s):

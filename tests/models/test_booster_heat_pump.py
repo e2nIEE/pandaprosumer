@@ -23,7 +23,7 @@ class TestBoosterHeatPump:
         assert hasattr(prosumer, 'booster_heat_pump')
         assert len(prosumer.booster_heat_pump) == 1
 
-        expected_columns = ['name', 'bhp_type', 'q_max_kw', 'in_service']
+        expected_columns = ['name', 'hp_type', 'q_max_kw', 'in_service']
         expected_values = ['example_hp', 'water-water1', np.nan, True]
 
         assert list(prosumer.booster_heat_pump.columns) == expected_columns
@@ -143,7 +143,7 @@ class TestBoosterHeatPump:
         assert bhp_controller.step_results[0, 3] <= bhp_controller.step_results[0, 6]
         assert bhp_controller.step_results == pytest.approx(np.array([expected]), rel=1e-2)
 
-    def test_different_bhp_types(self):
+    def test_different_hp_types(self):
         prosumer = create_empty_prosumer_container()
 
         bhp_controller_idx_ww1 = create_controlled_booster_heat_pump(

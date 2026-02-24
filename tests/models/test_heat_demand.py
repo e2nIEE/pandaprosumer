@@ -30,8 +30,8 @@ class TestHeatDemand:
         assert hasattr(prosumer, "heat_demand")
         assert len(prosumer.heat_demand) == 1
 
-        expected_columns = ["name", "scaling", "in_service"]
-        expected_values = [None, 1., True]
+        expected_columns = ["name", "t_in_set_c", "t_out_set_c", "in_service"]
+        expected_values = [None, np.nan, np.nan, True]
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
         assert prosumer.heat_demand.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -43,8 +43,7 @@ class TestHeatDemand:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        hd_params = {"scaling": 3.2,
-                     "t_in_set_c": 63,
+        hd_params = {"t_in_set_c": 63,
                      "t_out_set_c": 35}
 
         hd_idx = create_heat_demand(prosumer, name='foo', in_service=False, index=4, custom='test', **hd_params)
@@ -53,8 +52,8 @@ class TestHeatDemand:
         assert hd_idx == 4
         assert prosumer.heat_demand.index[0] == hd_idx
 
-        expected_columns = ["name", "scaling", "in_service", "custom", "t_in_set_c", "t_out_set_c", ]
-        expected_values = ['foo', 3.2, False, 'test', 63, 35]
+        expected_columns = ["name", "t_in_set_c", "t_out_set_c", "in_service", "custom"]
+        expected_values = ['foo', 63, 35, False, 'test']
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
         assert prosumer.heat_demand.iloc[0].values == pytest.approx(expected_values)

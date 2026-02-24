@@ -1,7 +1,7 @@
 .. _pv_element:
 
 =========================
-SenergyNets PV Production
+PV Production
 =========================
 
 .. seealso::
@@ -39,7 +39,7 @@ Input Static Data
 Input Time Series
 --------------------
 
-The SenergyNets PV controller expects the following time-series inputs,
+The PV controller expects the following time-series inputs,
 typically obtained from PVGIS / pvlib or another external PV model.
 
 .. csv-table::
