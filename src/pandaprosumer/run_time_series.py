@@ -41,16 +41,21 @@ def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_
             kwargs["simulation_time_step"] = i
 
         net.rerun = False
+
+        # if check_results_fct is not None:
+        #     check_results_fct(net, time_step)
+
         run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
+        store_results(net, time_step, ts_variables)
 
-        if check_results_fct is not None:
-            rerun_time_step = check_results_fct(net, time_step)
-        else:
-            rerun_time_step = False
-
-        if rerun_time_step:
-            net.rerun = True
-            run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
+        # if check_results_fct is not None:
+        #     rerun_time_step = check_results_fct(net, time_step)
+        # else:
+        #     rerun_time_step = False
+        #
+        # if rerun_time_step:
+        #     net.rerun = True
+        #     run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
 def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=None):
@@ -114,6 +119,9 @@ def control_diagnostic_pandaprosumer(prosumer, start, end, resolution_s):
 
 
 def output_writer_fct(prosumer, time_step, pf_converged, ctrl_converged, ts_variables):
+    pass
+
+def store_results(prosumer, time_step, ts_variables):
     """
     Collect and store controller results for a given timestep.
 

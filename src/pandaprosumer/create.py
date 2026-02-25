@@ -7,7 +7,7 @@ from pandapower.create import _get_index_with_check, _set_entries
 from pandaprosumer.element import *
 from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
     HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
-                                   SolarThermalElementData,ConverterElementData)
+                                   SolarThermalElementData,ConverterElementData, OptimizationElementData)
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
@@ -1272,4 +1272,47 @@ def create_senergy_nets_pv_production(
     )
 
     _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    return int(index)
+
+def create_optimization(
+    prosumer,
+    storage_capacity_kwh,
+    q_bhp_max = None,
+    chp_map = None,
+    in_service=True,
+    name=None,
+    index=None,
+    **kwargs
+):
+    """
+    :param prosumer:
+    :param in_service:  (Default value = True)
+    :param name:  (Default value = None)
+    :param index:  (Default value = None)
+    :param q_max_kw: (Default value = None):
+    """
+    add_new_element(prosumer, OptimizationElementData)
+
+    index = _get_index_with_check(prosumer, "optimization", index)
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "storage_capacity_kwh",
+                "q_bhp_max",
+                "chp_map",
+                "in_service",
+            ],
+            [
+                name,
+                storage_capacity_kwh,
+                q_bhp_max,
+                chp_map,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(prosumer, "optimization", index, **entries, **kwargs)
     return int(index)

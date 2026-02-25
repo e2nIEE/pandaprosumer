@@ -1262,3 +1262,57 @@ def create_controlled_mdu_chp(prosumer,
                                index=None,
                                name=name)
     return mdu_chp.index
+
+def create_controlled_optimtization(prosumer,
+                                    storage_capacity_kwh,
+                                    q_bhp_max = None,
+                                    chp_map = None,
+                                    index=None,
+                                    in_service=True,
+                                    name = None,
+                                    level=0,
+                                    order=0,
+                                    period=0,
+                                    **kwargs):
+    """
+               Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller
+
+           INPUT:
+               **prosumer** - The prosumer within this booster_heat_pump should be created
+
+               **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
+
+           OPTIONAL:
+                **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
+
+               **name** (string, default None) - The name of the BHP instance
+
+               **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+                   higher than the highest already existing index is selected.
+
+               **in_service** (boolean, default True) - True for in_service or False for out of service
+
+               **level** (int, default 0) - The level of the controller
+
+                **order** (int, default 0) - The order of the controller
+
+                **period** (int, default 0) - Index of the period, default is 0
+
+           OUTPUT:
+               **index** (int) - The unique ID of the created BHP
+
+           EXAMPLE:
+               create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
+           """
+    optimization_index = create_optimization(prosumer,storage_capacity_kwh, q_bhp_max, chp_map, in_service, name, index, **kwargs)
+    optimization_controller_data = OptimizationControllerData(element_name='optimization',
+        element_index=[optimization_index],
+        period_index=period
+    )
+    optimization = OptimizationController(prosumer,
+                                   optimization_controller_data,
+                                   order=order,
+                                   level=level,
+                                   name=name)
+
+    return optimization.index
