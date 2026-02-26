@@ -820,20 +820,24 @@ def create_controlled_heat_storage(prosumer,
                                    level=0,
                                    order=0,
                                    init_soc=0.,
+                                   init_temperature=None,
                                    period=0,
                                    **kwargs):
     """
     Creates a heat storage element in the prosumer and a heat storage controller.
+    The controller supports GenericMapping (power only) or FluidMixMapping (uniform
+    tank with temperature and mass flows). Optional min_temp_c, max_temp_c on the
+    element enable SOC from tank temperature in FluidMix mode.
 
     INPUT:
         **prosumer** - The prosumer within which this heat storage should be created.
 
-        **q_capacity_kwh** (float) - The thermal energy capacity of the heat storage [kWh].
+        **q_capacity_kwh** (float) - The thermal energy capacity [kWh] (power-only mode).
 
     OPTIONAL:
         **name** (string, default None) - The name for this heat storage controller.
 
-        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+        **index** (int, default None) - Force a specified ID if it is available.
 
         **in_service** (boolean, default True) - True for in_service or False for out of service.
 
@@ -841,11 +845,17 @@ def create_controlled_heat_storage(prosumer,
 
         **order** (int, default 0) - The order of the controller.
 
-        **init_soc** (float, default 0.) - The initial state of charge of the heat storage.
+        **init_soc** (float, default 0.) - The initial state of charge (power-only or fallback).
+
+        **init_temperature** (float, default None) - Initial tank temperature [°C] for FluidMix mode (from element if None).
 
         **period** (int, default 0) - Index of the period, default is 0.
 
-        **kwargs** - Additional keyword arguments.
+        **capacity_kg** (float) - Tank fluid mass [kg]; if set, enables FluidMix / uniform tank mode.
+
+ **min_temp_c**, **max_temp_c**, **u_w_per_m2k**, **area_wall_m2**, **t_ext_c** - Passed to the element for FluidMix mode.        **init_temperature_c**,
+
+        **kwargs** - Additional keyword arguments passed to the element.
 
     OUTPUT:
         **index** (int) - The unique ID of the created heat storage controller.
@@ -856,7 +866,7 @@ def create_controlled_heat_storage(prosumer,
 
     heat_storage_index = create_heat_storage(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'init_soc', 'kwargs'}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "init_soc", "init_temperature", "kwargs"}},
         **kwargs
     )
     heat_storage_controller_data = HeatStorageControllerData(
@@ -870,6 +880,7 @@ def create_controlled_heat_storage(prosumer,
         order=order,
         level=level,
         init_soc=init_soc,
+        init_temperature=init_temperature,
         name=name
     )
     return hs.index

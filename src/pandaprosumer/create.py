@@ -667,12 +667,31 @@ def create_heat_storage(prosumer,
                         in_service=True,
                         index=None,
                         name=None,
+                        capacity_kg=np.nan,
+                        init_temperature_c=np.nan,
+                        min_temp_c=np.nan,
+                        max_temp_c=np.nan,
+                        u_w_per_m2k=np.nan,
+                        area_wall_m2=np.nan,
+                        t_ext_c=np.nan,
                         **kwargs):
+    """
+    Creates a heat storage element. Use with GenericMapping (power only) or
+    FluidMixMapping (uniform tank; set capacity_kg and optionally init_temperature_c,
+    min_temp_c, max_temp_c for SOC from temperature).
+    """
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
 
-    entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
+    entries = dict(zip(
+        ['name', 'q_capacity_kwh', 'in_service',
+         'capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
+         'u_w_per_m2k', 'area_wall_m2', 't_ext_c'],
+        [name, q_capacity_kwh, in_service,
+         capacity_kg, init_temperature_c, min_temp_c, max_temp_c,
+         u_w_per_m2k, area_wall_m2, t_ext_c]
+    ))
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
     return int(index)
