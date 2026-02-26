@@ -220,30 +220,37 @@ class HeatDemandController(BasicProsumerController):
 
         # ToDo: If t_in < t_out, return t_in, not t_out
 
-        assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        # When upstream (e.g. storage) sends no flow, t_in_c may be NaN; use feed temp as fallback for math
+        no_flow = np.isnan(self._mdot_received_kg_per_s) or self._mdot_received_kg_per_s == 0
+        effective_t_in_c = self._t_in_c if not np.isnan(self._t_in_c) else (t_feed_demand_c if no_flow else np.nan)
+        assert not np.isnan(effective_t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
-        t_mean_c = (self._t_in_c + t_return_demand_c) / 2
+        t_mean_c = (effective_t_in_c + t_return_demand_c) / 2
         cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
         if np.isnan(self._mdot_received_kg_per_s):
-            q_received_kw = q_demand_kw
-            mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            if no_flow:
+                q_received_kw = 0.0
+                mdot_received_kg_per_s = 0.0
+            else:
+                q_received_kw = q_demand_kw
+                mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (effective_t_in_c - t_return_demand_c))
         else:
             mdot_received_kg_per_s = self._mdot_received_kg_per_s
-            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
+            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (effective_t_in_c - t_return_demand_c)
         t_out_c = t_return_demand_c
         # Calculate the difference between the received and the required power, wo considering the temperature level
         # FixMe: Consider the temperature level in the output
         q_uncovered_kw = q_demand_kw - q_received_kw
-        result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
+        result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, effective_t_in_c, t_out_c]])
         self.last_result = {
             "q_received_kw": q_received_kw,
             "q_uncovered_kw": q_uncovered_kw,
             "mdot_received_kg_per_s": mdot_received_kg_per_s,
-            "t_in_c": self._t_in_c,
+            "t_in_c": effective_t_in_c,
             "t_out_c": t_out_c
         }
         if np.isnan(result).any():

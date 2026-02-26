@@ -43,6 +43,7 @@ def run_control(prosumer, ctrl_variables=None, max_iter=30, **kwargs):
     ctrl_variables = prepare_run_ctrl(prosumer, ctrl_variables)
 
     controller_order = ctrl_variables["controller_order"]
+    max_iter = ctrl_variables.get("max_iter", max_iter)
 
     # initialize each controller prior to the first power flow
     control_initialization(controller_order)

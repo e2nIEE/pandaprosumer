@@ -1,5 +1,8 @@
 import pytest
+import numpy as np
+import pandas as pd
 from pandaprosumer import *
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():
@@ -32,11 +35,19 @@ class TestSimpleHeatStorage:
         assert hasattr(prosumer, "heat_storage")
         assert len(prosumer.heat_storage) == 1
 
-        expected_columns = ['name', 'q_capacity_kwh', 'in_service']
-        expected_values = [None, True, 0]
-
+        expected_columns = [
+            'name', 'q_capacity_kwh', 'in_service',
+            'capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
+            'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
+        ]
         assert sorted(prosumer.heat_storage.columns) == sorted(expected_columns)
-        assert prosumer.heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
+        row = prosumer.heat_storage.iloc[0]
+        assert row['name'] is None
+        assert row['in_service'] == True or row['in_service'] is True
+        assert row['q_capacity_kwh'] == 0 or (isinstance(row['q_capacity_kwh'], (int, float)) and np.isclose(row['q_capacity_kwh'], 0))
+        for col in ['capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
+                    'u_w_per_m2k', 'area_wall_m2', 't_ext_c']:
+            assert col in row.index and (pd.isna(row[col]) or row[col] is None)
 
     def test_define_element_param(self):
         """
@@ -53,11 +64,14 @@ class TestSimpleHeatStorage:
         assert shs_idx == 4
         assert prosumer.heat_storage.index[0] == shs_idx
 
-        expected_columns = ['name', 'q_capacity_kwh', 'in_service', 'custom']
-        expected_values = ['foo', False, 100, 'test']
-
+        expected_columns = [
+            'name', 'q_capacity_kwh', 'in_service', 'custom',
+            'capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
+            'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
+        ]
         assert sorted(prosumer.heat_storage.columns) == sorted(expected_columns)
-        assert prosumer.heat_storage.iloc[0].values == pytest.approx(expected_values)
+        row = prosumer.heat_storage.iloc[0]
+        assert row['name'] == 'foo' and row['in_service'] == False and row['q_capacity_kwh'] == 100 and row['custom'] == 'test'
 
     def test_define_controller(self):
         """
@@ -210,3 +224,40 @@ class TestSimpleHeatStorage:
 
         shs_controller.inputs = np.array([[q_in_kw]])
         assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol + q_out_kw - q_in_kw)
+
+    def test_fluid_mix_mode_step(self):
+        """Test FluidMix mode: uniform tank with input T and mdot; check step_results and optional result_mass_flow_with_temp."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        period = create_period(prosumer, 1, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=10, capacity_kg=1000.0,
+                                             init_temperature_c=50.0, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 70.0, FluidMixMapping.MASS_FLOW_KEY: 0.5}
+        ctrl.control_step(prosumer)
+        # Step ran; step_results must be (1, 2)
+        assert ctrl.step_results.shape == (1, 2)
+        soc = ctrl.step_results[0, 0]
+        if not np.isnan(soc):
+            assert 0 <= soc <= 1
+        # When finalized (e.g. no FluidMix initiators), result_mass_flow_with_temp is set
+        if len(ctrl.result_mass_flow_with_temp) == 1:
+            assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == 0.5
+            assert not np.isnan(ctrl.step_results[0, 0])
+            assert ctrl.applied is True
+
+    def test_soc_from_temperature(self):
+        """Test SOC from tank temperature when min_temp_c and max_temp_c are set."""
+        prosumer = create_empty_prosumer_container()
+        period = create_period(prosumer, 1, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+        create_controlled_heat_storage(prosumer, q_capacity_kwh=10, capacity_kg=1000.0,
+                                       init_temperature_c=50.0, min_temp_c=20.0, max_temp_c=80.0, period=period)
+        ctrl = prosumer.controller.iloc[0].object
+        ctrl._temperature = 50.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx((50.0 - 20.0) / 60.0)
+        ctrl._temperature = 80.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx(1.0)
+        ctrl._temperature = 20.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx(0.0)

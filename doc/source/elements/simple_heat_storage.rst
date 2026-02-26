@@ -43,7 +43,14 @@ Input Static Data
 
     "name", "Custom name for the Storage", "N/A"
     "in_service", "Indicates if the Storage is in service", "N/A"
-    "q_capacity_kwh", "Capacity in kilowatt-hours", "kWh"
+    "q_capacity_kwh", "Capacity in kilowatt-hours (power-only mode)", "kWh"
+    "capacity_kg", "Tank fluid mass; if set, enables FluidMix / uniform tank mode", "kg"
+    "init_temperature_c", "Initial uniform tank temperature (FluidMix mode)", "°C"
+    "min_temp_c", "Minimum temperature for SOC from T (optional, FluidMix)", "°C"
+    "max_temp_c", "Maximum temperature for SOC from T (optional, FluidMix)", "°C"
+    "u_w_per_m2k", "Wall U-value for heat losses (FluidMix)", "W/(m²·K)"
+    "area_wall_m2", "Wall area for heat losses (FluidMix)", "m²"
+    "t_ext_c", "Ambient temperature for heat losses (FluidMix)", "°C"
 
 
 Input Time Series
@@ -71,7 +78,10 @@ Output Time Series
 Mapping
 ----------
 
-The Simple Storage model model can be mapped using :ref:`GenericMapping <GenericMapping>`.
+The heat storage controller can be connected with:
+
+- **GenericMapping**: power only (input ``q_received_kw``; output ``soc``, ``q_delivered_kw``).
+- **FluidMixMapping**: temperature and mass flows (uniform tank). Set ``capacity_kg`` on the element to enable; optionally set ``init_temperature_c``, ``min_temp_c``, and ``max_temp_c`` to derive SOC from tank temperature.
 
 
 
@@ -82,7 +92,7 @@ Model
     :members:
 
 
-The heat storage model computes the heat received and delivered by the storage element, and updates the state of charge (SOC) accordingly.
+The heat storage model supports two modes. With **GenericMapping** (power only), it computes the heat received and delivered and updates SOC from the energy balance. With **FluidMixMapping** (element ``capacity_kg`` set), it uses a uniform tank with temperature and mass flows; if ``min_temp_c`` and ``max_temp_c`` are set, SOC is computed from the tank temperature as :math:`\mathrm{SOC} = (T - T_{\min}) / (T_{\max} - T_{\min})` (clipped to [0, 1]).
 
 .. math::
     :nowrap:
