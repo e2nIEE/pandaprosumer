@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
+import os
+import json
 
 from .base import BasicProsumerController
 
@@ -10,7 +12,7 @@ class OptimizationController(BasicProsumerController):
 
     def __init__(self, prosumer, optimization_object, order, level, in_service=True, index=None, **kwargs):
         """
-        Initializes the HeatPumpController.
+        Initializes the OptimizationController.
 
         :param prosumer: The prosumer object
         :param optimizationp_object: The optimization object
@@ -67,89 +69,72 @@ class OptimizationController(BasicProsumerController):
 
         return coefficients.tolist()
 
-    def model_optimization(self, heat_demand, flex_demand, cop_bhp, soc, chp_map,
-                           resol, storage_cap, q_bhp_max=700):
+    def model_optimization(self, prosumer, heat_demand, flex_demand):
         m = pyo.ConcreteModel()
 
         # Parameter
         m.heat_demand = pyo.Param(initialize=heat_demand)
         m.flex_demand = pyo.Param(initialize=flex_demand)
-        m.cop_bhp = pyo.Param(initialize=cop_bhp)
-        m.q_th_bhp_max = pyo.Param(initialize=q_bhp_max)
-        m.soc = pyo.Param(initialize=soc)
-        m.storage_cap = pyo.Param(initialize=storage_cap)
-        m.resol = pyo.Param(initialize=resol)
 
-        # decision variables for electrical input (BHP) and output (CHP)
-        m.p_el_bhp = pyo.Var(domain=pyo.NonNegativeReals)  # BHP power consumption
-        m.p_el_chp = pyo.Var(domain=pyo.NonNegativeReals)  # CHP power generation
+        bhp_idx = []
+        chp_idx = []
+        storage_idx = []
 
-        # binary Variable for chp. To turn the chp of ig´f the load is out of bounds
-        m.y_chp = pyo.Var(domain=pyo.Binary)
+        for idx, row in prosumer.controller.iterrows():
+            if row["level"] != 2:
+                continue
+            cname = row["object"].__class__.__name__
+            if cname == "BoosterHeatPumpController":
+                bhp_idx.append(idx)
+            elif cname == "IceChpController":
+                chp_idx.append(idx)
+            elif cname == "HeatStorageController":
+                storage_idx.append(idx)
 
-        nominal_size_chp = chp_map["__chp_nominal_size_kw__"]
-        chp_max_heat_output = chp_map["heat_flow_recovered_kw"][0]
-        load_min, load_max = chp_map["load_limits_percent"]
+        m.bhp_index = pyo.Set(initialize=bhp_idx)
+        m.chp_index = pyo.Set(initialize=chp_idx)
+        m.storage_index = pyo.Set(initialize=storage_idx)
 
-        # Convert to absolute electrical bounds
-        p_el_min_chp = (load_min / 100.0) * nominal_size_chp
-        p_el_max_chp = (load_max / 100.0) * nominal_size_chp
+        m.bhp = pyo.Block(m.bhp_index)
+        m.chp = pyo.Block(m.chp_index)
+        m.storage = pyo.Block(m.storage_index)
 
-        # Bound Constraints CHP
-        m.p_el_chp_min = pyo.Constraint(expr=m.p_el_chp >= p_el_min_chp * m.y_chp)
-        m.p_el_chp_max = pyo.Constraint(expr=m.p_el_chp <= p_el_max_chp * m.y_chp)
+        for idx in m.bhp_index:
+            self._add_booster_heatpump(prosumer, m.bhp[idx], idx)
 
-        # variables thermal output
-        m.q_th_bhp = pyo.Var(domain=pyo.NonNegativeReals)
-        m.q_th_chp = pyo.Var(domain=pyo.NonNegativeReals)
+        for idx in m.chp_index:
+            self._add_chp(prosumer, m.chp[idx], idx)
 
-        ## Relation between thermal and electric ouput CHP
-        # coefficient of the fit curve of thermal and electric output of the CHP
-        fit = self.fit_chp_relations(chp_map, degree=1)
-        coeff_HE = fit
-
-        M_chp = chp_max_heat_output  # Big-M
-        #  Link q_th_chp to polynomial of p_el_chp only if CHP is on (y_chp = 1), relaxed otherwise
-        m.q_th_chp_upper = pyo.Constraint(
-            expr=m.q_th_chp <= self.poly_expr(coeff_HE, m.p_el_chp) + M_chp * (1 - m.y_chp)
-        )
-        m.q_th_chp_lower = pyo.Constraint(
-            expr=m.q_th_chp >= self.poly_expr(coeff_HE, m.p_el_chp) - M_chp * (1 - m.y_chp)
-        )
-
-        # If the CHP is off (y=0) no thermal output is allowed.
-        m.q_th_chp_off = pyo.Constraint(expr=m.q_th_chp <= M_chp * m.y_chp)
-
-        # Relation between thermal and electric ouput BHP
-        m.q_th_bhp = pyo.Expression(expr=m.cop_bhp * m.p_el_bhp)
-
-        # capacity bound for the BHP
-        m.hp_cap = pyo.Constraint(expr=m.q_th_bhp <= m.q_th_bhp_max)
-
-        # stoage variables
-        m.q_th_charge = pyo.Var(domain=pyo.NonNegativeReals)
-        m.q_th_discharge = pyo.Var(domain=pyo.NonNegativeReals)
-
-        # Binary-vriables storage
-        m.y_charge = pyo.Var(domain=pyo.Binary)
-        m.y_discharge = pyo.Var(domain=pyo.Binary)
-
-        # allows to only charge or discharge the storage. Not both at the same time.
-        m.charge_discharge = pyo.Constraint(expr=m.y_discharge + m.y_charge <= 1)
-
-        # bounds for charging or discharging the storge dependend on the soc
-        m.q_th_charge_max = pyo.Constraint(
-            expr=m.q_th_charge <= m.storage_cap * (1 - m.soc) * m.resol / 3600 * m.y_charge)
-        m.q_th_discharge_max = pyo.Constraint(
-            expr=m.q_th_discharge <= m.storage_cap * m.soc * m.resol / 3600 * m.y_discharge)
+        for idx in m.storage_index:
+            self._add_storage(prosumer, m.storage[idx], idx)
 
         # balances
-        m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
-        m.el_bal = pyo.Expression(expr=-m.p_el_bhp + m.p_el_chp - m.flex_demand)
+        # m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
+        # m.el_bal = pyo.Expression(expr=-m.p_el_bhp + m.p_el_chp - m.flex_demand)
 
-        # objective to minimize the electric power consumption of the whole system.
+        heat_terms = []
+        for idx in m.bhp:
+            heat_terms.append(m.bhp[idx].q_th)
+        for idx in m.chp:
+            heat_terms.append(m.chp[idx].q_th)
+        for idx in m.storage:
+            heat_terms.append(m.storage[idx].q_th_discharge)
+            heat_terms.append(-m.storage[idx].q_th_charge)
+
+        m.heat_bal = pyo.Constraint(expr=sum(heat_terms) == m.heat_demand)
+
+        el_terms = []
+        for idx in m.bhp:
+            el_terms.append(-m.bhp[idx].p_el)
+        for idx in m.chp:
+            el_terms.append(m.chp[idx].p_el)
+
+        m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
+
+        charge_terms = [m.storage[idx].q_th_charge for idx in m.storage]
+
         m.obj = pyo.Objective(
-            expr=m.el_bal ** 2 - m.q_th_charge,
+            expr=m.el_bal ** 2 - sum(charge_terms),
             sense=pyo.minimize
         )
 
@@ -163,7 +148,9 @@ class OptimizationController(BasicProsumerController):
         else:
             feasible = False
 
-        return pyo.value(m.p_el_bhp), pyo.value(m.p_el_chp), feasible
+        p_bhp = next(m.bhp[idx].p_el.value for idx in m.bhp)
+        p_chp = next(m.chp[idx].p_el.value for idx in m.chp)
+        return p_bhp, p_chp, feasible
 
     def poly_expr(self, coeffs, x):
         return sum(coeffs[i] * (x ** i) for i in range(len(coeffs)))
@@ -178,78 +165,169 @@ class OptimizationController(BasicProsumerController):
         q_to_receive_kw = 100 #Todo: Find a solution, BHP needs this as an input, but we only need the cop
         return q_to_receive_kw
 
-    def initialize_control(self, container):
-        """Some controller require extended initialization in respect to the
-        current state of the net (or their view of it). This method is being
-        called after an initial loadflow but BEFORE any control strategies are
-        being applied.
-
-        This method may be interesting if you are aiming for a global
-        controller or if it has to be aware of its initial state.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-
-
-        """
-        super().initialize_control(container)
-
     def control_step(self, prosumer):
         """
         Executes the control step for the controller.
 
         :param prosumer: The prosumer object
         """
+
         if not hasattr(prosumer, "controller_results"):
             prosumer.controller_results = {} #Todo: Hier könnte man direkt die last_results speichern anstatt in einer extra Funktion
 
         q_demand_kw = self._q_demand_kw
         p_flex_kw = self._p_flex_kw
-        p_pv_in_kw = self._p_pv_in_kw
-        cop_bhp = self._cop_bhp
-
-        resol = self.resol
-        storage_cap_kwh = self._get_element_param(prosumer, "storage_capacity_kwh")
-        q_bhp_max = self._get_element_param(prosumer, "q_bhp_max")
-        chp_map = self._get_element_param(prosumer, "chp_map")
-
-        ts = self.time
-
-        # previous timestep
-        ts_prev = ts - pd.Timedelta(seconds=resol)
-        # Results for the timestep
-        results_timestep = prosumer.controller_results
-
-        storage_idx = prosumer.controller[
-            prosumer.controller["object"].apply(lambda c: c.__class__.__name__ == "HeatStorageController")
-        ].index[0]
-
-        if ts_prev in results_timestep:
-            soc = results_timestep[ts_prev][storage_idx]["soc"]
-        else:
-            # first timestep → SOC = 0
-            soc = 0.0
 
         p_el_bhp_in, p_el_chp_out, feasible = self.model_optimization(
+            prosumer=prosumer,
             heat_demand=q_demand_kw,
             flex_demand=p_flex_kw,
-            cop_bhp=cop_bhp,
-            soc=soc,
-            chp_map=chp_map,
-            q_bhp_max=q_bhp_max,
-            storage_cap=storage_cap_kwh,
-            resol=resol,
-        )
+           )
 
         if feasible:
-            result = np.array([[p_el_bhp_in,
+            result = np.array([[p_el_bhp_in, #Todo: Other format for results to make them dynamic for the specific use case and allow more then one element of the same Controller
                        p_el_chp_out]])
         else:
             result = np.array([[np.nan,
-                       np.nan]])
+                       np.nan]]) #Todo: Check this
 
         self.finalize(prosumer, result)
         self.applied = True
 
+    def to_scalar(self, x):
+        """Konvertiert beliebige numpy/pandas/pyomo Werte in einen float."""
+        if isinstance(x, (list, tuple)):
+            return float(x[0])
+        if isinstance(x, np.ndarray):
+            return float(x.flatten()[0])
+        if hasattr(x, "iloc"):  # pandas Series
+            return float(x.iloc[0])
+        if hasattr(x, "values"):  # pandas DataFrame cell
+            return float(x.values[0])
+        return float(x)
+
+    def _add_booster_heatpump(self, prosumer, block, index):
+
+        cop_bhp = self._cop_bhp
+        ctrl = prosumer.controller.loc[index]["object"]
+        q_bhp_max = ctrl.element_instance["q_max_kw"].iloc[0]
+
+        block.cop = pyo.Param(initialize=cop_bhp)
+        block.q_th_max = pyo.Param(initialize=q_bhp_max)
+
+        block.p_el = pyo.Var(domain=pyo.NonNegativeReals)  # BHP power consumption
+
+        # Relation between thermal and electric ouput BHP
+        block.q_th = pyo.Expression(expr=block.cop * block.p_el)
+
+        # capacity bound for the BHP
+        block.q_th_max_constr = pyo.Constraint(expr=block.q_th <= block.q_th_max)
+
+
+    def _add_chp(self, prosumer, block, index):
+        """
+        Fügt eine CHP-Komponente zum Optimierungsmodell hinzu.
+        """
+        ctrl = prosumer.controller.loc[index]["object"]
+        size_kw = ctrl.element_instance["size"].iloc[0]
+        # select the chp_map for the optimization
+        base_dir = os.path.dirname(__file__)
+        path = os.path.join(
+            base_dir,
+            "..", "library", "chp_maps", "ice_chp_maps.json"
+        )
+        path = os.path.abspath(path)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        chp_map = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == size_kw)
+
+        # Statische Parameter aus dem Element
+        nominal_size_chp = chp_map["__chp_nominal_size_kw__"]
+        chp_max_heat_output = chp_map["heat_flow_recovered_kw"][0]
+        load_min, load_max = chp_map["load_limits_percent"]
+
+        # Elektrische Grenzen
+        p_el_min_chp = (load_min / 100.0) * nominal_size_chp
+        p_el_max_chp = (load_max / 100.0) * nominal_size_chp
+
+        # Pyomo-Parameter
+        block.p_el_min = pyo.Param(initialize=p_el_min_chp)
+        block.p_el_max = pyo.Param(initialize=p_el_max_chp)
+        block.q_th_max = pyo.Param(initialize=chp_max_heat_output)
+
+        # Variablen
+        block.p_el = pyo.Var(domain=pyo.NonNegativeReals)
+        block.q_th = pyo.Var(domain=pyo.NonNegativeReals)
+        block.y = pyo.Var(domain=pyo.Binary)
+
+        # Lastgrenzen
+        block.p_el_min_constr = pyo.Constraint(expr=block.p_el >= block.p_el_min * block.y)
+        block.p_el_max_constr = pyo.Constraint(expr=block.p_el <= block.p_el_max * block.y)
+
+        # Kennlinie fitten
+        coeffs = self.fit_chp_relations(chp_map, degree=1)
+
+        # Big-M
+        M = chp_max_heat_output
+
+        # Kennlinien-Constraints
+        block.q_th_max_constr = pyo.Constraint(
+            expr=block.q_th <= self.poly_expr(coeffs, block.p_el) + M * (1 - block.y)
+        )
+        block.q_th_min_constr = pyo.Constraint(
+            expr=block.q_th >= self.poly_expr(coeffs, block.p_el) - M * (1 - block.y)
+        )
+
+        # Wenn aus → keine Wärme
+        block.off_constr = pyo.Constraint(expr=block.q_th <= M * block.y)
+
+
+    def _add_storage(self, prosumer, block, index):
+        """
+        Fügt einen Wärmespeicher zum Optimierungsmodell hinzu.
+        """
+        ctrl = prosumer.controller.loc[index]["object"]
+        storage_cap_kwh = ctrl.element_instance["q_capacity_kwh"].iloc[0]
+        resol = self.resol
+        ts = self.time
+
+        # previous timestep
+        ts_prev = ts - pd.Timedelta(seconds=resol)
+        if ts_prev in prosumer.controller_results:
+            raw_soc_prev = prosumer.controller_results[ts_prev][index]["soc"]
+        else:
+            # first timestep → SOC = 0
+            raw_soc_prev = 0.0
+
+        soc_prev = self.to_scalar(raw_soc_prev)
+
+        # Parameter
+        block.Q_th_max = pyo.Param(initialize=storage_cap_kwh)
+        block.soc_prev = pyo.Param(initialize=soc_prev)
+        block.resol = pyo.Param(initialize=resol)
+
+        # Variablen
+        block.q_th_charge = pyo.Var(domain=pyo.NonNegativeReals)
+        block.q_th_discharge = pyo.Var(domain=pyo.NonNegativeReals)
+        block.soc = pyo.Var(bounds=(0, 1))
+
+        block.y_charge = pyo.Var(domain=pyo.Binary)
+        block.y_discharge = pyo.Var(domain=pyo.Binary)
+
+        # Nicht gleichzeitig laden und entladen
+        block.charge_discharge = pyo.Constraint(expr=block.y_charge + block.y_discharge <= 1)
+
+        # Ladegrenzen
+        block.charge_limit = pyo.Constraint(
+            expr=block.q_th_charge <= block.Q_th_max * (1 - block.soc_prev) * block.resol / 3600 * block.y_charge
+        )
+
+        # Entladegrenzen
+        block.discharge_limit = pyo.Constraint(
+            expr=block.q_th_discharge <= block.Q_th_max * block.soc_prev * block.resol / 3600 * block.y_discharge
+        )
+
+        # SOC-Bilanz
+        block.soc_balance = pyo.Constraint(
+            expr=block.soc == block.soc_prev + (block.q_th_charge - block.q_th_discharge) * block.resol / 3600 / block.Q_th_max
+        )

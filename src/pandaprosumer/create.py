@@ -1276,9 +1276,6 @@ def create_senergy_nets_pv_production(
 
 def create_optimization(
     prosumer,
-    storage_capacity_kwh,
-    q_bhp_max = None,
-    chp_map = None,
     in_service=True,
     name=None,
     index=None,
@@ -1299,16 +1296,10 @@ def create_optimization(
         zip(
             [
                 "name",
-                "storage_capacity_kwh",
-                "q_bhp_max",
-                "chp_map",
                 "in_service",
             ],
             [
                 name,
-                storage_capacity_kwh,
-                q_bhp_max,
-                chp_map,
                 in_service,
             ],
         )

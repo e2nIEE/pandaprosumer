@@ -1264,9 +1264,6 @@ def create_controlled_mdu_chp(prosumer,
     return mdu_chp.index
 
 def create_controlled_optimtization(prosumer,
-                                    storage_capacity_kwh,
-                                    q_bhp_max = None,
-                                    chp_map = None,
                                     index=None,
                                     in_service=True,
                                     name = None,
@@ -1304,7 +1301,7 @@ def create_controlled_optimtization(prosumer,
            EXAMPLE:
                create_controlled_booster_heat_pump(prosumer, 'water-water1', 'example_bhp')
            """
-    optimization_index = create_optimization(prosumer,storage_capacity_kwh, q_bhp_max, chp_map, in_service, name, index, **kwargs)
+    optimization_index = create_optimization(prosumer, in_service, name, index, **kwargs)
     optimization_controller_data = OptimizationControllerData(element_name='optimization',
         element_index=[optimization_index],
         period_index=period

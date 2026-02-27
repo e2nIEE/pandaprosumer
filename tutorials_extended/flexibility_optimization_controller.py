@@ -6,8 +6,6 @@ from pandaprosumer.create_controlled import (create_controlled_const_profile, cr
 from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.run_time_series import run_timeseries
 import numpy as np
-import json
-import os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
@@ -70,14 +68,6 @@ size_kw = 700
 fuel = 'ng'
 altitude_m = 0
 
-#select the chp_map for the optimization
-here = os.getcwd()              # aktuelles Arbeitsverzeichnis
-parent = os.path.dirname(here)  # ein Ordner zurück
-path = os.path.join(parent, "src", "pandaprosumer", "library", "chp_maps", "ice_chp_maps.json")
-with open(path, "r", encoding="utf-8") as f:
-    data = json.load(f)
-chp_map = next(m for m in data["chp_ice_map"] if m["__chp_nominal_size_kw__"] == size_kw)
-
 ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
 q_capacity_kwh = 10000
@@ -86,8 +76,7 @@ heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, le
 
 heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
-optimization_index = create_controlled_optimtization(prosumer, storage_capacity_kwh=q_capacity_kwh,
-                                                     q_bhp_max=max_thermal_power_kw, chp_map=chp_map, level=1, order=1)
+optimization_index = create_controlled_optimtization(prosumer, level=1, order=1)
 
 GenericMapping(prosumer,
         initiator_id=cp_index,
