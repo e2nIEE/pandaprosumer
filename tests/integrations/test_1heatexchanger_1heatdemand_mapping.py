@@ -124,4 +124,4 @@ class Test1HeatExchanger1HeatDemandMapping:
         # Test with a feed temperature 69.9°C < demand temperature (76.85°C)
         prosumer.controller.loc[hd_controller_index].object.t_m_to_receive = lambda p: (76.85, 30, 1.530896781)
         assert (prosumer.controller.loc[hx_controller_index].object.t_m_to_receive_for_t(prosumer, 69.9) ==
-                pytest.approx((69.9, 64.13644444505121, 12.426411451969358), .001))
+                pytest.approx((69.9, 43.59322222253029, 2.7215440864139606), .001))

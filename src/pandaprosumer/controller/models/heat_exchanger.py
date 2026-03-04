@@ -175,6 +175,13 @@ class HeatExchangerController(BasicProsumerController):
         delta_t_hot_nom_c = t_1_hot_nom_c - t_2_hot_nom_c
         delta_t_cold_nom_c = t_1_cold_nom_c - t_2_cold_nom_c
         delta_t_hot_c = t_1_in_c - t_2_out_c
+        
+        if delta_t_hot_c <= 0:
+            t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
+                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
+                                                      heat_consumer=False)
+            return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
+        
         # Logarithmic mean temperature difference (LMTD) at nominal conditions
         if delta_t_hot_nom_c == delta_t_cold_nom_c:
             lmtd_nom = delta_t_hot_nom_c

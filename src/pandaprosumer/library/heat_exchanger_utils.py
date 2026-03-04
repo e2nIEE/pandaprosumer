@@ -45,10 +45,10 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
     :return: The temperature difference between the primary and secondary temperatures.
     """
     if is_cold:
-        dichotomy_fun = lambda x: a * x + np.log(1 - x)  # if (1 - x) > 0 else float('inf')
+        dichotomy_fun = lambda x: a * x + np.log(1 - x) if (1 - x) > 1e-10 else float('inf')
         if a > 1:
             # dichotomy_fun is strictly decreasing on [x_min, x_max], 0 < x < 1
-            x_max = 1
+            x_max = 1 - 1e-10
             x_min = (a - 1) / (a - 0.001)
         else:
             # dichotomy_fun is strictly increasing on [x_max, x_min], x < 0
@@ -58,10 +58,10 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
         x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max, is_increasing=False)
         return (1 - x_mean) * delta_t
     else:
-        dichotomy_fun = lambda x: a * x - np.log(1 + x) if (1 + x) > 0 else float('inf')
+        dichotomy_fun = lambda x: a * x - np.log(1 + x) if (1 + x) > 1e-10 else float('inf')
         if a > 1:
             # dichotomy_fun is strictly decreasing on [x_max, x_min], -1 < x < 0
-            x_max = -1
+            x_max = -1 + 1e-10
             x_min = (1 - a) / (a - 0.001)
         else:
             # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0
