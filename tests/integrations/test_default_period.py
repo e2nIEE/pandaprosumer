@@ -7,7 +7,7 @@ from ..data_sources import FROM_CLAUDIA
 def _define_and_get_data_source():
     data = pd.read_excel(FROM_CLAUDIA)
     start_time = pd.Timestamp("2020-01-01 00:00:00", tz="UTC")
-    data["period"] = pd.date_range(start=start_time, periods=len(data), freq="H")
+    data["period"] = pd.date_range(start=start_time, periods=len(data), freq="h")
     data_source = DFData(data)
     return data_source
 
