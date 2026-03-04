@@ -339,12 +339,8 @@ class TestIceChp:
 
         fuel_val = 10
 
-        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), fuel=fuel_val, **params)
-        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
-
-        stored_fuel = ice_chp_controller._get_element_param(prosumer, "fuel")
-
-        assert not isinstance(stored_fuel, str)
+        with pytest.raises(TypeError):
+            create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), fuel=fuel_val, **params)
 
 
     # TEST 13
