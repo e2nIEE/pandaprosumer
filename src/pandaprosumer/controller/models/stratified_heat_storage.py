@@ -270,7 +270,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         h_ext_w_per_m2k = self._get_element_param(prosumer, 'h_ext_w_per_m2k')  # natural convection
 
         # Heat transfer coefficient with the environment (diffusion through insulation + convection with ambient air)
-        self.U_w_per_m2k = 1 / ((1 / h_ext_w_per_m2k) + (d_insu_m / k_insu_w_per_mk))  # see eq. 6
+        if h_ext_w_per_m2k == 0:
+            self.U_w_per_m2k = k_insu_w_per_mk / d_insu_m
+        else:
+            self.U_w_per_m2k = 1 / ((1 / h_ext_w_per_m2k) + (d_insu_m / k_insu_w_per_mk))  # see eq. 6
         # We assume that the tank fluid to overall heat transfer coefficient for the top and bottom layers is the same
         # as the overall heat transfer coefficient
         self.U1_w_per_m2k = self.UN_w_per_m2k = self.U_w_per_m2k
