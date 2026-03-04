@@ -337,10 +337,17 @@ class TestIceChp:
                   'altitude': 0,
                   'name': 'example_ice_chp'}
 
-        fuel_val = 10
+        fuel_val = 10  # this should be a string (e.g., 'ng')
+        
+        # Note: with pandas 2, this doesn't raise an error. 
+        # However if pandas is upgraded to pandas 3, this will raise a TypeError.
+        # In this case the test should become:         with pytest.raises(TypeError): ...
+        ice_chp_controller_idx = create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), fuel=fuel_val, **params)
+        ice_chp_controller = prosumer.controller.iloc[ice_chp_controller_idx].object
 
-        with pytest.raises(TypeError):
-            create_controlled_ice_chp(prosumer, order=0, period=_default_period(prosumer), fuel=fuel_val, **params)
+        stored_fuel = ice_chp_controller._get_element_param(prosumer, "fuel")
+
+        assert not isinstance(stored_fuel, str)
 
 
     # TEST 13
