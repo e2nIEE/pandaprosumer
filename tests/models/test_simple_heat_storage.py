@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 import pandas as pd
-from pandaprosumer import *
+from pandaprosumer import create_empty_prosumer_container, create_period, create_controlled_heat_storage, create_heat_storage
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
@@ -228,24 +228,39 @@ class TestSimpleHeatStorage:
     def test_fluid_mix_mode_step(self):
         """Test FluidMix mode: uniform tank with input T and mdot; check step_results and optional result_mass_flow_with_temp."""
         prosumer = create_empty_prosumer_container(fluid="water")
-        period = create_period(prosumer, 1, name="foo",
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
                                start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
-        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=10, capacity_kg=1000.0,
-                                             init_temperature_c=50.0, period=period)
+        q_capacity_kwh = 10
+        low_temp_c = 50.0
+        high_temp_c = 70.0
+        mdot_charge_kg_per_s = 0.5
+        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+                                             init_temperature_c=low_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
         ctrl = prosumer.controller.iloc[idx].object
         ctrl.time_step(prosumer, "2020-01-01 00:00:00")
-        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 70.0, FluidMixMapping.MASS_FLOW_KEY: 0.5}
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: high_temp_c, FluidMixMapping.MASS_FLOW_KEY: mdot_charge_kg_per_s}
         ctrl.control_step(prosumer)
         # Step ran; step_results must be (1, 2)
         assert ctrl.step_results.shape == (1, 2)
+        
+        energy_charged = mdot_charge_kg_per_s * (high_temp_c - low_temp_c) * 4.186 * ctrl.resol / 3600  # kWh
+        t_tank_expected_c = low_temp_c + energy_charged / (mdot_charge_kg_per_s * ctrl.resol / 3600 * 4.186)
+        soc_expected = energy_charged / q_capacity_kwh
+        q_delivered_expected_kw = 0.0  # No discharge in this test
+        
+        assert not np.isnan(ctrl.step_results[0, 0])
         soc = ctrl.step_results[0, 0]
         if not np.isnan(soc):
             assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(q_delivered_expected_kw)
+        
         # When finalized (e.g. no FluidMix initiators), result_mass_flow_with_temp is set
-        if len(ctrl.result_mass_flow_with_temp) == 1:
-            assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == 0.5
-            assert not np.isnan(ctrl.step_results[0, 0])
-            assert ctrl.applied is True
+        assert len(ctrl.result_mass_flow_with_temp) == 1
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == mdot_charge_kg_per_s
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.TEMPERATURE_KEY] == t_tank_expected_c
+        assert ctrl.applied is True
 
     def test_soc_from_temperature(self):
         """Test SOC from tank temperature when min_temp_c and max_temp_c are set."""
