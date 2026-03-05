@@ -95,8 +95,12 @@ class HeatStorageController(BasicProsumerController):
 
     def _calculate_heat_losses(self, prosumer):
         """Update internal temperature for wall heat losses."""
-        u = self._get_element_param(prosumer, "u_w_per_m2k") or 0
-        area = self._get_element_param(prosumer, "area_wall_m2") or 0
+        u = self._get_element_param(prosumer, "u_w_per_m2k")
+        if u is None or (isinstance(u, float) and np.isnan(u)):
+            u = 0
+        area = self._get_element_param(prosumer, "area_wall_m2")
+        if area is None or (isinstance(area, float) and np.isnan(area)):
+            area = 0
         t_ext = self._get_element_param(prosumer, "t_ext_c")
         if t_ext is None or (isinstance(t_ext, float) and np.isnan(t_ext)):
             t_ext = 25.0
@@ -120,21 +124,32 @@ class HeatStorageController(BasicProsumerController):
         One timestep of uniform tank: heat losses then mixing.
         Returns (q_delivered_kw, mdot_delivered_kg_per_s, t_out_c, new_temperature).
         """
+        # Store initial temperature before heat losses
+        t_before_loss_c = self._temperature
+        
         self._calculate_heat_losses(prosumer)
         t_out_c = self._temperature
         capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
         m_received_kg = mdot_kg_per_s * self.resol
+        
+        # Calculate energy before mixing
+        fluid = getattr(prosumer, "fluid", None)
+        if fluid is not None and hasattr(fluid, "get_heat_capacity"):
+            cp_j_per_kgk = fluid.get_heat_capacity(CELSIUS_TO_K + t_before_loss_c)
+        else:
+            cp_j_per_kgk = 4180.0  # default water [J/(kg·K)]
+        if np.isnan(cp_j_per_kgk) or cp_j_per_kgk <= 0:
+            cp_j_per_kgk = 4180.0
+        
+        # Calculate energy delivered (positive when discharging, negative when charging)
+        # Energy delivered = mass_flow * cp * (t_out - t_in)
+        q_delivered_kw = mdot_kg_per_s * (t_out_c - t_in_c) * cp_j_per_kgk / 1000
+        
+        # Update tank temperature after mixing
         self._temperature = (
             (capacity_kg - m_received_kg) * self._temperature + m_received_kg * t_in_c
         ) / capacity_kg
-        fluid = getattr(prosumer, "fluid", None)
-        if fluid is not None and hasattr(fluid, "get_heat_capacity"):
-            cp_kj_per_kgk = fluid.get_heat_capacity(CELSIUS_TO_K + self._temperature) / 1000
-        else:
-            cp_kj_per_kgk = 4.18  # default water [kJ/(kg·K)]
-        if np.isnan(cp_kj_per_kgk) or cp_kj_per_kgk <= 0:
-            cp_kj_per_kgk = 4.18
-        q_delivered_kw = mdot_kg_per_s * (t_out_c - t_in_c) * cp_kj_per_kgk
+        
         return q_delivered_kw, mdot_kg_per_s, t_out_c, self._temperature
 
     def q_to_receive_kw(self, prosumer):
@@ -299,7 +314,7 @@ class HeatStorageController(BasicProsumerController):
             "mdot_kg_per_s": mdot_delivered,
         }
         result = np.array([[soc_out, q_delivered_kw]])
-        result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: float(t_out_c),
+        result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: float(self._temperature),
                          FluidMixMapping.MASS_FLOW_KEY: float(mdot_delivered)}]
 
         if np.isnan(result).any():

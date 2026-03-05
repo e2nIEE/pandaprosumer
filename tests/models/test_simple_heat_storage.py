@@ -244,10 +244,14 @@ class TestSimpleHeatStorage:
         # Step ran; step_results must be (1, 2)
         assert ctrl.step_results.shape == (1, 2)
         
-        energy_charged = mdot_charge_kg_per_s * (high_temp_c - low_temp_c) * 4.186 * ctrl.resol / 3600  # kWh
-        t_tank_expected_c = low_temp_c + energy_charged / (mdot_charge_kg_per_s * ctrl.resol / 3600 * 4.186)
-        soc_expected = energy_charged / q_capacity_kwh
-        q_delivered_expected_kw = 0.0  # No discharge in this test
+        # Calculate expected temperature using proper mixing formula
+        capacity_kg = 1000.0
+        m_received_kg = mdot_charge_kg_per_s * ctrl.resol
+        t_tank_expected_c = ((capacity_kg - m_received_kg) * low_temp_c + m_received_kg * high_temp_c) / capacity_kg
+        soc_expected = (t_tank_expected_c - low_temp_c) / (high_temp_c - low_temp_c)
+        # q_delivered_kw is negative when charging (heat is delivered TO the tank)
+        # Using cp = 4181.554 J/kgK (water at ~50°C, from fluid model)
+        q_delivered_expected_kw = mdot_charge_kg_per_s * (low_temp_c - high_temp_c) * 4181.554 / 1000  # kW
         
         assert not np.isnan(ctrl.step_results[0, 0])
         soc = ctrl.step_results[0, 0]
@@ -271,8 +275,94 @@ class TestSimpleHeatStorage:
                                        init_temperature_c=50.0, min_temp_c=20.0, max_temp_c=80.0, period=period)
         ctrl = prosumer.controller.iloc[0].object
         ctrl._temperature = 50.0
-        assert ctrl._soc_from_temperature(prosumer) == pytest.approx((50.0 - 20.0) / 60.0)
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx((50.0 - 20.0) / (80.0 - 20.0))
         ctrl._temperature = 80.0
         assert ctrl._soc_from_temperature(prosumer) == pytest.approx(1.0)
         ctrl._temperature = 20.0
         assert ctrl._soc_from_temperature(prosumer) == pytest.approx(0.0)
+
+    def test_fluid_mix_mode_discharge(self):
+        """Test FluidMix mode with discharging (hot water out, cold water in)."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+        q_capacity_kwh = 10
+        high_temp_c = 70.0
+        low_temp_c = 50.0
+        mdot_discharge_kg_per_s = 0.5
+        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+                                             init_temperature_c=high_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        # Discharging: hot water out (70°C), cold water in (50°C)
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: low_temp_c, FluidMixMapping.MASS_FLOW_KEY: mdot_discharge_kg_per_s}
+        ctrl.control_step(prosumer)
+        
+        # Calculate expected values
+        capacity_kg = 1000.0
+        m_received_kg = mdot_discharge_kg_per_s * ctrl.resol
+        t_tank_expected_c = ((capacity_kg - m_received_kg) * high_temp_c + m_received_kg * low_temp_c) / capacity_kg
+        soc_expected = (t_tank_expected_c - low_temp_c) / (high_temp_c - low_temp_c)
+        # q_delivered_kw is positive when discharging (heat is delivered FROM the tank)
+        # Using cp = 4190.3005 J/kgK (water at ~70°C, from fluid model)
+        q_delivered_expected_kw = mdot_discharge_kg_per_s * (high_temp_c - low_temp_c) * 4190.3005 / 1000  # kW
+        
+        assert ctrl.step_results.shape == (1, 2)
+        assert not np.isnan(ctrl.step_results[0, 0])
+        soc = ctrl.step_results[0, 0]
+        assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(q_delivered_expected_kw)
+        
+        # Check result_mass_flow_with_temp
+        assert len(ctrl.result_mass_flow_with_temp) == 1
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == mdot_discharge_kg_per_s
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.TEMPERATURE_KEY] == t_tank_expected_c
+        assert ctrl.applied is True
+
+    def test_fluid_mix_mode_with_heat_losses(self):
+        """Test FluidMix mode with heat losses when u and area are set."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+        q_capacity_kwh = 10
+        init_temp_c = 60.0
+        min_temp_c = 50.0
+        max_temp_c = 70.0
+        t_ext_c = 20.0
+        u_w_per_m2k = 1.0  # W/m²K
+        area_wall_m2 = 5.0  # m²
+        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+                                             init_temperature_c=init_temp_c, min_temp_c=min_temp_c, max_temp_c=max_temp_c,
+                                             u_w_per_m2k=u_w_per_m2k, area_wall_m2=area_wall_m2, t_ext_c=t_ext_c, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        # No flow, so only heat losses should affect temperature
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan, FluidMixMapping.MASS_FLOW_KEY: np.nan}
+        ctrl.control_step(prosumer)
+        
+        # Calculate expected temperature drop due to heat losses
+        # q_loss_w = u * area * (t_tank - t_ext)
+        # loss_w_per_k = cp_j_per_kgk * resol * capacity_kg
+        # t_loss_c = q_loss_w / loss_w_per_k
+        q_loss_w = u_w_per_m2k * area_wall_m2 * (init_temp_c - t_ext_c)
+        cp_j_per_kgk = 4180.0  # default water
+        loss_w_per_k = cp_j_per_kgk * ctrl.resol * 1000.0
+        t_loss_expected_c = q_loss_w / loss_w_per_k
+        t_tank_expected_c = init_temp_c - t_loss_expected_c
+        soc_expected = (t_tank_expected_c - min_temp_c) / (max_temp_c - min_temp_c)
+        
+        assert ctrl.step_results.shape == (1, 2)
+        assert not np.isnan(ctrl.step_results[0, 0])
+        soc = ctrl.step_results[0, 0]
+        assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(0.0)  # No flow, so no heat delivered
+        
+        # Check result_mass_flow_with_temp
+        assert len(ctrl.result_mass_flow_with_temp) == 1
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == 0.0
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.TEMPERATURE_KEY] == pytest.approx(t_tank_expected_c)
+        assert ctrl.applied is True
