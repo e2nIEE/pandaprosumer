@@ -47,13 +47,11 @@ Parameters, Variables and Units
    :header: "parameter","variable","unit"
 
     "mass flow","mdot","kg_per_s"
-    "thermal energy","q","kj"
-    "thermal power","q_dot","kw"
-    "electric energy","q_el","kwh"
-    "electric power","p_el","kw"
+    "thermal energy","e","kwh"
+    "thermal power","q","kw"
+    "electric energy","e","kwh"
+    "electric power","p","kw"
     "temperature","t","k/c"
-    "drybulb temperature","t_drybulb","k/c"
-    "wetbulb temperature","t_wetbulb","k/c"
     "pressure","p","bar"
     "ratio","ratio","percent"
 
@@ -72,10 +70,6 @@ Functions
 - Functions should not have units in the name, this is only advised for variables.
     * Use: **get_t**
     * Avoid: **get_t_k**
-
-- Avoid leading underscores in function names.
-    * Use: **calculate_dry_cooler**
-    * Avoid: **_calculate_dry_cooler**
 
 - When two separate parameters are calculated by a function,those should be separated with an "and".
     * Use: **t_and_mdot_to_deliver**
