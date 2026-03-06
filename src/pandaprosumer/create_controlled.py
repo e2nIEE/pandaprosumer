@@ -813,7 +813,7 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_co
 
 
 def create_controlled_heat_storage(prosumer,
-                                   q_capacity_kwh=0.,
+                                   e_capacity_kwh=0.,
                                    name=None,
                                    index=None,
                                    in_service=True,
@@ -832,7 +832,7 @@ def create_controlled_heat_storage(prosumer,
     INPUT:
         **prosumer** - The prosumer within which this heat storage should be created.
 
-        **q_capacity_kwh** (float) - The thermal energy capacity [kWh] (power-only mode).
+        **e_capacity_kwh** (float) - The thermal energy capacity [kWh] (power-only mode).
 
     OPTIONAL:
         **name** (string, default None) - The name for this heat storage controller.
@@ -861,7 +861,7 @@ def create_controlled_heat_storage(prosumer,
         **index** (int) - The unique ID of the created heat storage controller.
 
     EXAMPLE:
-        create_controlled_heat_storage(prosumer, q_capacity_kwh=10, name="heat_storage_1")
+        create_controlled_heat_storage(prosumer, e_capacity_kwh=10, name="heat_storage_1")
     """
 
     heat_storage_index = create_heat_storage(

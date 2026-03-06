@@ -6,7 +6,7 @@ from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():
-    return {"q_capacity_kwh": 100}
+    return {"e_capacity_kwh": 100}
 
 
 def _default_period(prosumer):
@@ -36,7 +36,7 @@ class TestSimpleHeatStorage:
         assert len(prosumer.heat_storage) == 1
 
         expected_columns = [
-            'name', 'q_capacity_kwh', 'in_service',
+            'name', 'e_capacity_kwh', 'in_service',
             'capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
             'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
         ]
@@ -44,7 +44,7 @@ class TestSimpleHeatStorage:
         row = prosumer.heat_storage.iloc[0]
         assert row['name'] is None
         assert row['in_service'] == True or row['in_service'] is True
-        assert row['q_capacity_kwh'] == 0 or (isinstance(row['q_capacity_kwh'], (int, float)) and np.isclose(row['q_capacity_kwh'], 0))
+        assert row['e_capacity_kwh'] == 0 or (isinstance(row['e_capacity_kwh'], (int, float)) and np.isclose(row['e_capacity_kwh'], 0))
         for col in ['capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
                     'u_w_per_m2k', 'area_wall_m2', 't_ext_c']:
             assert col in row.index and (pd.isna(row[col]) or row[col] is None)
@@ -56,7 +56,7 @@ class TestSimpleHeatStorage:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        shs_params = {"q_capacity_kwh": 100}
+        shs_params = {"e_capacity_kwh": 100}
 
         shs_idx = create_heat_storage(prosumer, name='foo', in_service=False, custom='test', index=4, **shs_params)
         assert hasattr(prosumer, "heat_storage")
@@ -65,13 +65,13 @@ class TestSimpleHeatStorage:
         assert prosumer.heat_storage.index[0] == shs_idx
 
         expected_columns = [
-            'name', 'q_capacity_kwh', 'in_service', 'custom',
+            'name', 'e_capacity_kwh', 'in_service', 'custom',
             'capacity_kg', 'init_temperature_c', 'min_temp_c', 'max_temp_c',
             'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
         ]
         assert sorted(prosumer.heat_storage.columns) == sorted(expected_columns)
         row = prosumer.heat_storage.iloc[0]
-        assert row['name'] == 'foo' and row['in_service'] == False and row['q_capacity_kwh'] == 100 and row['custom'] == 'test'
+        assert row['name'] == 'foo' and row['in_service'] == False and row['e_capacity_kwh'] == 100 and row['custom'] == 'test'
 
     def test_define_controller(self):
         """
@@ -207,14 +207,14 @@ class TestSimpleHeatStorage:
                                start="2020-01-01 00:00:00",
                                end="2020-01-01 00:00:09",
                                timezone="utc")
-        q_capacity_kwh = 100
+        e_capacity_kwh = 100
         init_soc = 0.4
-        shs_params = {"q_capacity_kwh": q_capacity_kwh}
+        shs_params = {"e_capacity_kwh": e_capacity_kwh}
 
         shs_controller_indx = create_controlled_heat_storage(prosumer, init_soc=init_soc, period=period, **shs_params)
         shs_controller = prosumer.controller.iloc[shs_controller_indx].object
 
-        q_to_fill_kwh = (1-init_soc) * q_capacity_kwh
+        q_to_fill_kwh = (1-init_soc) * e_capacity_kwh
         assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol)
 
         q_in_kw = 1000
@@ -231,11 +231,11 @@ class TestSimpleHeatStorage:
         resol_s = 60 * 5
         period = create_period(prosumer, resol_s, name="foo",
                                start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
-        q_capacity_kwh = 10
+        e_capacity_kwh = 10
         low_temp_c = 50.0
         high_temp_c = 70.0
         mdot_charge_kg_per_s = 0.5
-        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+        idx = create_controlled_heat_storage(prosumer, e_capacity_kwh=e_capacity_kwh, capacity_kg=1000.0,
                                              init_temperature_c=low_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
         ctrl = prosumer.controller.iloc[idx].object
         ctrl.time_step(prosumer, "2020-01-01 00:00:00")
@@ -271,7 +271,7 @@ class TestSimpleHeatStorage:
         prosumer = create_empty_prosumer_container()
         period = create_period(prosumer, 1, name="foo",
                                start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
-        create_controlled_heat_storage(prosumer, q_capacity_kwh=10, capacity_kg=1000.0,
+        create_controlled_heat_storage(prosumer, e_capacity_kwh=10, capacity_kg=1000.0,
                                        init_temperature_c=50.0, min_temp_c=20.0, max_temp_c=80.0, period=period)
         ctrl = prosumer.controller.iloc[0].object
         ctrl._temperature = 50.0
@@ -287,11 +287,11 @@ class TestSimpleHeatStorage:
         resol_s = 60 * 5
         period = create_period(prosumer, resol_s, name="foo",
                                start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
-        q_capacity_kwh = 10
+        e_capacity_kwh = 10
         high_temp_c = 70.0
         low_temp_c = 50.0
         mdot_discharge_kg_per_s = 0.5
-        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+        idx = create_controlled_heat_storage(prosumer, e_capacity_kwh=e_capacity_kwh, capacity_kg=1000.0,
                                              init_temperature_c=high_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
         ctrl = prosumer.controller.iloc[idx].object
         ctrl.time_step(prosumer, "2020-01-01 00:00:00")
@@ -327,14 +327,14 @@ class TestSimpleHeatStorage:
         resol_s = 60 * 5
         period = create_period(prosumer, resol_s, name="foo",
                                start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
-        q_capacity_kwh = 10
+        e_capacity_kwh = 10
         init_temp_c = 60.0
         min_temp_c = 50.0
         max_temp_c = 70.0
         t_ext_c = 20.0
         u_w_per_m2k = 1.0  # W/m²K
         area_wall_m2 = 5.0  # m²
-        idx = create_controlled_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, capacity_kg=1000.0,
+        idx = create_controlled_heat_storage(prosumer, e_capacity_kwh=e_capacity_kwh, capacity_kg=1000.0,
                                              init_temperature_c=init_temp_c, min_temp_c=min_temp_c, max_temp_c=max_temp_c,
                                              u_w_per_m2k=u_w_per_m2k, area_wall_m2=area_wall_m2, t_ext_c=t_ext_c, period=period)
         ctrl = prosumer.controller.iloc[idx].object
@@ -384,7 +384,7 @@ class TestSimpleHeatStorage:
 
         idx = create_controlled_heat_storage(
             prosumer,
-            q_capacity_kwh=10.0,
+            e_capacity_kwh=10.0,
             capacity_kg=1000.0,
             init_temperature_c=50.0,
             min_temp_c=50.0,

@@ -99,6 +99,15 @@ class HeatStorageController(BasicProsumerController):
         soc = (self._temperature - float(min_t)) / delta
         return float(np.clip(soc, 0.0, 1.0))
 
+    def _calculate_available_energy_kwh(self, prosumer):
+        """Calculate the available energy in the storage in kWh."""
+        soc = self._soc_from_temperature(prosumer)
+        if soc is None or np.isnan(soc):
+            return 0.0
+        e_capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
+        available_energy_kwh = (1-soc) * e_capacity_kwh
+        return available_energy_kwh
+
     def _calculate_heat_losses(self, prosumer):
         """Update internal temperature for wall heat losses."""
         u = self._get_element_param(prosumer, "u_w_per_m2k")
@@ -162,9 +171,9 @@ class HeatStorageController(BasicProsumerController):
         """
         Heat to receive in kW (used in GenericMapping / power-only mode).
         """
-        _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
-        fill_level_kwh = min(self._soc, 1) * _q_capacity_kwh
-        q_to_receive_kw = (_q_capacity_kwh - fill_level_kwh) * 3600 / self.resol
+        _e_capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
+        fill_level_kwh = min(self._soc, 1) * _e_capacity_kwh
+        q_to_receive_kw = (_e_capacity_kwh - fill_level_kwh) * 3600 / self.resol
         q_to_receive_kw += self.q_to_deliver_kw(prosumer)
         if not np.isnan(self._get_input("q_received_kw")):
             q_received_kw = self._get_input("q_received_kw")
@@ -187,23 +196,34 @@ class HeatStorageController(BasicProsumerController):
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
         # FIXME
-        t_feed_c = self._get_element_param(prosumer, "max_temp_c")
-        t_return_c = self._get_element_param(prosumer, "min_temp_c")
-        q_to_receive_kw = self.q_to_receive_kw(prosumer)
-        mdot_kg_per_s = q_to_receive_kw * 1000 / (4180.0 * (t_feed_c - t_return_c)) if (t_feed_c is not None and t_return_c is not None and t_feed_c > t_return_c) else 0.0
-        return t_feed_c, t_return_c, mdot_kg_per_s
+        t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+        mdot_demand_kg_per_s = np.sum(mdot_demand_tab_required_kg_per_s)
         
-    def t_m_to_receive_for_t(self, prosumer, t_feed_c):
-        """
-        For a given feed temperature in °C, calculate the required feed mass flow and the expected return temperature
-        if this feed temperature is provided.
-
-        :param prosumer: The prosumer object
-        :param t_feed_c: The feed temperature
-        :return: A Tuple (Feed temperature, return temperature and mass flow)
-        """
-        # FIXME
-        return super().t_m_to_receive_for_t(prosumer, t_feed_c)
+        max_tank_temp_c = self._get_element_param(prosumer, "max_temp_c")
+        min_tank_temp_c = self._get_element_param(prosumer, "min_temp_c")
+        
+        # If there is a demand, return the demand temperature and mass flow plus fill the storage depending on the temperature.
+        if mdot_demand_kg_per_s > 0 and t_demand_out_c > t_demand_in_c > 1e-6:
+            # Add the power to fill the storage in temperature/mass flow mode
+            t_feed_c = t_demand_out_c
+            t_return_c = min_tank_temp_c
+            # calculate the available energy free in the storage
+            available_energy_kwh = self._calculate_available_energy_kwh(prosumer)
+            if available_energy_kwh > 0 and abs(t_feed_c - max_tank_temp_c) > 1e-6 and abs(t_feed_c - min_tank_temp_c) > 1e-6:  # FIXME: What if the temperature are differents ?
+                # calculate the mass flow to charge the storage to the demand temperature
+                cp_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_feed_c + t_return_c) / 2)    
+                mdot_to_charge_kg_per_s = available_energy_kwh * 3600 / (cp_j_per_kgk * (t_feed_c - min_tank_temp_c))
+            else:
+                mdot_to_charge_kg_per_s = 0.
+            mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_to_charge_kg_per_s
+            return t_feed_c, t_return_c, mdot_required_kg_per_s
+        else:
+            # If there is no demand, ask to fill the tank to the max and min temperature of the storage.
+            t_feed_c = max_tank_temp_c
+            t_return_c = min_tank_temp_c
+            q_to_receive_kw = self.q_to_receive_kw(prosumer)
+            mdot_required_kg_per_s = q_to_receive_kw * 1000 / (4180.0 * (t_feed_c - t_return_c)) if (t_feed_c is not None and t_return_c is not None and t_feed_c > t_return_c) else 0.0
+            return t_feed_c, t_return_c, mdot_required_kg_per_s
 
     def _save_state(self):
         """Backup states before run."""
@@ -263,9 +283,9 @@ class HeatStorageController(BasicProsumerController):
     def _run_control_step_power_only(self, prosumer):
         """Power-only balance (q_received_kw -> soc, q_delivered_kw)."""
         q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
-        _q_capacity_kwh = self._get_element_param(prosumer, "q_capacity_kwh")
+        _e_capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
         e_received_kwh = self._get_input("q_received_kw") * self.resol / 3600
-        potential_kwh = self._soc * _q_capacity_kwh + e_received_kwh
+        potential_kwh = self._soc * _e_capacity_kwh + e_received_kwh
         demand_kwh = q_to_deliver_kw * self.resol / 3600
         if demand_kwh > potential_kwh:
             demand_kwh = potential_kwh
@@ -273,13 +293,13 @@ class HeatStorageController(BasicProsumerController):
             demand_kwh = np.array([0.0]) / self.resol / 3600
         fill_level_kwh = potential_kwh - demand_kwh
 
-        excess_energy_kwh = max(0, fill_level_kwh - _q_capacity_kwh)
+        excess_energy_kwh = max(0, fill_level_kwh - _e_capacity_kwh)
         if excess_energy_kwh > 0:
             raise ValueError(
                 f"Excess energy detected: {excess_energy_kwh} kWh exceeds the maximum capacity."
             )
 
-        self._soc = float(np.asarray(fill_level_kwh).flat[0]) / _q_capacity_kwh
+        self._soc = float(np.asarray(fill_level_kwh).flat[0]) / _e_capacity_kwh
         demand_kw = float(np.asarray(demand_kwh).flat[0]) / (self.resol / 3600)
         assert 0 <= self._soc <= 1, (
             f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name} "
@@ -310,10 +330,13 @@ class HeatStorageController(BasicProsumerController):
             self.finalize(prosumer, np.array([[soc, 0.0]]), result_fluid_mix=result_fluid)
             self.applied = True
             return
-
-        mdot = self._mdot_received_kg_per_s
+        
+        t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+        mdot_demand_kg_per_s = np.sum(mdot_demand_tab_required_kg_per_s)
+        
+        mdot_received_kg_per_s = self._mdot_received_kg_per_s
         t_in = self._t_received_in_c
-        if np.isnan(mdot) or np.isnan(t_in):
+        if np.isnan(mdot_received_kg_per_s) or np.isnan(t_in):
             self._calculate_heat_losses(prosumer)
             q_delivered_kw = 0.0
             t_out = self._temperature if (self._temperature is not None and not np.isnan(self._temperature)) else 40.0
@@ -327,8 +350,8 @@ class HeatStorageController(BasicProsumerController):
             self.applied = True
             return
 
-        q_delivered_kw, mdot_delivered, t_out_c, new_t = self._calculate_uniform_tank_step(
-            prosumer, mdot, t_in
+        q_delivered_kw, mdot_delivered_kg_per_s, t_out_c, new_t = self._calculate_uniform_tank_step(
+            prosumer, mdot_received_kg_per_s, t_in
         )
         self._temperature = new_t
 
@@ -343,11 +366,14 @@ class HeatStorageController(BasicProsumerController):
             "soc": soc_out,
             "demand_kw": q_delivered_kw,
             "temperature": self._temperature,
-            "mdot_kg_per_s": mdot_delivered,
+            "mdot_kg_per_s": mdot_delivered_kg_per_s,
         }
         result = np.array([[soc_out, q_delivered_kw]])
-        result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: float(self._temperature),
-                         FluidMixMapping.MASS_FLOW_KEY: float(mdot_delivered)}]
+        
+        result_fluid_mix = []
+        for mdot_kg_per_s in mdot_delivered_kg_per_s:
+            result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,
+                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
         if np.isnan(result).any():
             self.input_mass_flow_with_temp = {
@@ -356,7 +382,7 @@ class HeatStorageController(BasicProsumerController):
             }
             return
 
-        if (np.isnan(self.t_keep_return_c) or mdot_delivered == 0 or
+        if (np.isnan(self.t_keep_return_c) or mdot_delivered_kg_per_s == 0 or
                 abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or
                 len(self._get_mapped_initiators_on_same_level(prosumer)) == 0):
             self.finalize(prosumer, result, result_fluid_mix=result_fluid)
@@ -368,7 +394,7 @@ class HeatStorageController(BasicProsumerController):
             self._unapply_initiators(prosumer)
             self.t_previous_out_c = t_out_c
             self.t_previous_in_c = t_in
-            self.mdot_previous_in_kg_per_s = mdot_delivered
+            self.mdot_previous_in_kg_per_s = mdot_delivered_kg_per_s
             self.input_mass_flow_with_temp = {
                 FluidMixMapping.TEMPERATURE_KEY: np.nan,
                 FluidMixMapping.MASS_FLOW_KEY: np.nan,

@@ -24,7 +24,7 @@ class HeatStorageElementData:
         ('in_service', bool),
 
         # Power-only mode (GenericMapping)
-        ('q_capacity_kwh', 'f8'),
+        ('e_capacity_kwh', 'f8'),
 
         # Optional: FluidMix / uniform tank mode
         ('capacity_kg', 'f8'),       # Tank fluid mass [kg]; if set, enables FluidMixMapping

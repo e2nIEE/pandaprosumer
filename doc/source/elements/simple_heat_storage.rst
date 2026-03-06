@@ -43,7 +43,7 @@ Input Static Data
 
     "name", "Custom name for the Storage", "N/A"
     "in_service", "Indicates if the Storage is in service", "N/A"
-    "q_capacity_kwh", "Capacity in kilowatt-hours (power-only mode)", "kWh"
+    "e_capacity_kwh", "Capacity in kilowatt-hours (power-only mode)", "kWh"
     "capacity_kg", "Tank fluid mass; if set, enables FluidMix / uniform tank mode", "kg"
     "init_temperature_c", "Initial uniform tank temperature (FluidMix mode)", "°C"
     "min_temp_c", "Minimum temperature for SOC from T (optional, FluidMix)", "°C"
