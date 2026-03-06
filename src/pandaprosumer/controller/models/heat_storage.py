@@ -58,11 +58,17 @@ class HeatStorageController(BasicProsumerController):
         return cap is not None and not (isinstance(cap, float) and np.isnan(cap)) and cap > 0
 
     def _init_fluid_state_from_element(self, prosumer):
-        """Initialize uniform tank temperature from element or keep existing."""
-        init_t = self._get_element_param(prosumer, "init_temperature_c")
-        if init_t is not None and not (isinstance(init_t, float) and np.isnan(init_t)):
-            self._temperature = float(init_t)
-        if self._temperature is None:
+        """Initialize uniform tank temperature from element if not already set."""
+        # Only (re)initialize when we don't yet have a valid internal temperature.
+        needs_init = (
+            self._temperature is None
+            or (isinstance(self._temperature, float) and np.isnan(self._temperature))
+        )
+        if needs_init:
+            init_t = self._get_element_param(prosumer, "init_temperature_c")
+            if init_t is not None and not (isinstance(init_t, float) and np.isnan(init_t)):
+                self._temperature = float(init_t)
+        if self._temperature is None or (isinstance(self._temperature, float) and np.isnan(self._temperature)):
             self._temperature = 40.0  # default fallback
 
     @property
@@ -172,6 +178,32 @@ class HeatStorageController(BasicProsumerController):
         for responder in self._get_generic_mapped_responders(prosumer):
             q_to_deliver_kw += responder.q_to_receive_kw(prosumer)
         return q_to_deliver_kw
+    
+    def _t_m_to_receive_init(self, prosumer):
+        """
+        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s
+
+        :param prosumer: The prosumer object
+        :return: A Tuple (Feed temperature, return temperature and mass flow)
+        """
+        # FIXME
+        t_feed_c = self._get_element_param(prosumer, "max_temp_c")
+        t_return_c = self._get_element_param(prosumer, "min_temp_c")
+        q_to_receive_kw = self.q_to_receive_kw(prosumer)
+        mdot_kg_per_s = q_to_receive_kw * 1000 / (4180.0 * (t_feed_c - t_return_c)) if (t_feed_c is not None and t_return_c is not None and t_feed_c > t_return_c) else 0.0
+        return t_feed_c, t_return_c, mdot_kg_per_s
+        
+    def t_m_to_receive_for_t(self, prosumer, t_feed_c):
+        """
+        For a given feed temperature in °C, calculate the required feed mass flow and the expected return temperature
+        if this feed temperature is provided.
+
+        :param prosumer: The prosumer object
+        :param t_feed_c: The feed temperature
+        :return: A Tuple (Feed temperature, return temperature and mass flow)
+        """
+        # FIXME
+        return super().t_m_to_receive_for_t(prosumer, t_feed_c)
 
     def _save_state(self):
         """Backup states before run."""

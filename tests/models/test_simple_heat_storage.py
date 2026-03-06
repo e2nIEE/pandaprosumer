@@ -366,3 +366,57 @@ class TestSimpleHeatStorage:
         assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == 0.0
         assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.TEMPERATURE_KEY] == pytest.approx(t_tank_expected_c)
         assert ctrl.applied is True
+
+    def test_fluid_mix_mode_simple_charge_discharge(self):
+        """Simple direct FluidMix charge then discharge example."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        start = "2020-01-01 00:00:00"
+        end = "2020-01-01 02:00:00"
+        period = create_period(
+            prosumer,
+            resol_s,
+            name="foo",
+            start=start,
+            end=end,
+            timezone="utc",
+        )
+
+        idx = create_controlled_heat_storage(
+            prosumer,
+            q_capacity_kwh=10.0,
+            capacity_kg=1000.0,
+            init_temperature_c=50.0,
+            min_temp_c=50.0,
+            max_temp_c=70.0,
+            period=period,
+        )
+        ctrl = prosumer.controller.iloc[idx].object
+
+        # Build a time index consistent with the period definition
+        times = pd.date_range(start=start, end=end, freq=f"{resol_s}S", tz="utc", inclusive="left")
+
+        mdot = np.zeros(len(times))
+        t_in = np.full(len(times), 50.0)
+        half = len(times) // 2
+        mdot[:half] = 0.5
+        t_in[:half] = 70.0
+        mdot[half:] = 0.5
+        t_in[half:] = 50.0
+
+        socs = []
+        q_del = []
+        for ts, md, ti in zip(times, mdot, t_in):
+            ctrl.time_step(prosumer, ts)
+            ctrl.input_mass_flow_with_temp = {
+                FluidMixMapping.TEMPERATURE_KEY: float(ti),
+                FluidMixMapping.MASS_FLOW_KEY: float(md),
+            }
+            ctrl.control_step(prosumer)
+            soc, qk = ctrl.step_results[0]
+            socs.append(soc)
+            q_del.append(qk)
+
+        assert max(socs) > min(socs)
+        assert any(q != 0.0 for q in q_del)  # Check that at least one timestep has a non-zero delivery
+        
