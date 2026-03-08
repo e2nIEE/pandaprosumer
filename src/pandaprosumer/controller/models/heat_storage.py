@@ -195,34 +195,70 @@ class HeatStorageController(BasicProsumerController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        # FIXME
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_demand_kg_per_s = np.sum(mdot_demand_tab_required_kg_per_s)
         
+        # Get temperature limits from element parameters
         max_tank_temp_c = self._get_element_param(prosumer, "max_temp_c")
         min_tank_temp_c = self._get_element_param(prosumer, "min_temp_c")
         
-        # If there is a demand, return the demand temperature and mass flow plus fill the storage depending on the temperature.
+        # Initialize with default values
+        t_feed_c = max_tank_temp_c if max_tank_temp_c is not None else 80.0
+        t_return_c = min_tank_temp_c if min_tank_temp_c is not None else 40.0
+        
+        # Get fluid for heat capacity calculations
+        fluid = getattr(prosumer, "fluid", None)
+        
+        # If there is a demand, return the demand temperature and mass flow plus fill the storage
         if mdot_demand_kg_per_s > 0 and t_demand_out_c > t_demand_in_c > 1e-6:
-            # Add the power to fill the storage in temperature/mass flow mode
             t_feed_c = t_demand_out_c
-            t_return_c = min_tank_temp_c
-            # calculate the available energy free in the storage
+            t_return_c = min_tank_temp_c if min_tank_temp_c is not None else t_demand_in_c
+            
+            # Calculate available energy in storage
             available_energy_kwh = self._calculate_available_energy_kwh(prosumer)
-            if available_energy_kwh > 0 and abs(t_feed_c - max_tank_temp_c) > 1e-6 and abs(t_feed_c - min_tank_temp_c) > 1e-6:  # FIXME: What if the temperature are differents ?
-                # calculate the mass flow to charge the storage to the demand temperature
-                cp_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_feed_c + t_return_c) / 2)    
+            
+            # Only charge storage if there's available capacity and temperature difference is valid
+            if (available_energy_kwh > 0 and 
+                max_tank_temp_c is not None and min_tank_temp_c is not None and
+                abs(t_feed_c - max_tank_temp_c) > 1e-6 and abs(t_feed_c - min_tank_temp_c) > 1e-6):
+                
+                # Get heat capacity from fluid or use default
+                if fluid is not None and hasattr(fluid, "get_heat_capacity"):
+                    cp_j_per_kgk = fluid.get_heat_capacity(CELSIUS_TO_K + (t_feed_c + t_return_c) / 2)
+                else:
+                    cp_j_per_kgk = 4180.0  # default water [J/(kg·K)]
+                
+                # Calculate mass flow needed to charge storage
                 mdot_to_charge_kg_per_s = available_energy_kwh * 3600 / (cp_j_per_kgk * (t_feed_c - min_tank_temp_c))
             else:
-                mdot_to_charge_kg_per_s = 0.
+                mdot_to_charge_kg_per_s = 0.0
+            
             mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_to_charge_kg_per_s
             return t_feed_c, t_return_c, mdot_required_kg_per_s
         else:
-            # If there is no demand, ask to fill the tank to the max and min temperature of the storage.
-            t_feed_c = max_tank_temp_c
-            t_return_c = min_tank_temp_c
+            # If there is no demand, ask to fill the tank to maintain temperature
+            if max_tank_temp_c is None or min_tank_temp_c is None or max_tank_temp_c <= min_tank_temp_c:
+                # Use reasonable defaults if temperature limits are not properly set
+                t_feed_c = 80.0
+                t_return_c = 40.0
+            else:
+                t_feed_c = max_tank_temp_c
+                t_return_c = min_tank_temp_c
+            
+            # Calculate required mass flow based on power needs
             q_to_receive_kw = self.q_to_receive_kw(prosumer)
-            mdot_required_kg_per_s = q_to_receive_kw * 1000 / (4180.0 * (t_feed_c - t_return_c)) if (t_feed_c is not None and t_return_c is not None and t_feed_c > t_return_c) else 0.0
+            
+            if fluid is not None and hasattr(fluid, "get_heat_capacity"):
+                cp_j_per_kgk = fluid.get_heat_capacity(CELSIUS_TO_K + (t_feed_c + t_return_c) / 2)
+            else:
+                cp_j_per_kgk = 4180.0  # default water [J/(kg·K)]
+            
+            temperature_diff = t_feed_c - t_return_c
+            if temperature_diff > 1e-6:
+                mdot_required_kg_per_s = q_to_receive_kw * 1000 / (cp_j_per_kgk * temperature_diff)
+            else:
+                mdot_required_kg_per_s = 0.0
+            
             return t_feed_c, t_return_c, mdot_required_kg_per_s
 
     def _save_state(self):
@@ -262,9 +298,9 @@ class HeatStorageController(BasicProsumerController):
                 soc_fluid = self._soc_from_temperature(prosumer)
                 soc = soc_fluid if soc_fluid is not None else self._soc
                 result = np.array([[soc, 0.0]])
-                result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: self._temperature,
-                                 FluidMixMapping.MASS_FLOW_KEY: 0.0}]
-                self.finalize(prosumer, result, result_fluid_mix=result_fluid)
+                result_fluid_mix = [{FluidMixMapping.TEMPERATURE_KEY: self._temperature,
+                                     FluidMixMapping.MASS_FLOW_KEY: 0.0}]
+                self.finalize(prosumer, result, result_fluid_mix=result_fluid_mix)
             else:
                 self.finalize(prosumer, np.array([[self._soc, 0.0]]))
             self.applied = True
@@ -323,11 +359,11 @@ class HeatStorageController(BasicProsumerController):
             # Still finalize with no delivery so downstream (e.g. heat demand) get valid input
             self._calculate_heat_losses(prosumer)
             t_out = self._temperature if (self._temperature is not None and not np.isnan(self._temperature)) else 40.0
-            result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: float(t_out), FluidMixMapping.MASS_FLOW_KEY: 0.0}]
+            result_fluid_mix = [{FluidMixMapping.TEMPERATURE_KEY: float(t_out), FluidMixMapping.MASS_FLOW_KEY: 0.0}]
             soc_fluid = self._soc_from_temperature(prosumer)
             soc = soc_fluid if soc_fluid is not None else self._soc
             soc = float(soc) if not np.isnan(soc) else 0.0
-            self.finalize(prosumer, np.array([[soc, 0.0]]), result_fluid_mix=result_fluid)
+            self.finalize(prosumer, np.array([[soc, 0.0]]), result_fluid_mix=result_fluid_mix)
             self.applied = True
             return
         
@@ -340,13 +376,13 @@ class HeatStorageController(BasicProsumerController):
             self._calculate_heat_losses(prosumer)
             q_delivered_kw = 0.0
             t_out = self._temperature if (self._temperature is not None and not np.isnan(self._temperature)) else 40.0
-            result_fluid = [{FluidMixMapping.TEMPERATURE_KEY: float(t_out),
-                             FluidMixMapping.MASS_FLOW_KEY: 0.0}]
+            result_fluid_mix = [{FluidMixMapping.TEMPERATURE_KEY: float(t_out),
+                                 FluidMixMapping.MASS_FLOW_KEY: 0.0}]
             soc_fluid = self._soc_from_temperature(prosumer)
             soc = soc_fluid if soc_fluid is not None else self._soc
             soc = float(soc) if not np.isnan(soc) else 0.0
             result = np.array([[soc, q_delivered_kw]])
-            self.finalize(prosumer, result, result_fluid_mix=result_fluid)
+            self.finalize(prosumer, result, result_fluid_mix=result_fluid_mix)
             self.applied = True
             return
 
@@ -370,10 +406,19 @@ class HeatStorageController(BasicProsumerController):
         }
         result = np.array([[soc_out, q_delivered_kw]])
         
+        # For simple heat storage, distribute the total mass flow equally to all responders
+        num_responders = len(mdot_demand_tab_required_kg_per_s)
         result_fluid_mix = []
-        for mdot_kg_per_s in mdot_delivered_kg_per_s:
+        if num_responders > 0:
+            # If there are multiple responders, divide the mass flow equally
+            mdot_per_responder = mdot_delivered_kg_per_s / num_responders
+            for i in range(num_responders):
+                result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,
+                                         FluidMixMapping.MASS_FLOW_KEY: mdot_per_responder})
+        else:
+            # If no responders, just return the total mass flow
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,
-                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+                                     FluidMixMapping.MASS_FLOW_KEY: mdot_delivered_kg_per_s})
 
         if np.isnan(result).any():
             self.input_mass_flow_with_temp = {
@@ -385,7 +430,7 @@ class HeatStorageController(BasicProsumerController):
         if (np.isnan(self.t_keep_return_c) or mdot_delivered_kg_per_s == 0 or
                 abs(t_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or
                 len(self._get_mapped_initiators_on_same_level(prosumer)) == 0):
-            self.finalize(prosumer, result, result_fluid_mix=result_fluid)
+            self.finalize(prosumer, result, result_fluid_mix=result_fluid_mix)
             self.applied = True
             self.t_previous_out_c = np.nan
             self.t_previous_in_c = np.nan
