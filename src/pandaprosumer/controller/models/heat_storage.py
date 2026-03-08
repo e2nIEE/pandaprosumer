@@ -166,9 +166,17 @@ class HeatStorageController(BasicProsumerController):
         # This is the key physical equation for a uniform tank
         # Mix incoming flow with tank temperature BEFORE heat losses
         if capacity_kg > 0:
-            self._temperature = (
+            new_temp = (
                 (capacity_kg - m_received_kg) * t_before_loss_c + m_received_kg * t_in_c
             ) / capacity_kg
+            
+            # Apply temperature limits from element parameters
+            min_t = self._get_element_param(prosumer, "min_temp_c")
+            max_t = self._get_element_param(prosumer, "max_temp_c")
+            if min_t is not None and max_t is not None and max_t > min_t:
+                new_temp = float(np.clip(new_temp, min_t, max_t))
+            
+            self._temperature = new_temp
         
         return q_delivered_kw, mdot_kg_per_s, t_out_c, self._temperature
 
