@@ -598,9 +598,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
-                # If the heat Pump is not able to deliver the required mass flow,
+                # If the stratified heat storage is not able to deliver the required mass flow,
                 # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
+                # still return the same temperature, even if the mass flow delivered to them by the Stratified Heat Storage is lower
                 t_return_tab_c = self.get_treturn_tab_c(prosumer)
                 if abs(mdot_delivered_kg_per_s) > 1e-8:
                     t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
