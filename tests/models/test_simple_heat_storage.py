@@ -98,7 +98,7 @@ class TestSimpleHeatStorage:
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
         input_columns_expected = ["q_received_kw"]
-        result_columns_expected = ["soc", "t_tank_c", "q_ch_kw", "q_dch_kw", "mdot_ch_kg_per_s", "t_ch_in_c", "t_ch_out_c", "mdot_dch_kg_per_s", "t_dch_in_c", "t_dch_out_c"]
+        result_columns_expected = ["soc", "t_tank_c", "q_ch_kw", "q_dch_kw", "q_delivered_kw", "mdot_ch_kg_per_s", "t_ch_in_c", "t_ch_out_c", "mdot_dch_kg_per_s", "t_dch_in_c", "t_dch_out_c"]
 
         assert shs_controller.input_columns == input_columns_expected
         assert shs_controller.result_columns == result_columns_expected
@@ -139,14 +139,15 @@ class TestSimpleHeatStorage:
         assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c)  # t_tank_c
         assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)  # q_ch_kw
         assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)  # q_dch_kw
-        assert shs_controller.step_results[0, 4] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_discharge_kw)  # q_delivered_kw (equals q_dch_kw in power-only)
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
         # Charge temperatures (should be tank temp when not charging)
-        assert shs_controller.step_results[0, 5] == pytest.approx(t_charge_in_c)  # t_ch_in_c
-        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_out_c)  # t_ch_out_c
-        assert shs_controller.step_results[0, 7] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c)  # t_ch_in_c
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)  # t_ch_out_c
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
         # Discharge temperatures (should be tank temp when not discharging)
-        assert shs_controller.step_results[0, 8] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
-        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
 
     def test_controller_run_control_charge(self):
         """
@@ -185,14 +186,15 @@ class TestSimpleHeatStorage:
         assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c)  # t_tank_c
         assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)  # q_ch_kw
         assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)  # q_dch_kw
-        assert shs_controller.step_results[0, 4] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_discharge_kw)  # q_delivered_kw
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
         # Charge temperatures (should be tank temp when charging)
-        assert shs_controller.step_results[0, 5] == pytest.approx(t_charge_in_c)  # t_ch_in_c
-        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_out_c)  # t_ch_out_c
-        assert shs_controller.step_results[0, 7] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c)  # t_ch_in_c
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)  # t_ch_out_c
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
         # Discharge temperatures (should be tank temp when not discharging)
-        assert shs_controller.step_results[0, 8] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
-        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
 
     def test_controller_run_control_discharge(self):
         """
@@ -232,14 +234,15 @@ class TestSimpleHeatStorage:
         assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c)  # t_tank_c
         assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)  # q_ch_kw
         assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)  # q_dch_kw
-        assert shs_controller.step_results[0, 4] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_discharge_kw)  # q_delivered_kw
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
         # Charge temperatures (should be tank temp when not charging)
-        assert shs_controller.step_results[0, 5] == pytest.approx(t_charge_in_c)  # t_ch_in_c
-        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_out_c)  # t_ch_out_c
-        assert shs_controller.step_results[0, 7] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c)  # t_ch_in_c
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)  # t_ch_out_c
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
         # Discharge temperatures
-        assert shs_controller.step_results[0, 8] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
-        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
 
     def test_controller_run_control_overcharge(self):
         """
@@ -313,7 +316,7 @@ class TestSimpleHeatStorage:
         ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: high_temp_c, FluidMixMapping.MASS_FLOW_KEY: mdot_charge_kg_per_s}
         ctrl.control_step(prosumer)
         # Step ran; step_results must be (1, 2)
-        assert ctrl.step_results.shape == (1, 10)
+        assert ctrl.step_results.shape == (1, 11)
         
         # Calculate expected temperature using proper mixing formula
         capacity_kg = 1000.0
@@ -344,13 +347,14 @@ class TestSimpleHeatStorage:
         assert ctrl.step_results[0, 1] == pytest.approx(t_tank_expected_c)  # t_tank_c
         assert ctrl.step_results[0, 2] == pytest.approx(q_ch_expected_kw)  # q_ch_kw
         assert ctrl.step_results[0, 3] == pytest.approx(0.0)  # q_dch_kw (no discharge when charging)
-        assert ctrl.step_results[0, 4] == pytest.approx(mdot_charge_kg_per_s_expected)  # mdot_ch_kg_per_s
-        assert ctrl.step_results[0, 5] == pytest.approx(t_charge_in_expected)  # t_ch_in_c
-        assert ctrl.step_results[0, 6] == pytest.approx(t_charge_out_expected)  # t_ch_out_c
+        assert ctrl.step_results[0, 4] == pytest.approx(0.0)  # q_delivered_kw (no delivery when charging with no demand)
+        assert ctrl.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s_expected)  # mdot_ch_kg_per_s
+        assert ctrl.step_results[0, 6] == pytest.approx(t_charge_in_expected)  # t_ch_in_c
+        assert ctrl.step_results[0, 7] == pytest.approx(t_charge_out_expected)  # t_ch_out_c
         # Discharge values (should be defaults when not discharging)
-        assert ctrl.step_results[0, 7] == pytest.approx(0.0)  # mdot_dch_kg_per_s
-        assert ctrl.step_results[0, 8] == pytest.approx(t_tank_expected_c)  # t_dch_in_c (default to tank temp)
-        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c)  # t_dch_out_c (default to tank temp)
+        assert ctrl.step_results[0, 8] == pytest.approx(0.0)  # mdot_dch_kg_per_s
+        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c)  # t_dch_in_c (default to tank temp)
+        assert ctrl.step_results[0, 10] == pytest.approx(t_tank_expected_c)  # t_dch_out_c (default to tank temp)
         
         # When finalized (e.g. no FluidMix initiators), result_mass_flow_with_temp is set
         assert len(ctrl.result_mass_flow_with_temp) == 1
@@ -405,7 +409,7 @@ class TestSimpleHeatStorage:
         t_discharge_in_expected = low_temp_c
         t_discharge_out_expected = high_temp_c
         
-        assert ctrl.step_results.shape == (1, 10)
+        assert ctrl.step_results.shape == (1, 11)
         assert not np.isnan(ctrl.step_results[0, 0])
         soc = ctrl.step_results[0, 0]
         assert 0 <= soc <= 1
@@ -415,26 +419,29 @@ class TestSimpleHeatStorage:
         assert ctrl.step_results[0, 2] == pytest.approx(0.0)
         # q_dch_kw should be the delivered power
         assert ctrl.step_results[0, 3] == pytest.approx(q_delivered_expected_kw)
+        # q_delivered_kw should be the total delivered power
+        assert ctrl.step_results[0, 4] == pytest.approx(q_delivered_expected_kw)
         # mdot_ch_kg_per_s should be 0 for discharging
-        assert ctrl.step_results[0, 4] == pytest.approx(0.0)
+        assert ctrl.step_results[0, 5] == pytest.approx(0.0)
         # Charge temperatures (should be tank temp when not charging)
-        assert ctrl.step_results[0, 5] == pytest.approx(t_tank_expected_c)
         assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)
+        assert ctrl.step_results[0, 7] == pytest.approx(t_tank_expected_c)
         # mdot_dch_kg_per_s should be the discharge mass flow
-        assert ctrl.step_results[0, 7] == pytest.approx(mdot_discharge_kg_per_s_expected)
+        assert ctrl.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s_expected)
         # Discharge temperatures
-        assert ctrl.step_results[0, 8] == pytest.approx(t_discharge_in_expected)
-        assert ctrl.step_results[0, 9] == pytest.approx(t_discharge_out_expected)
+        assert ctrl.step_results[0, 9] == pytest.approx(t_discharge_in_expected)
+        assert ctrl.step_results[0, 10] == pytest.approx(t_discharge_out_expected)
         
         assert ctrl.step_results[0, 2] == pytest.approx(0.0)  # q_ch_kw (no charging when discharging)
         assert ctrl.step_results[0, 3] == pytest.approx(q_delivered_expected_kw)  # q_dch_kw
-        assert ctrl.step_results[0, 4] == pytest.approx(0.0)  # mdot_ch_kg_per_s (no charging)
+        assert ctrl.step_results[0, 4] == pytest.approx(q_delivered_expected_kw)  # q_delivered_kw (bypass + discharge)
+        assert ctrl.step_results[0, 5] == pytest.approx(0.0)  # mdot_ch_kg_per_s (no charging)
         # Charge values (should be defaults when not charging)
-        assert ctrl.step_results[0, 5] == pytest.approx(t_tank_expected_c)  # t_ch_in_c (default to tank temp)
-        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)  # t_ch_out_c (default to tank temp)
-        assert ctrl.step_results[0, 7] == pytest.approx(mdot_discharge_kg_per_s_expected)  # mdot_dch_kg_per_s
-        assert ctrl.step_results[0, 8] == pytest.approx(t_discharge_in_expected)  # t_dch_in_c
-        assert ctrl.step_results[0, 9] == pytest.approx(t_discharge_out_expected)  # t_dch_out_c
+        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)  # t_ch_in_c (default to tank temp)
+        assert ctrl.step_results[0, 7] == pytest.approx(t_tank_expected_c)  # t_ch_out_c (default to tank temp)
+        assert ctrl.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s_expected)  # mdot_dch_kg_per_s
+        assert ctrl.step_results[0, 9] == pytest.approx(t_discharge_in_expected)  # t_dch_in_c
+        assert ctrl.step_results[0, 10] == pytest.approx(t_discharge_out_expected)  # t_dch_out_c
         
         # Check result_mass_flow_with_temp
         assert len(ctrl.result_mass_flow_with_temp) == 1
@@ -475,7 +482,7 @@ class TestSimpleHeatStorage:
         t_tank_expected_c = init_temp_c - t_loss_expected_c
         soc_expected = (t_tank_expected_c - min_temp_c) / (max_temp_c - min_temp_c)
         
-        assert ctrl.step_results.shape == (1, 10)
+        assert ctrl.step_results.shape == (1, 11)
         assert not np.isnan(ctrl.step_results[0, 0])
         soc = ctrl.step_results[0, 0]
         assert 0 <= soc <= 1
@@ -483,13 +490,14 @@ class TestSimpleHeatStorage:
         assert ctrl.step_results[0, 1] == pytest.approx(t_tank_expected_c)  # t_tank_c
         assert ctrl.step_results[0, 2] == pytest.approx(0.0)  # q_ch_kw (no charging)
         assert ctrl.step_results[0, 3] == pytest.approx(0.0)  # q_dch_kw (no discharging)
-        assert ctrl.step_results[0, 4] == pytest.approx(0.0)  # mdot_ch_kg_per_s (no flow)
+        assert ctrl.step_results[0, 4] == pytest.approx(0.0)  # q_delivered_kw (no flow)
+        assert ctrl.step_results[0, 5] == pytest.approx(0.0)  # mdot_ch_kg_per_s (no flow)
         # Temperature values (should be tank temp when no flow)
-        assert ctrl.step_results[0, 5] == pytest.approx(t_tank_expected_c)  # t_ch_in_c
-        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)  # t_ch_out_c
-        assert ctrl.step_results[0, 7] == pytest.approx(0.0)  # mdot_dch_kg_per_s (no flow)
-        assert ctrl.step_results[0, 8] == pytest.approx(t_tank_expected_c)  # t_dch_in_c
-        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c)  # t_dch_out_c
+        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)  # t_ch_in_c
+        assert ctrl.step_results[0, 7] == pytest.approx(t_tank_expected_c)  # t_ch_out_c
+        assert ctrl.step_results[0, 8] == pytest.approx(0.0)  # mdot_dch_kg_per_s (no flow)
+        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c)  # t_dch_in_c
+        assert ctrl.step_results[0, 10] == pytest.approx(t_tank_expected_c)  # t_dch_out_c
         
         # Check result_mass_flow_with_temp
         assert len(ctrl.result_mass_flow_with_temp) == 1
@@ -552,7 +560,7 @@ class TestSimpleHeatStorage:
                 FluidMixMapping.MASS_FLOW_KEY: float(md),
             }
             ctrl.control_step(prosumer)
-            soc, t_tank, q_ch_kw, q_dch_kw, mdot_ch, t_ch_in, t_ch_out, mdot_dch, t_dch_in, t_dch_out = ctrl.step_results[0]
+            soc, t_tank, q_ch_kw, q_dch_kw, q_delivered_kw, mdot_ch, t_ch_in, t_ch_out, mdot_dch, t_dch_in, t_dch_out = ctrl.step_results[0]
             socs.append(soc)
             t_tanks.append(t_tank)
             q_ch.append(q_ch_kw)
