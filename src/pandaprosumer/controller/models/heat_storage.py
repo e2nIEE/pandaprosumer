@@ -19,224 +19,114 @@ from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
                             t_received_in_c, t_demand_out_c,
                             t_demand_in_c, t_discharge_out_c,
-                            mdot_received_kg_per_s, t_charge_out,
-                            current_temp, capacity_kg):
-    # Check if we have incoming flow (initiator power)
-    has_incoming_flow = not (np.isnan(mdot_received_kg_per_s) or np.isnan(t_received_in_c)) and mdot_received_kg_per_s > 0
+                            mdot_received_kg_per_s, t_charge_out_c,
+                            current_temp, capacity_kg,
+                            min_temp_c, max_temp_c, resol_s):
+    cp_j_per_kgk = prosumer.get_cp_fluid_j_per_kgk(
+        [v for v in [current_temp, t_received_in_c, t_demand_in_c] if not np.isnan(v)]
+    )
 
-    # Check if we have demand
-    has_demand = mdot_demand_kg_per_s > 0 and current_temp > t_demand_in_c
+    has_incoming_flow = (
+        not (np.isnan(mdot_received_kg_per_s) or np.isnan(t_received_in_c))
+        and mdot_received_kg_per_s > 0
+    )
+    has_demand = (
+        mdot_demand_kg_per_s > 0
+        and not np.isnan(t_demand_out_c)
+        and not np.isnan(t_demand_in_c)
+        and t_demand_out_c > t_demand_in_c
+    )
+    can_discharge = current_temp > t_demand_in_c + 1e-9
+
+    mdot_bypass_kg_per_s = 0.0
+    mdot_charge_kg_per_s = 0.0
+    mdot_discharge_kg_per_s = 0.0
+
+    q_bypass_kw = 0.0
+    q_charge_kw = 0.0
+    q_discharge_kw = 0.0
+
+    t_received_out_c = current_temp
+    t_delivered_out_c = current_temp
+    t_tank_c = current_temp
+
+    if has_demand:
+        q_demand_kw = mdot_demand_kg_per_s * cp_j_per_kgk * (t_demand_out_c - t_demand_in_c) / 1e3
+    else:
+        q_demand_kw = 0.0
+
+    q_bypass_available_kw = 0.0
+    if has_incoming_flow and t_received_in_c > t_demand_in_c:
+        q_bypass_available_kw = (
+            mdot_received_kg_per_s * cp_j_per_kgk * (t_received_in_c - t_demand_in_c) / 1e3
+        )
+
+    if has_demand and q_bypass_available_kw > 0:
+        q_bypass_kw = min(q_demand_kw, q_bypass_available_kw)
+        mdot_bypass_kg_per_s = q_bypass_kw * 1e3 / (
+            cp_j_per_kgk * max(t_received_in_c - t_demand_in_c, 1e-9)
+        )
 
     if has_incoming_flow:
-        # Case 1: We have incoming flow (initiator power)
-        if has_demand:
-            cp_j_per_kgk = prosumer.get_cp_fluid_j_per_kgk(current_temp)
-
-            # Case 1a: We have both incoming flow and demand
-            # First, try to satisfy demand directly from incoming flow
-            # Calculate energy available from incoming flow
-            q_available_from_initiator_kw = mdot_received_kg_per_s * (
-                        t_received_in_c - t_demand_in_c) * cp_j_per_kgk / 1000
-
-            if q_available_from_initiator_kw >= 0:
-                # Incoming flow can satisfy demand directly
-                # Use incoming flow to satisfy demand
-                mdot_to_deliver_kg_per_s = mdot_demand_kg_per_s
-                q_delivered_kw = mdot_to_deliver_kg_per_s * (t_received_in_c - t_demand_in_c) * cp_j_per_kgk / 1000
-                t_out_c = t_received_in_c  # Output temperature is incoming temperature
-
-                # Calculate remaining flow after satisfying demand
-                remaining_mdot_kg_per_s = mdot_received_kg_per_s - mdot_to_deliver_kg_per_s
-
-                if remaining_mdot_kg_per_s > 0:
-                    # Case 1a-i: Extra incoming flow available - store it in tank
-                    # Calculate energy to store
-                    q_to_store_kw = remaining_mdot_kg_per_s * (t_received_in_c - current_temp) * cp_j_per_kgk / 1000
-
-                    # Update tank temperature based on stored energy
-                    if capacity_kg > 0:
-                        energy_stored_kj = q_to_store_kw * 3600
-                        delta_t = energy_stored_kj / (capacity_kg * cp_j_per_kgk)
-                        new_temp = current_temp + delta_t
-
-                        # Apply temperature limits
-                        min_t = self._get_element_param(prosumer, "min_temp_c")
-                        max_t = self._get_element_param(prosumer, "max_temp_c")
-                        if min_t is not None and max_t is not None and max_t > min_t:
-                            new_temp = float(np.clip(new_temp, min_t, max_t))
-
-                        t_tank_c = new_temp
-
-                    # For remaining flow, mix with tank
-                    mdot_to_deliver_kg_per_s += remaining_mdot_kg_per_s
-                    t_out_c = current_temp
-            else:
-                # Case 1a-ii: Incoming flow cannot satisfy demand, need to use stored energy
-                # Use all incoming flow first
-                mdot_to_deliver_kg_per_s = mdot_received_kg_per_s
-                q_delivered_kw = mdot_to_deliver_kg_per_s * (t_received_in_c - t_demand_in_c) * cp_j_per_kgk / 1000
-                t_out_c = t_received_in_c
-
-                # Calculate remaining demand
-                remaining_demand_kg_per_s = mdot_demand_kg_per_s - mdot_to_deliver_kg_per_s
-
-                if remaining_demand_kg_per_s > 0 and current_temp > t_demand_in_c:
-                    # Use stored energy to satisfy remaining demand
-                    additional_mdot = remaining_demand_kg_per_s
-                    mdot_to_deliver_kg_per_s += additional_mdot
-
-                    # Energy from stored heat
-                    additional_q = additional_mdot * (current_temp - t_demand_in_c) * cp_j_per_kgk / 1000
-                    q_delivered_kw += additional_q
-
-                    # Update tank temperature based on energy used
-                    energy_used_kj = additional_q * 3600
-                    if capacity_kg > 0 and energy_used_kj > 0:
-                        delta_t = energy_used_kj / (capacity_kg * cp_j_per_kgk)
-                        t_tank_c = max(current_temp - delta_t, t_demand_in_c)
-
-                    t_out_c = current_temp
-        else:
-            # Case 1b: We have incoming flow but no demand - store all incoming energy
-            q_delivered_kw, mdot_to_deliver_kg_per_s, t_out_c, new_t = self._calculate_uniform_tank_step(
-                prosumer, mdot_received_kg_per_s, t_received_in_c
-            )
-            # When charging (q_delivered_kw < 0), we still need to pass through the flow
-            # but q_delivered_kw remains negative to indicate charging
-            if q_delivered_kw < 0:
-                # Charging: pass through the incoming flow but q_delivered_kw is negative
-                mdot_to_deliver_kg_per_s = mdot_received_kg_per_s
-            t_tank_c = new_t
-    elif has_demand:
-        # Case 2: No incoming flow but we have demand - discharge from storage
-        mdot_to_deliver_kg_per_s = mdot_demand_kg_per_s
-        t_out_c = current_temp
-
-        # Calculate energy delivered and update tank temperature
-        q_delivered_kw = mdot_to_deliver_kg_per_s * (t_out_c - t_demand_in_c) * cp_j_per_kgk / 1000
-
-        # Update tank temperature based on energy delivered
-        energy_delivered_kj = q_delivered_kw * 3600
-        if capacity_kg > 0 and energy_delivered_kj > 0:
-            delta_t = energy_delivered_kj / (capacity_kg * cp_j_per_kgk)
-            t_tank_c = max(current_temp - delta_t, t_demand_in_c)
+        remaining_received_mdot_kg_per_s = max(0.0, mdot_received_kg_per_s - mdot_bypass_kg_per_s)
     else:
-        # Case 3: No flow, no delivery
-        q_delivered_kw = 0.0
-        mdot_to_deliver_kg_per_s = 0.0
+        remaining_received_mdot_kg_per_s = 0.0
 
-    # Calculate heat losses (after determining energy flows)
-    self._calculate_heat_losses(prosumer)
+    q_missing_kw = max(0.0, q_demand_kw - q_bypass_kw)
+    if q_missing_kw > 0 and can_discharge:
+        q_discharge_max_kw = (
+            mdot_demand_kg_per_s * cp_j_per_kgk * (current_temp - t_demand_in_c) / 1e3
+        )
+        q_discharge_kw = min(q_missing_kw, max(0.0, q_discharge_max_kw))
+        mdot_discharge_kg_per_s = q_discharge_kw * 1e3 / (
+            cp_j_per_kgk * max(current_temp - t_demand_in_c, 1e-9)
+        )
 
-    # Calculate t_received_out_c - temperature returned to initiator
-    # Logic: if only supplying demand: demand return temp; if only charging: initial tank temp; if mix: weighted average
+    if remaining_received_mdot_kg_per_s > 0 and t_received_in_c > current_temp + 1e-9:
+        mdot_charge_kg_per_s = remaining_received_mdot_kg_per_s
+        q_charge_kw = (
+            mdot_charge_kg_per_s * cp_j_per_kgk * (t_received_in_c - current_temp) / 1e3
+        )
 
-    if has_incoming_flow and not has_demand:
-        # Case: Incoming flow but no demand - could be charging or return flow from discharge
-        if t_received_in_c > current_temp:
-            # Charging scenario: hot water coming in to charge tank
+    net_energy_kj = (q_charge_kw - q_discharge_kw) * resol_s
+    if capacity_kg > 0:
+        delta_t_c = net_energy_kj / (capacity_kg * cp_j_per_kgk)
+        t_tank_c = current_temp + delta_t_c
+        if min_temp_c is not None and max_temp_c is not None and max_temp_c > min_temp_c:
+            t_tank_c = float(np.clip(t_tank_c, min_temp_c, max_temp_c))
+
+    mdot_delivered_kg_per_s = mdot_bypass_kg_per_s + mdot_discharge_kg_per_s
+    q_delivered_kw = q_bypass_kw + q_discharge_kw
+
+    if mdot_delivered_kg_per_s > 0:
+        t_delivered_out_c = (
+            mdot_bypass_kg_per_s * t_received_in_c +
+            mdot_discharge_kg_per_s * current_temp
+        ) / mdot_delivered_kg_per_s
+    else:
+        t_delivered_out_c = current_temp
+
+    if has_incoming_flow:
+        returned_mdot_kg_per_s = mdot_bypass_kg_per_s + mdot_charge_kg_per_s
+        if returned_mdot_kg_per_s > 0:
+            t_received_out_c = (
+                mdot_bypass_kg_per_s * t_demand_in_c +
+                mdot_charge_kg_per_s * current_temp
+            ) / returned_mdot_kg_per_s
+        else:
             t_received_out_c = current_temp
-        else:
-            # Discharging scenario: cold return water coming back from demand
-            # Return the incoming temperature (which is the return temperature)
-            t_received_out_c = t_received_in_c
-    elif has_incoming_flow and has_demand:
-        # Case: Mix scenario - need to determine if this is charging, discharging, or both
-        if t_received_in_c > current_temp:
-            # Case: Incoming flow is hotter than tank - this is charging scenario
-            # The initiator is providing hot water to charge the tank
-            if mdot_to_deliver_kg_per_s > 0:
-                # Calculate the portion used for demand vs charging
-                mdot_for_demand = min(mdot_demand_kg_per_s, mdot_received_kg_per_s)
-                mdot_for_charging = mdot_to_deliver_kg_per_s - mdot_for_demand
 
-                if mdot_for_charging > 0:
-                    # Mix of both: weighted average
-                    t_received_out_c = (
-                                               mdot_for_demand * t_demand_in_c +
-                                               mdot_for_charging * current_temp
-                                       ) / mdot_to_deliver_kg_per_s
-                else:
-                    # Only demand: return demand return temperature
-                    t_received_out_c = t_demand_in_c
-            else:
-                t_received_out_c = current_temp
-        else:
-            # Case: Incoming flow is colder than tank - this is discharging scenario
-            # The initiator is providing cold return water while we deliver hot water
-            # Return the demand return temperature (which is the incoming temperature)
-            t_received_out_c = t_received_in_c
-    elif has_demand:
-        # Case: Only discharging - return demand return temperature
-        t_received_out_c = t_demand_in_c
-    else:
-        # Case: No flow - return current tank temperature
-        t_received_out_c = self._temperature
+    soc_out = np.nan
+    if min_temp_c is not None and max_temp_c is not None and max_temp_c > min_temp_c:
+        soc_out = float(np.clip((t_tank_c - min_temp_c) / (max_temp_c - min_temp_c), 0.0, 1.0))
 
-        # Update SOC from temperature
-        soc_fluid = self._soc_from_temperature(prosumer)
-        if soc_fluid is not None and not np.isnan(soc_fluid):
-            self._soc = soc_fluid
-        soc_out = float(self._soc) if not np.isnan(self._soc) else 0.0
-        q_delivered_kw = float(q_delivered_kw)
-
-        # Calculate charging and delivered power (both should be positive)
-        if q_delivered_kw < 0:
-            q_ch_kw = -q_delivered_kw  # Positive charging power
-            q_delivered_kw_positive = 0.0  # No delivery when charging
-            q_discharge_kw = 0.0  # No discharge when charging
-            q_charge_kw = q_ch_kw  # Charging power
-        else:
-            q_ch_kw = 0.0  # No charging when delivering
-            q_delivered_kw_positive = q_delivered_kw  # Positive delivered power
-            q_discharge_kw = q_delivered_kw  # Discharge power when delivering
-            q_charge_kw = 0.0  # No charging when discharging
-
-        # Determine temperatures for charge and discharge
-        if has_incoming_flow and q_charge_kw > 0:
-            # Charging scenario
-            t_charge_in_c = t_received_in_c  # Incoming temperature
-            t_charge_out_c = self._temperature  # Tank temperature after charging
-            t_discharge_in_c = np.nan  # No discharge
-            t_discharge_out_c = np.nan  # No discharge
-            mdot_charge_kg_per_s = mdot_received_kg_per_s  # Charge mass flow
-            mdot_discharge_kg_per_s = 0.0  # No discharge mass flow
-        elif q_discharge_kw > 0:
-            # Discharging scenario (with or without explicit demand)
-            t_charge_in_c = np.nan  # No charging
-            t_charge_out_c = np.nan  # No charging
-            # When discharging, incoming flow is return water, outgoing flow is hot water from tank
-            if has_incoming_flow:
-                t_discharge_in_c = t_received_in_c  # Incoming return water temperature
-            else:
-                t_discharge_in_c = np.nan  # No incoming flow
-            # Use initial temperature for discharge output (what's delivered to demand)
-            t_discharge_out_c = prosumer if prosumer is not None else self._temperature
-            mdot_charge_kg_per_s = 0.0  # No charge mass flow
-            mdot_discharge_kg_per_s = mdot_to_deliver_kg_per_s  # Discharge mass flow
-        else:
-            # No charging or discharging
-            t_charge_in_c = np.nan
-            t_charge_out_c = np.nan
-            t_discharge_in_c = np.nan
-            t_discharge_out_c = np.nan
-            mdot_charge_kg_per_s = 0.0
-            mdot_discharge_kg_per_s = 0.0
-
-    # q_delivered_kw is the total delivered power (bypass + discharge)
-    q_delivered_kw = q_discharge_kw
-    if has_demand and mdot_to_deliver_kg_per_s > 0:
-        # Calculate bypass power: power that goes directly from initiator to demand
-        # This happens when initiator provides more energy than needed for tank charging
-        if has_incoming_flow and t_received_in_c > self._temperature:
-            # Initiator is hotter than tank - potential for bypass
-            cp_j_per_kgk = prosumer.get_cp_fluid_j_per_kgk([t_received_in_c, self._temperature])
-            q_bypass_kw = mdot_to_deliver_kg_per_s * cp_j_per_kgk * (t_received_in_c - t_demand_in_c) / 1000
-            q_delivered_kw = q_discharge_kw + q_bypass_kw
-
-    return (soc_out, t_tank_c, q_ch_kw, q_discharge_kw, q_delivered_kw, mdot_charge_kg_per_s,
-            t_charge_in_c, t_charge_out_c, mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c)
-
+    return (
+        soc_out, t_tank_c,
+        q_charge_kw, q_discharge_kw, q_delivered_kw,
+        mdot_delivered_kg_per_s, t_delivered_out_c, t_received_out_c,
+        mdot_charge_kg_per_s, t_received_in_c, t_charge_out_c,
+        mdot_discharge_kg_per_s, t_demand_in_c, current_temp
+    )
 
 class HeatStorageController(BasicProsumerController):
     """
@@ -617,10 +507,10 @@ class HeatStorageController(BasicProsumerController):
     def _run_control_step_fluid_mix(self, prosumer):
         """Uniform tank step with FluidMix input/output; optional SOC from temperature."""
         self._init_fluid_state_from_element(prosumer)
-        
+
         # Store initial temperature for discharge output calculation
         initial_temperature = self._temperature if self._temperature is not None and not np.isnan(self._temperature) else None
-        
+
         # Get demand information
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_demand_kg_per_s = np.sum(mdot_demand_tab_kg_per_s)
@@ -628,59 +518,70 @@ class HeatStorageController(BasicProsumerController):
         # Get incoming flow information
         mdot_received_kg_per_s = self._mdot_received_kg_per_s
         t_received_in_c = self._t_received_in_c
+        t_charge_out_c = current_temp = self._temperature
+
+        min_temp_c = self._get_element_param(prosumer, "min_temp_c")
+        max_temp_c = self._get_element_param(prosumer, "max_temp_c")
 
         rerun = True
         while rerun:
-            # Get current tank state
             current_temp = self._temperature
-
             capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
 
             (soc_out, t_tank_c,
              q_ch_kw, q_discharge_kw, q_delivered_kw,
+             mdot_delivered_kg_per_s, t_delivered_out_c, t_received_out_c,
              mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
-             mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c) = _calculate_heat_storage(prosumer,
-                                                                                                     mdot_demand_kg_per_s,
-                                                                                                     t_received_in_c,
-                                                                                                     t_demand_out_c,
-                                                                                                     t_demand_in_c,
-                                                                                                     t_discharge_out_c,
-                                                                                                     mdot_received_kg_per_s,
-                                                                                                     t_charge_out,
-                                                                                                     current_temp,
-                                                                                                     capacity_kg)
+             mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c) = _calculate_heat_storage(
+                prosumer,
+                mdot_demand_kg_per_s,
+                t_received_in_c,
+                t_demand_out_c,
+                t_demand_in_c,
+                initial_temperature if initial_temperature is not None else current_temp,
+                mdot_received_kg_per_s,
+                current_temp,
+                current_temp,
+                capacity_kg,
+                min_temp_c,
+                max_temp_c,
+                self.resol,
+            )
 
             self._temperature = t_tank_c
+            self._calculate_heat_losses(prosumer)
 
-            # Build result for responders using merit order mass flow distribution
-            # Use merit order to distribute the delivered mass flow (from base class)
-            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
-                                                                   mdot_delivered_kg_per_s,
-                                                                   mdot_demand_tab_kg_per_s)
+            soc_fluid = self._soc_from_temperature(prosumer)
+            if soc_fluid is not None and not np.isnan(soc_fluid):
+                soc_out = soc_fluid
+                self._soc = soc_fluid
+            elif not np.isnan(soc_out):
+                self._soc = soc_out
+
+            result_mdot_tab_kg_per_s = self._merit_order_mass_flow(
+                prosumer,
+                mdot_delivered_kg_per_s,
+                mdot_demand_tab_kg_per_s
+            )
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
-                # If the stratified heat storage is not able to deliver the required mass flow,
-                # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Stratified Heat Storage is lower
                 t_return_tab_c = self.get_treturn_tab_c(prosumer)
                 if abs(mdot_delivered_kg_per_s) > 1e-8:
                     t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
                 else:
                     t_return_demand_new_c = t_demand_in_c
                 if abs(t_return_demand_new_c - t_demand_in_c) > 1:
-                    # If this recalculation changes the condenser input temperature, rerun the calculation
-                    # with the new temperature
                     t_demand_in_c = t_return_demand_new_c
                     rerun = True
 
-        result = np.array([[soc_out, self._temperature,
+        result = np.array([[float(self._soc), self._temperature,
                             q_ch_kw, q_discharge_kw, q_delivered_kw,
                             mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
                             mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c]])
-        
+
         self.last_result = {
-            "soc": soc_out,
+            "soc": float(self._soc),
             "t_tank_c": self._temperature,
             "q_ch_kw": q_ch_kw,
             "q_dch_kw": q_discharge_kw,
@@ -693,26 +594,22 @@ class HeatStorageController(BasicProsumerController):
             "t_dch_out_c": t_discharge_out_c,
         }
 
-        # Build result_fluid_mix for each responder
         result_fluid_mix = []
-        for i, mdot_kg_per_s in enumerate(result_mdot_tab_kg_per_s):
-            result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: self._temperature,
-                                     FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+        for mdot_kg_per_s in result_mdot_tab_kg_per_s:
+            result_fluid_mix.append({
+                FluidMixMapping.TEMPERATURE_KEY: t_delivered_out_c,
+                FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s
+            })
 
-        t_received_out_c = t_charge_out_c
-
-        # Finalize if conditions are met
         if (np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or
                 abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or
                 len(self._get_mapped_initiators_on_same_level(prosumer)) == 0):
-            # If the actual output temperature is the same as the promised one, the storage is correctly applied
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
             self.t_previous_out_c = np.nan
             self.t_previous_in_c = np.nan
             self.mdot_previous_in_kg_per_s = np.nan
         else:
-            # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
             self._temperature = initial_temperature
             self._unapply_initiators(prosumer)
             self.t_previous_out_c = t_received_out_c
@@ -722,3 +619,4 @@ class HeatStorageController(BasicProsumerController):
                 FluidMixMapping.TEMPERATURE_KEY: np.nan,
                 FluidMixMapping.MASS_FLOW_KEY: np.nan,
             }
+            

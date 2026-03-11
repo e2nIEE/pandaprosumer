@@ -6,7 +6,9 @@ import numpy as np
 from numpy import dtype, mean
 
 from pandapower.auxiliary import ADict
-from pandaprosumer import __version__, CELSIUS_TO_K
+from pandaprosumer import __version__
+
+from .constants import CELSIUS_TO_K
 
 import logging
 
