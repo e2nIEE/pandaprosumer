@@ -139,7 +139,7 @@ class HeatStorageController(BasicProsumerController):
     def name_class(self):
         return "heat_storage_controller"
 
-    def __init__(self, prosumer, heat_storage_object, order, level, init_soc=0.,
+    def __init__(self, prosumer, heat_storage_object, order, level, init_soc=np.nan,
                  t_tank_init_c=None, in_service=True, index=None, **kwargs):
         """
         Initializes the HeatStorageController.
@@ -156,15 +156,17 @@ class HeatStorageController(BasicProsumerController):
         """
         super().__init__(prosumer, heat_storage_object, order=order, level=level,
                          in_service=in_service, index=index, **kwargs)
-        if not np.isnan(init_soc) and not np.isnan(t_tank_init_c):
+        if init_soc and t_tank_init_c and not np.isnan(init_soc) and not np.isnan(t_tank_init_c):
             raise ValueError("When creating Heat Storage:Cannot set both init_soc and t_tank_init_c.")
 
-        self._temperature = float(t_tank_init_c) if t_tank_init_c is not None else None
+        self._temperature = float(t_tank_init_c) if t_tank_init_c is not None and not np.isnan(t_tank_init_c) else None
         
         if self._temperature and self._get_element_param(prosumer, "min_temp_c")  and self._get_element_param(prosumer, "max_temp_c"):
             self._soc = self._soc_from_temperature(prosumer)
-        else:
+        elif not init_soc or (init_soc and not np.isnan(init_soc)):
             self._soc = float(init_soc)
+        else:
+            self._soc = 0.
         self.last_soc = self._soc
             
         self.t_previous_out_c = np.nan
@@ -279,10 +281,11 @@ class HeatStorageController(BasicProsumerController):
             min_t = self._get_element_param(prosumer, "min_temp_c")
             max_t = self._get_element_param(prosumer, "max_temp_c")
             if min_t is not None and max_t is not None and max_t > min_t and not (min_t <= new_temp <= max_t):
-                warnings.warn(f"In prosumer {prosumer.name} at timestep {self.time} - HeatStorageController "
-                              f"{self.name}: Applying temperature limits to new tank temperature"
-                              f" {new_temp:.2f}°C (min: {min_t}°C, max: {max_t}°C)", RuntimeWarning)
-                new_temp = float(np.clip(new_temp, min_t, max_t))
+                if not (min_t <= new_temp <= max_t ):
+                    warnings.warn(f"In prosumer {prosumer.name} at timestep {self.time} - HeatStorageController "
+                                f"{self.name}: Applying temperature limits to new tank temperature"
+                                f" {new_temp:.2f}°C (min: {min_t}°C, max: {max_t}°C)", RuntimeWarning)
+                    new_temp = float(np.clip(new_temp, min_t, max_t))
         else:
             new_temp = t_out_c  # No capacity means no change in temperature
                     
@@ -363,7 +366,6 @@ class HeatStorageController(BasicProsumerController):
         # For charging, we ask to fill the tank to max_tank_temp_c
         # Mass flow required to change tank temperature from t_charge_out_c to t_required_in_c
         # in one timestep
-        capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
         cp_j_per_kgk = self.get_cp_fluid_j_per_kgk(prosumer, [t_required_in_c, t_charge_out_c])
 
         # If tank is already at or above target, no charging mass flow

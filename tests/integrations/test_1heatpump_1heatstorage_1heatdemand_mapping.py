@@ -78,6 +78,9 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
         hp_controller_index = create_controlled_heat_pump(prosumer, period=period, level=1, order=0, **hp_params)
         hs_controller_index = create_controlled_heat_storage(prosumer, period=period, level=1, order=1, **hs_params)
         hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=1, order=2, **hd_params)
+        
+        hs_controller = prosumer.controller.iloc[hs_controller_index].object
+        assert hs_controller._get_element_param(prosumer, "e_capacity_kwh") == pytest.approx(23.22, .01)
 
         # Create mappings
         GenericMapping(container=prosumer,

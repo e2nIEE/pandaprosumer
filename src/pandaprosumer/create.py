@@ -693,10 +693,10 @@ def create_heat_storage(prosumer,
             delta_t_c = max_temp_c - min_temp_c
             if np.isnan(capacity_kg):
                 # Estimate capacity_kg from e_capacity_kwh
-                capacity_kg = e_capacity_kwh * 3600 / (prosumer.get_cp_fluid_j_per_kgk(t_mean_c) * delta_t_c)
+                capacity_kg = e_capacity_kwh * 3600 / (prosumer.get_cp_fluid_j_per_kgk(t_mean_c) / 1000 * delta_t_c)
             else:
                 # Estimate e_capacity_kwh from capacity_kg
-                e_capacity_kwh = capacity_kg * prosumer.get_cp_fluid_j_per_kgk(t_mean_c) * delta_t_c / 3600
+                e_capacity_kwh = capacity_kg * prosumer.get_cp_fluid_j_per_kgk(t_mean_c) / 1000 * delta_t_c / 3600
         else:
             if e_capacity_kwh == 0.:
                 raise ValueError("Error creating Heat Storage: If capacity_kg is provided, min_temp_c and max_temp_c must also be provided to estimate e_capacity_kwh.")
