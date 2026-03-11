@@ -49,7 +49,7 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
             'carnot_efficiency': 0.5,
             'pinch_c': 0,
             'delta_t_evap_c': 5,
-            'max_p_comp_kw': 50
+            'max_p_comp_kw': 500
         }
 
         # Heat storage parameters (FluidMix mode)

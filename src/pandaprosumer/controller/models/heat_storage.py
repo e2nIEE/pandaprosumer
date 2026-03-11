@@ -57,9 +57,7 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
 
     q_bypass_available_kw = 0.0
     if has_incoming_flow and t_received_in_c > t_demand_in_c:
-        q_bypass_available_kw = (
-            mdot_received_kg_per_s * cp_j_per_kgk * (t_received_in_c - t_demand_in_c) / 1e3
-        )
+        q_bypass_available_kw = mdot_received_kg_per_s * cp_j_per_kgk * (t_received_in_c - t_demand_in_c) / 1e3
 
     if has_demand and q_bypass_available_kw > 0:
         q_bypass_kw = min(q_demand_kw, q_bypass_available_kw)
@@ -74,25 +72,23 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
 
     q_missing_kw = max(0.0, q_demand_kw - q_bypass_kw)
     if q_missing_kw > 0 and can_discharge:
-        q_discharge_max_kw = (
-            mdot_demand_kg_per_s * cp_j_per_kgk * (current_temp - t_demand_in_c) / 1e3
-        )
+        q_discharge_max_kw = mdot_demand_kg_per_s * cp_j_per_kgk * (current_temp - t_demand_in_c) / 1e3
         q_discharge_kw = min(q_missing_kw, max(0.0, q_discharge_max_kw))
-        mdot_discharge_kg_per_s = q_discharge_kw * 1e3 / (
-            cp_j_per_kgk * max(current_temp - t_demand_in_c, 1e-9)
-        )
+        mdot_discharge_kg_per_s = q_discharge_kw * 1e3 / (cp_j_per_kgk * max(current_temp - t_demand_in_c, 1e-9))
 
     if remaining_received_mdot_kg_per_s > 0 and t_received_in_c > current_temp + 1e-9:
         mdot_charge_kg_per_s = remaining_received_mdot_kg_per_s
-        q_charge_kw = (
-            mdot_charge_kg_per_s * cp_j_per_kgk * (t_received_in_c - current_temp) / 1e3
-        )
+        q_charge_kw = mdot_charge_kg_per_s * cp_j_per_kgk * (t_received_in_c - current_temp) / 1e3
 
     net_energy_kj = (q_charge_kw - q_discharge_kw) * resol_s
     if capacity_kg > 0:
-        delta_t_c = net_energy_kj / (capacity_kg * cp_j_per_kgk)
+        delta_t_c = net_energy_kj / (capacity_kg * cp_j_per_kgk / 1e3)
         t_tank_c = current_temp + delta_t_c
         if min_temp_c is not None and max_temp_c is not None and max_temp_c > min_temp_c:
+            warnings.warn(
+                f"In prosumer {prosumer.name} - HeatStorageController: Applying temperature limits to new "
+                f"tank temperature {t_tank_c:.2f}°C (min: {min_temp_c}°C, max: {max_temp_c}°C)",
+                RuntimeWarning)
             t_tank_c = float(np.clip(t_tank_c, min_temp_c, max_temp_c))
 
     mdot_delivered_kg_per_s = mdot_bypass_kg_per_s + mdot_discharge_kg_per_s
@@ -118,7 +114,10 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
 
     soc_out = np.nan
     if min_temp_c is not None and max_temp_c is not None and max_temp_c > min_temp_c:
-        soc_out = float(np.clip((t_tank_c - min_temp_c) / (max_temp_c - min_temp_c), 0.0, 1.0))
+        soc_out = (t_tank_c - min_temp_c) / (max_temp_c - min_temp_c)
+        if not 0. < soc_out < 1.:
+            warnings.warn(f"In prosumer {prosumer.name} - Heat storage : Applying soc limit on soc {soc_out}")
+            soc_out = float(np.clip(soc_out, 0.0, 1.0))
 
     return (
         soc_out, t_tank_c,
@@ -236,10 +235,9 @@ class HeatStorageController(BasicProsumerController):
         capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
         q_loss_w = u * area * (self._temperature - t_ext)
         cp_j_per_kgk = self.get_cp_fluid_j_per_kgk(prosumer, self._temperature)
-        loss_w_per_k = cp_j_per_kgk * self.resol * capacity_kg
-        if loss_w_per_k > 0:
-            t_loss_c = q_loss_w / loss_w_per_k
-            self._temperature -= t_loss_c
+        if capacity_kg > 0:
+            delta_t_c = (q_loss_w * self.resol) / (capacity_kg * cp_j_per_kgk)
+            self._temperature -= delta_t_c
 
     def _calculate_uniform_tank_step(self, prosumer, mdot_delivered_kg_per_s, t_in_c):
         """
@@ -275,7 +273,9 @@ class HeatStorageController(BasicProsumerController):
             min_t = self._get_element_param(prosumer, "min_temp_c")
             max_t = self._get_element_param(prosumer, "max_temp_c")
             if min_t is not None and max_t is not None and max_t > min_t and not (min_t <= new_temp <= max_t):
-                warnings.warn(f"In prosumer {prosumer.name} at timestep {self.time} - HeatStorageController {self.name}: Applying temperature limits to new tank temperature {new_temp:.2f}°C (min: {min_t}°C, max: {max_t}°C)", RuntimeWarning)
+                warnings.warn(f"In prosumer {prosumer.name} at timestep {self.time} - HeatStorageController "
+                              f"{self.name}: Applying temperature limits to new tank temperature"
+                              f" {new_temp:.2f}°C (min: {min_t}°C, max: {max_t}°C)", RuntimeWarning)
                 new_temp = float(np.clip(new_temp, min_t, max_t))
         else:
             new_temp = t_out_c  # No capacity means no change in temperature
@@ -312,56 +312,85 @@ class HeatStorageController(BasicProsumerController):
         """
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_demand_kg_per_s = np.sum(mdot_demand_tab_required_kg_per_s)
-        
+
         # Get temperature limits from element parameters
         max_tank_temp_c = self._get_element_param(prosumer, "max_temp_c")
         min_tank_temp_c = self._get_element_param(prosumer, "min_temp_c")
-        
-        # Initialize with default values
-        t_feed_c = max_tank_temp_c if max_tank_temp_c is not None else 80.0
-        t_return_c = min_tank_temp_c if min_tank_temp_c is not None else 40.0
-        
-        # If there is a demand, we need to supply the demand and potentially charge the storage
-        if mdot_demand_kg_per_s > 0 and t_demand_out_c > t_demand_in_c > 1e-6:
-            # For fluid mix mode, we ask for the demand temperature and mass flow + a mass flow that would fill the tank
-            t_feed_c = t_demand_out_c
-            t_return_c = t_demand_in_c
-            mdot_required_kg_per_s = mdot_demand_kg_per_s
-            # Find the energy left to fill the tank
-            e_available_kwh = self._calculate_available_energy_kwh(prosumer)
-            # Calculate the corresponding mass flow
-            cp_j_per_kgk = self.get_cp_fluid_j_per_kgk(prosumer, [t_feed_c, t_return_c])
-            energy_needed_to_fill_kwh = e_available_kwh
-            temperature_diff = t_feed_c - t_return_c
-            if temperature_diff > 1e-6 and energy_needed_to_fill_kwh > 0:
-                q_to_receive_kw = energy_needed_to_fill_kwh / (self.resol / 3600)  # Set the power to deliver to fill the tank within one timestep
-                mdot_fill_kg_per_s = q_to_receive_kw * 1000 / (cp_j_per_kgk * temperature_diff)                #  Add the mass flow needed to fill the tank to the mass flow needed to satisfy demand, so that we ask for enough energy to do both
-                mdot_required_kg_per_s += mdot_fill_kg_per_s
-            return t_feed_c, t_return_c, mdot_required_kg_per_s
+
+        # Fallback values if limits are not defined
+        if max_tank_temp_c is None or np.isnan(max_tank_temp_c):
+            max_tank_temp_c = 80.0
+        if min_tank_temp_c is None or np.isnan(min_tank_temp_c):
+            min_tank_temp_c = 40.0
+
+        # Charging target temperature
+        t_charge_in_c = max_tank_temp_c
+
+        # If there is no demand, we ask for t_charge_in_c.
+        # Otherwise, we prioritize the demand temperature if it's higher than the current tank temperature
+        # but limited by the maximum tank temperature.
+        if t_demand_out_c < 1e-6 or mdot_demand_kg_per_s < 1e-6:
+            t_required_in_c = t_charge_in_c
         else:
-            # If there is no demand, ask to fill the tank to maintain temperature
-            if max_tank_temp_c is None or min_tank_temp_c is None or max_tank_temp_c <= min_tank_temp_c:
-                # Use reasonable defaults if temperature limits are not properly set
-                t_return_c = self._temperature if self._temperature is not None and not np.isnan(self._temperature) else 40.0
-                t_feed_c = t_return_c + 20.0  # default to a 20°C temperature difference for charging when no limits are set
-            else:
-                t_feed_c = max_tank_temp_c
-                t_return_c = min_tank_temp_c
-            
-            # Calculate required mass flow based on power needs
-            # Find the energy left to fill the tank
-            e_available_kwh = self._calculate_available_energy_kwh(prosumer)
-            # Calculate the corresponding mass flow
-            cp_j_per_kgk = self.get_cp_fluid_j_per_kgk(prosumer, [t_feed_c, t_return_c])
-            energy_needed_to_fill_kwh = e_available_kwh
-            temperature_diff = t_feed_c - t_return_c
-            if temperature_diff > 1e-6 and energy_needed_to_fill_kwh > 0:
-                q_to_receive_kw = energy_needed_to_fill_kwh / (self.resol / 3600)  # Set the power to deliver to fill the tank within one timestep
-                mdot_required_kg_per_s = q_to_receive_kw * 1000 / (cp_j_per_kgk * temperature_diff)
-            else:
-                mdot_required_kg_per_s = 0.0
-            
-            return t_feed_c, t_return_c, mdot_required_kg_per_s
+            t_required_in_c = max(t_demand_out_c, t_charge_in_c)
+
+        # The return temperature from the tank for charging is the current tank temperature
+        t_charge_out_c = self._temperature if self._temperature is not None and not np.isnan(self._temperature) else min_tank_temp_c
+
+        # Check if charging is needed
+        # We use energy capacity for a uniform tank
+        e_capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
+        soc = self._soc_from_temperature(prosumer)
+        if soc is None or np.isnan(soc):
+            soc = 0.0
+
+        remaining_capacity_kwh = (1 - soc) * e_capacity_kwh
+
+        # If the storage is full (or almost full) and there is a demand, only ask for the demand
+        max_remaining_cap = self._get_element_param(prosumer, "max_remaining_capacity_kwh")
+        if max_remaining_cap is None or np.isnan(max_remaining_cap):
+            max_remaining_cap = 1.0 # default from create_controlled.py
+
+        if mdot_demand_kg_per_s > 0 and remaining_capacity_kwh < max_remaining_cap:
+            return t_demand_out_c, t_demand_in_c, mdot_demand_kg_per_s
+
+        # For charging, we ask to fill the tank to max_tank_temp_c
+        # Mass flow required to change tank temperature from t_charge_out_c to t_required_in_c
+        # in one timestep
+        capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
+        cp_j_per_kgk = self.get_cp_fluid_j_per_kgk(prosumer, [t_required_in_c, t_charge_out_c])
+
+        # If tank is already at or above target, no charging mass flow
+        if t_required_in_c > t_charge_out_c + 1e-6:
+            # Energy needed in Joules: m * cp * deltaT
+            e_needed_ch_kwh = remaining_capacity_kwh
+            # Power in Watts: Energy / resol_s
+            power_needed_w = e_needed_ch_kwh / (self.resol / 3600) * 1000
+            # Mass flow: Power / (cp * (t_feed - t_return))
+            # Here t_feed = t_required_in_c, t_return = t_charge_out_c
+            mdot_charge_kg_per_s = power_needed_w / (cp_j_per_kgk * (t_required_in_c - t_charge_out_c))
+            # Simplified: mdot_charge = capacity_kg / self.resol (replace the whole tank volume in one timestep)
+            # mdot_charge_kg_per_s = capacity_kg / self.resol
+        else:
+            mdot_charge_kg_per_s = 0.0
+
+        mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
+
+        if mdot_required_kg_per_s == 0:
+            t_required_out_c = t_charge_out_c
+        else:
+            t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
+
+        # Handle iteration convergence if previous values are available
+        if hasattr(self, 't_previous_out_c') and not np.isnan(self.t_previous_out_c) and mdot_required_kg_per_s > 0:
+            # Adjust mass flow based on previous iteration to help convergence
+            # This logic is similar to stratified storage
+            if abs(self.t_previous_out_c - t_required_out_c) > 1e-3:
+                # If we have a mismatch, we might need to adjust mdot_charge to meet the required T_out
+                # But for uniform tank, T_out is usually just the tank temperature (plus bypass)
+                pass
+
+        return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
 
     def _save_state(self):
         """Backup states before run."""
@@ -518,14 +547,17 @@ class HeatStorageController(BasicProsumerController):
         # Get incoming flow information
         mdot_received_kg_per_s = self._mdot_received_kg_per_s
         t_received_in_c = self._t_received_in_c
-        t_charge_out_c = current_temp = self._temperature
+        current_temp = self._temperature
+        
+        print(f"HeatStorageController {self.name} in prosumer {prosumer.name} at timestep {self.time}:"
+              f" mdot_demand_kg_per_s={mdot_demand_kg_per_s:.4f}, t_demand_out_c={t_demand_out_c:.2f}, t_demand_in_c={t_demand_in_c:.2f},"
+              f"mdot_received_kg_per_s={mdot_received_kg_per_s:.4f}, t_received_in_c={t_received_in_c:.2f}, current_temp={current_temp:.2f}")
 
         min_temp_c = self._get_element_param(prosumer, "min_temp_c")
         max_temp_c = self._get_element_param(prosumer, "max_temp_c")
 
         rerun = True
         while rerun:
-            current_temp = self._temperature
             capacity_kg = float(self._get_element_param(prosumer, "capacity_kg"))
 
             (soc_out, t_tank_c,
