@@ -28,7 +28,6 @@ class HeatStorageElementData:
 
         # Optional: FluidMix / uniform tank mode
         ('capacity_kg', 'f8'),       # Tank fluid mass [kg]; if set, enables FluidMixMapping
-        ('init_temperature_c', 'f8'),  # Initial uniform tank temperature [°C]
         ('min_temp_c', 'f8'),       # Min temperature for SOC from T (optional)
         ('max_temp_c', 'f8'),       # Max temperature for SOC from T (optional)
         ('u_w_per_m2k', 'f8'),      # Wall U-value [W/(m²·K)]

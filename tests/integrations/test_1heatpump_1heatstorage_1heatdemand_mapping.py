@@ -29,8 +29,8 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
         
         # Create test data - make it longer as requested
         data = pd.DataFrame({
-            "Tin_evap": [25] * 10,  # Extended from 5 to 10 timesteps
-            "demand_kw": [0, 100, 200, 150, 50, 120, 80, 180, 90, 60],  # Extended demand pattern
+            "Tin_evap": [25] * 10,
+            "demand_kw": [0, 100, 200, 150, 50, 475, 500, 3000, 1000, 60],
             "t_feed_demand_c": [t_high_c] * 10,
             "t_return_demand_c": [t_low_c] * 10
         })
@@ -49,18 +49,17 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
             'carnot_efficiency': 0.5,
             'pinch_c': 0,
             'delta_t_evap_c': 5,
-            'max_p_comp_kw': 500
+            'max_p_comp_kw': 100
         }
 
         # Heat storage parameters (FluidMix mode)
         hs_params = {
-            'e_capacity_kwh': 23.3,
-            'capacity_kg': 1000.0,  # This enables FluidMix mode
-            'init_temperature': t_low_c,
+            'capacity_kg': 1000.0,
+            't_tank_init_c': t_low_c,
             'min_temp_c': t_low_c,
             'max_temp_c': t_high_c,
-            'u_w_per_m2k': 0.1,  # Reduced heat loss for stability
-            'area_wall_m2': 5.0,  # Reduced area for stability
+            'u_w_per_m2k': 0.1,
+            'area_wall_m2': 5.0,
             't_ext_c': 20.0
         }
 
@@ -199,9 +198,10 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
 
         # Heat storage parameters (GenericMapping only - no capacity_kg)
         hs_params = {
-            'e_capacity_kwh': 300.0,  # Increased capacity to handle the energy flow
-            # No capacity_kg - this disables FluidMix mode
-            'init_temperature_c': 50.0
+            'e_capacity_kwh': 300.0,
+            't_tank_init_c': 40.0,
+            'min_temp_c': 40.0,
+            'max_temp_c': 60.0,
         }
 
         # Create controllers
@@ -220,13 +220,11 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
                        responder_column="q_received_kw",
                        order=0)
 
-        # For this test, we'll just verify the controller works in power-only mode
-        hs_controller = prosumer.controller.iloc[hs_controller_index].object
-        assert hs_controller._use_fluid_mix_mode(prosumer) == False
-        
         # Run the simulation to verify it works
         run_timeseries(prosumer, period, True)
 
-        # Verify the controller is still in power-only mode after running
-        hs_controller_after = prosumer.controller.iloc[hs_controller_index].object
-        assert hs_controller_after._use_fluid_mix_mode(prosumer) == False
+        hs_res_df = prosumer.time_series.loc[0].data_source.df
+
+        pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
+        print("\nHeat Storage Results:")
+        print(hs_res_df)

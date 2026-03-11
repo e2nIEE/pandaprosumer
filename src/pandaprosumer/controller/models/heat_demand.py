@@ -201,6 +201,7 @@ class HeatDemandController(BasicProsumerController):
             return
 
         if not np.isnan(self._get_input('q_received_kw')):
+            # Generic Mapping case
             q_received_kw = self._get_input('q_received_kw')
             q_uncovered_kw = self._q_demand_kw - q_received_kw
             result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
@@ -216,6 +217,7 @@ class HeatDemandController(BasicProsumerController):
             self.applied = True
             return
 
+        # FluidMix Mapping case
         q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
 
         # ToDo: If t_in < t_out, return t_in, not t_out

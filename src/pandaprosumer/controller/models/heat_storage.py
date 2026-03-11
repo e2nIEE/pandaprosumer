@@ -140,7 +140,7 @@ class HeatStorageController(BasicProsumerController):
         return "heat_storage_controller"
 
     def __init__(self, prosumer, heat_storage_object, order, level, init_soc=0.,
-                 init_temperature=None, in_service=True, index=None, **kwargs):
+                 t_tank_init_c=None, in_service=True, index=None, **kwargs):
         """
         Initializes the HeatStorageController.
 
@@ -149,25 +149,31 @@ class HeatStorageController(BasicProsumerController):
         :param order: The order of the controller
         :param level: The level of the controller
         :param init_soc: Initial state of charge (power-only mode or fallback)
-        :param init_temperature: Initial uniform tank temperature [°C] for FluidMix mode (from element if None)
+        :param t_tank_init_c: Initial uniform tank temperature [°C] for FluidMix mode (from element if None)
         :param in_service: The in-service status of the controller
         :param index: The index of the controller
         :param kwargs: Additional keyword arguments
         """
         super().__init__(prosumer, heat_storage_object, order=order, level=level,
                          in_service=in_service, index=index, **kwargs)
-        self._soc = float(init_soc)
-        self.last_soc = float(init_soc)
-        # Fluid mode: uniform tank state (set from element in control_step if used)
-        self._temperature = float(init_temperature) if init_temperature is not None else None
+        if not np.isnan(init_soc) and not np.isnan(t_tank_init_c):
+            raise ValueError("When creating Heat Storage:Cannot set both init_soc and t_tank_init_c.")
+
+        self._temperature = float(t_tank_init_c) if t_tank_init_c is not None else None
+        
+        if self._temperature and self._get_element_param(prosumer, "min_temp_c")  and self._get_element_param(prosumer, "max_temp_c"):
+            self._soc = self._soc_from_temperature(prosumer)
+        else:
+            self._soc = float(init_soc)
+        self.last_soc = self._soc
+            
         self.t_previous_out_c = np.nan
         self.t_previous_in_c = np.nan
         self.mdot_previous_in_kg_per_s = np.nan
 
     def _use_fluid_mix_mode(self, prosumer):
-        """True if tank has capacity_kg (and thus supports FluidMix / uniform tank)."""
-        cap = self._get_element_param(prosumer, "capacity_kg")
-        return cap is not None and not (isinstance(cap, float) and np.isnan(cap)) and cap > 0
+        """True if tank is not receiving power via GenericMapping input."""
+        return np.isnan(self._get_input('q_received_kw'))
 
     def _init_fluid_state_from_element(self, prosumer):
         """Initialize uniform tank temperature from element if not already set."""
@@ -177,7 +183,7 @@ class HeatStorageController(BasicProsumerController):
             or (isinstance(self._temperature, float) and np.isnan(self._temperature))
         )
         if needs_init:
-            init_t = self._get_element_param(prosumer, "init_temperature_c")
+            init_t = self._get_element_param(prosumer, "t_tank_init_c")
             if init_t is not None and not (isinstance(init_t, float) and np.isnan(init_t)):
                 self._temperature = float(init_t)
         if self._temperature is None or (isinstance(self._temperature, float) and np.isnan(self._temperature)):
@@ -382,13 +388,16 @@ class HeatStorageController(BasicProsumerController):
             t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         # Handle iteration convergence if previous values are available
-        if hasattr(self, 't_previous_out_c') and not np.isnan(self.t_previous_out_c) and mdot_required_kg_per_s > 0:
+        #if hasattr(self, 't_previous_out_c') and not np.isnan(self.t_previous_out_c) and mdot_required_kg_per_s > 0:
             # Adjust mass flow based on previous iteration to help convergence
             # This logic is similar to stratified storage
-            if abs(self.t_previous_out_c - t_required_out_c) > 1e-3:
+            #if abs(self.t_previous_out_c - t_required_out_c) > 1e-3:
                 # If we have a mismatch, we might need to adjust mdot_charge to meet the required T_out
                 # But for uniform tank, T_out is usually just the tank temperature (plus bypass)
-                pass
+            #    pass
+        if not np.isnan(self.t_previous_out_c):
+            mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
+            return self.t_previous_in_c, self.t_previous_out_c, mdot_charge_kg_per_s
 
         return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
 
@@ -549,10 +558,6 @@ class HeatStorageController(BasicProsumerController):
         t_received_in_c = self._t_received_in_c
         current_temp = self._temperature
         
-        print(f"HeatStorageController {self.name} in prosumer {prosumer.name} at timestep {self.time}:"
-              f" mdot_demand_kg_per_s={mdot_demand_kg_per_s:.4f}, t_demand_out_c={t_demand_out_c:.2f}, t_demand_in_c={t_demand_in_c:.2f},"
-              f"mdot_received_kg_per_s={mdot_received_kg_per_s:.4f}, t_received_in_c={t_received_in_c:.2f}, current_temp={current_temp:.2f}")
-
         min_temp_c = self._get_element_param(prosumer, "min_temp_c")
         max_temp_c = self._get_element_param(prosumer, "max_temp_c")
 

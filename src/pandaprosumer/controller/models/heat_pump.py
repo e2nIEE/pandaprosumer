@@ -276,8 +276,6 @@ class HeatPumpController(BasicProsumerController):
         t_cond_out_required_c, t_cond_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_cond_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
         
-        print(f"Heat Pump {self.name} control step: mdot_cond_required_kg_per_s={mdot_cond_required_kg_per_s}, t_cond_out_required_c={t_cond_out_required_c}, t_cond_in_required_c={t_cond_in_required_c}, t_evap_in_c={self._t_evap_in_c} for timestep {self.time} in prosumer {prosumer.name}")
-
         assert not np.isnan(mdot_cond_required_kg_per_s), f"Heat Pump {self.name} mdot_cond_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"

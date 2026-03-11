@@ -42,11 +42,11 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0,
+            t_tank_init_c=50.0,
             min_temp_c=40.0,
             max_temp_c=80.0,
             init_soc=0.5, 
-            init_temperature=50.0
+            t_tank_init_c=50.0
         )
         
         # Verify controller was created
@@ -71,7 +71,7 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0
+            t_tank_init_c=50.0
         )
         
         controller = prosumer.controller.iloc[controller_index].object
@@ -105,10 +105,10 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0,
+            t_tank_init_c=50.0,
             min_temp_c=40.0,
             max_temp_c=80.0,
-            init_temperature=50.0
+            t_tank_init_c=50.0
         )
         
         controller = prosumer.controller.iloc[controller_index].object
@@ -138,10 +138,10 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0,
+            t_tank_init_c=50.0,
             min_temp_c=40.0,
             max_temp_c=80.0,
-            init_temperature=50.0
+            t_tank_init_c=50.0
         )
         
         controller = prosumer.controller.iloc[controller_index].object
@@ -171,10 +171,10 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0,
+            t_tank_init_c=50.0,
             min_temp_c=40.0,
             max_temp_c=80.0,
-            init_temperature=50.0
+            t_tank_init_c=50.0
         )
         
         controller = prosumer.controller.iloc[controller_index].object
@@ -207,10 +207,10 @@ class TestHeatStorageController:
             order=0,
             e_capacity_kwh=100.0,
             capacity_kg=1000.0,
-            init_temperature_c=50.0,
+            t_tank_init_c=50.0,
             min_temp_c=40.0,
             max_temp_c=80.0,
-            init_temperature=50.0
+            t_tank_init_c=50.0
         )
         
         controller = prosumer.controller.iloc[controller_index].object

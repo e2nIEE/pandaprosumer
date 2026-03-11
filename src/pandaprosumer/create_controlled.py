@@ -814,13 +814,19 @@ def create_controlled_chiller(prosumer, cp_water=4.18, t_sh=5.0, t_sc=2.0, pp_co
 
 def create_controlled_heat_storage(prosumer,
                                    e_capacity_kwh=0.,
+                                   capacity_kg=np.nan,
+                                   t_tank_init_c=np.nan,
+                                   init_soc=np.nan,
+                                   min_temp_c=np.nan,
+                                   max_temp_c=np.nan,
+                                   u_w_per_m2k=np.nan,
+                                   area_wall_m2=np.nan,
+                                   t_ext_c=np.nan,
                                    name=None,
                                    index=None,
                                    in_service=True,
                                    level=0,
                                    order=0,
-                                   init_soc=0.,
-                                   init_temperature=None,
                                    period=0,
                                    **kwargs):
     """
@@ -847,13 +853,13 @@ def create_controlled_heat_storage(prosumer,
 
         **init_soc** (float, default 0.) - The initial state of charge (power-only or fallback).
 
-        **init_temperature** (float, default None) - Initial tank temperature [°C] for FluidMix mode (from element if None).
+        **t_tank_init_c** (float, default None) - Initial tank temperature [°C] for FluidMix mode (from element if None).
 
         **period** (int, default 0) - Index of the period, default is 0.
 
         **capacity_kg** (float) - Tank fluid mass [kg]; if set, enables FluidMix / uniform tank mode.
 
- **min_temp_c**, **max_temp_c**, **u_w_per_m2k**, **area_wall_m2**, **t_ext_c** - Passed to the element for FluidMix mode.        **init_temperature_c**,
+ **min_temp_c**, **max_temp_c**, **u_w_per_m2k**, **area_wall_m2**, **t_ext_c** - Passed to the element for FluidMix mode.        **t_tank_init_c**,
 
         **kwargs** - Additional keyword arguments passed to the element.
 
@@ -866,7 +872,7 @@ def create_controlled_heat_storage(prosumer,
 
     heat_storage_index = create_heat_storage(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "init_soc", "init_temperature", "kwargs"}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "init_soc", "t_tank_init_c", "kwargs"}},
         **kwargs
     )
     heat_storage_controller_data = HeatStorageControllerData(
@@ -880,7 +886,7 @@ def create_controlled_heat_storage(prosumer,
         order=order,
         level=level,
         init_soc=init_soc,
-        init_temperature=init_temperature,
+        t_tank_init_c=t_tank_init_c,
         name=name
     )
     return hs.index

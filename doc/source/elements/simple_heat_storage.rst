@@ -45,7 +45,7 @@ Input Static Data
     "in_service", "Indicates if the Storage is in service", "N/A"
     "e_capacity_kwh", "Capacity in kilowatt-hours (power-only mode)", "kWh"
     "capacity_kg", "Tank fluid mass; if set, enables FluidMix / uniform tank mode", "kg"
-    "init_temperature_c", "Initial uniform tank temperature (FluidMix mode)", "°C"
+    "t_tank_init_c", "Initial uniform tank temperature (FluidMix mode)", "°C"
     "min_temp_c", "Minimum temperature for SOC from T (optional, FluidMix)", "°C"
     "max_temp_c", "Maximum temperature for SOC from T (optional, FluidMix)", "°C"
     "u_w_per_m2k", "Wall U-value for heat losses (FluidMix)", "W/(m²·K)"
@@ -81,7 +81,7 @@ Mapping
 The heat storage controller can be connected with:
 
 - **GenericMapping**: power only (input ``q_received_kw``; output ``soc``, ``q_delivered_kw``).
-- **FluidMixMapping**: temperature and mass flows (uniform tank). Set ``capacity_kg`` on the element to enable; optionally set ``init_temperature_c``, ``min_temp_c``, and ``max_temp_c`` to derive SOC from tank temperature.
+- **FluidMixMapping**: temperature and mass flows (uniform tank). Set ``capacity_kg`` on the element to enable; optionally set ``t_tank_init_c``, ``min_temp_c``, and ``max_temp_c`` to derive SOC from tank temperature.
 
 
 
