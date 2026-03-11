@@ -22,8 +22,7 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
                             mdot_received_kg_per_s, t_charge_out,
                             current_temp, capacity_kg):
     # Check if we have incoming flow (initiator power)
-    has_incoming_flow = not (
-                np.isnan(mdot_received_kg_per_s) or np.isnan(t_received_in_c)) and mdot_received_kg_per_s > 0
+    has_incoming_flow = not (np.isnan(mdot_received_kg_per_s) or np.isnan(t_received_in_c)) and mdot_received_kg_per_s > 0
 
     # Check if we have demand
     has_demand = mdot_demand_kg_per_s > 0 and current_temp > t_demand_in_c
@@ -130,7 +129,6 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
     self._calculate_heat_losses(prosumer)
 
     # Calculate t_received_out_c - temperature returned to initiator
-    # Calculate t_received_out_c - temperature returned to initiator
     # Logic: if only supplying demand: demand return temp; if only charging: initial tank temp; if mix: weighted average
 
     if has_incoming_flow and not has_demand:
@@ -226,7 +224,6 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
             mdot_discharge_kg_per_s = 0.0
 
     # q_delivered_kw is the total delivered power (bypass + discharge)
-    # In fluid mix mode, we need to calculate this properly
     q_delivered_kw = q_discharge_kw
     if has_demand and mdot_to_deliver_kg_per_s > 0:
         # Calculate bypass power: power that goes directly from initiator to demand
