@@ -5,7 +5,7 @@ from pandaprosumer.create import (create_empty_prosumer_container, create_period
 create_ice_chp, create_booster_heat_pump, create_heat_storage, create_heat_demand)
 import pandas as pd
 import numpy as np
-from pandas.testing import assert_frame_equal
+from pandas.testing import assert_frame_equal, assert_series_equal
 from pandapower.timeseries.data_sources.frame_data import DFData
 from pandaprosumer.controller.data_model import ConstProfileControllerData
 from pandaprosumer.controller.data_model.ice_chp import IceChpControllerData
@@ -231,7 +231,10 @@ class TestChpBhpStorageDemandMapping:
 
         assert_frame_equal(prosumer.time_series.loc[0].data_source.df, chp_expected, check_dtype=False, rtol=0.01)
         assert_frame_equal(prosumer.time_series.loc[1].data_source.df, bhp_expected, check_dtype=False, rtol=0.01)
-        assert_frame_equal(prosumer.time_series.loc[2].data_source.df, storage_expected, check_dtype=False, rtol=0.01)
+        for storage_result_key in storage_expected:
+            assert_series_equal(prosumer.time_series.loc[2].data_source.df[storage_result_key],
+                                storage_expected[storage_result_key],
+                                check_dtype=False, rtol=0.01)
 
         cop_floor = prosumer.time_series.loc[1].data_source.df.cop_floor
         cop_radiator = prosumer.time_series.loc[1].data_source.df.cop_radiator
