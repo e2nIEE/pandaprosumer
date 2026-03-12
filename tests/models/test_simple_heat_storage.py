@@ -319,7 +319,8 @@ class TestSimpleHeatStorage:
         low_temp_c = 50.0
         high_temp_c = 70.0
         mdot_charge_kg_per_s = 0.5
-        idx = create_controlled_heat_storage(prosumer, capacity_kg=1000.0,
+        capacity_kg = 1000.0
+        idx = create_controlled_heat_storage(prosumer, capacity_kg=capacity_kg,
                                              t_tank_init_c=low_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
         ctrl = prosumer.controller.iloc[idx].object
         ctrl.time_step(prosumer, "2020-01-01 00:00:00")
@@ -329,7 +330,6 @@ class TestSimpleHeatStorage:
         assert ctrl.step_results.shape == (1, 11)
         
         # Calculate expected temperature using proper mixing formula
-        capacity_kg = 1000.0
         m_received_kg = mdot_charge_kg_per_s * ctrl.resol
         t_tank_expected_c = ((capacity_kg - m_received_kg) * low_temp_c + m_received_kg * high_temp_c) / capacity_kg
         soc_expected = (t_tank_expected_c - low_temp_c) / (high_temp_c - low_temp_c)
@@ -656,8 +656,10 @@ class TestSimpleHeatStorage:
 
         # with 1 second timestep
         resol_s = controller.resol
-        e_to_charge_from_t_feed_kwh = (t_feed_expected_c - t_tank_init_c) * 4.186 * (t_max_c - t_min_c) / 3600
-        mdot_expected_ch_kg_per_s = e_to_charge_from_t_feed_kwh * (3600 / resol_s) / (4.186 * (t_feed_expected_c - t_tank_init_c))  # mass flow needed
+        remaining_capacity_kwh = (1 - soc) * e_capacity_kwh
+        cp_j_per_kgk = controller.get_cp_fluid_j_per_kgk(prosumer, [t_feed_expected_c, t_tank_init_c])
+        power_needed_w = remaining_capacity_kwh / (resol_s / 3600) * 1000
+        mdot_expected_ch_kg_per_s = power_needed_w / (cp_j_per_kgk * (t_feed_expected_c - t_tank_init_c))
         mdot_expected_kg_per_s = mdot_expected_ch_kg_per_s + mdot_dmd_kg_per_s
 
         t_return_expected_c = (mdot_dmd_kg_per_s * t_dmd_cold_c + mdot_expected_ch_kg_per_s * t_tank_init_c) / mdot_expected_kg_per_s
@@ -691,6 +693,11 @@ class TestSimpleHeatStorage:
         )
         
         controller = prosumer.controller.iloc[controller_index].object
+        
+        # Reset previous values to ensure clean state
+        controller.t_previous_in_c = np.nan
+        controller.t_previous_out_c = np.nan
+        controller.mdot_previous_in_kg_per_s = np.nan
         
         # Mock the t_m_to_deliver method to return no demand 
         controller.t_m_to_deliver = lambda x: (0., 0., [0.])
