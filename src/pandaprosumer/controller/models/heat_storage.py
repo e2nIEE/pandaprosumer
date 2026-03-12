@@ -119,6 +119,22 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
             warnings.warn(f"In prosumer {prosumer.name} - Heat storage : Applying soc limit on soc {soc_out}")
             soc_out = float(np.clip(soc_out, 0.0, 1.0))
 
+    # Use appropriate default values for temperatures when there's no flow
+    # Note: t_tank_c here is the temperature after mixing but before heat losses
+    # For output temperatures, we should use the final temperature after heat losses
+    # final_tank_temp = t_tank_c  # This will be updated after heat losses in the caller
+    # t_charge_in_c = t_received_in_c if has_incoming_flow else final_tank_temp
+    # t_charge_out_c = final_tank_temp if mdot_charge_kg_per_s > 0 else final_tank_temp
+    # t_discharge_in_c = t_demand_in_c if has_demand else final_tank_temp
+    # t_discharge_out_c = final_tank_temp if mdot_discharge_kg_per_s > 0 else final_tank_temp
+
+    # return (
+    #     soc_out, t_tank_c,
+    #     q_charge_kw, q_discharge_kw, q_delivered_kw,
+    #     mdot_delivered_kg_per_s, t_delivered_out_c, t_received_out_c,
+    #     mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
+    #     mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c
+    # )
     return (
         soc_out, t_tank_c,
         q_charge_kw, q_discharge_kw, q_delivered_kw,
@@ -219,6 +235,21 @@ class HeatStorageController(BasicProsumerController):
         soc = (self._temperature - float(min_t)) / delta
         return float(np.clip(soc, 0.0, 1.0))
 
+    def _temperature_from_soc(self, prosumer, soc):
+        """Compute tank temperature from SOC using element min_temp_c / max_temp_c if set."""
+        if self._temperature is None or (isinstance(self._temperature, float) and np.isnan(self._temperature)):
+            return None
+        min_t = self._get_element_param(prosumer, "min_temp_c")
+        max_t = self._get_element_param(prosumer, "max_temp_c")
+        if min_t is None or (isinstance(min_t, float) and np.isnan(min_t)):
+            return None
+        if max_t is None or (isinstance(max_t, float) and np.isnan(max_t)):
+            return None
+        delta = float(max_t) - float(min_t)
+        if delta <= 0:
+            return None
+        return float(min_t) + soc * delta
+
     def _calculate_available_energy_kwh(self, prosumer):
         """Calculate the available energy in the storage in kWh."""
         soc = self._soc_from_temperature(prosumer)
@@ -309,7 +340,10 @@ class HeatStorageController(BasicProsumerController):
         """Heat to deliver in kW (sum of generic-mapped responders' demand)."""
         q_to_deliver_kw = 0.0
         for responder in self._get_generic_mapped_responders(prosumer):
-            q_to_deliver_kw += responder.q_to_receive_kw(prosumer)
+            responder_q_to_received_kw =  responder.q_to_receive_kw(prosumer)
+            if np.isnan(responder_q_to_received_kw):
+                warnings.warn(f"In prosumer {prosumer.name} for timestep {self.time} in controller {self.name}: q_to_received is nan for responder {responder.name}", RuntimeWarning)
+            q_to_deliver_kw += responder_q_to_received_kw
         return q_to_deliver_kw
     
     def _t_m_to_receive_init(self, prosumer):
@@ -457,88 +491,115 @@ class HeatStorageController(BasicProsumerController):
     def _run_control_step_power_only(self, prosumer):
         """Power-only balance (q_received_kw -> soc, q_delivered_kw)."""
         q_to_deliver_kw = self.q_to_deliver_kw(prosumer)
-        _e_capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
-        e_received_kwh = self._get_input("q_received_kw") * self.resol / 3600
-        potential_kwh = self._soc * _e_capacity_kwh + e_received_kwh
-        demand_kwh = q_to_deliver_kw * self.resol / 3600
-        if demand_kwh > potential_kwh:
-            demand_kwh = potential_kwh
-        if not isinstance(demand_kwh, np.ndarray) and demand_kwh == 0:
-            demand_kwh = np.array([0.0]) / self.resol / 3600
-        fill_level_kwh = potential_kwh - demand_kwh
+        capacity_kwh = self._get_element_param(prosumer, "e_capacity_kwh")
 
-        excess_energy_kwh = max(0, fill_level_kwh - _e_capacity_kwh)
-        if excess_energy_kwh > 0:
+        dt_h = self.resol / 3600
+
+        # Inputs
+        q_received_kw = float(self._get_input("q_received_kw"))
+        demand_kw = float(q_to_deliver_kw)
+
+        # Current storage energy
+        e_storage_kwh = self._soc * capacity_kwh
+
+        # -------------------------------------------------
+        # 1. Direct supply from source to demand
+        # -------------------------------------------------
+
+        q_direct_kw = min(q_received_kw, max(demand_kw, 0.0))
+
+        remaining_demand_kw = max(0.0, demand_kw - q_direct_kw)
+
+        # -------------------------------------------------
+        # 2. Storage discharge
+        # -------------------------------------------------
+
+        max_discharge_kw = e_storage_kwh / dt_h
+        q_dch_kw = min(remaining_demand_kw, max_discharge_kw)
+
+        # -------------------------------------------------
+        # 3. Storage charging
+        # -------------------------------------------------
+
+        remaining_input_kw = q_received_kw - q_direct_kw
+
+        free_capacity_kwh = capacity_kwh - e_storage_kwh
+        max_charge_kw = free_capacity_kwh / dt_h
+
+        q_ch_kw = min(max(0.0, remaining_input_kw), max_charge_kw)
+
+        # -------------------------------------------------
+        # 4. Check for energy overflow (no dumping allowed)
+        # -------------------------------------------------
+
+        if remaining_input_kw > max_charge_kw + 1e-9:
+            excess_kw = remaining_input_kw - max_charge_kw
             raise ValueError(
-                f"Excess energy detected: {excess_energy_kwh} kWh exceeds the maximum capacity."
+                f"Excess energy detected: {excess_kw:.3f} kW cannot be delivered "
+                f"or stored (storage full). Controller {self.name}, "
+                f"prosumer {prosumer.name}, timestep {self.time}"
             )
 
-        self._soc = float(np.asarray(fill_level_kwh).flat[0]) / _e_capacity_kwh
-        demand_kw = float(np.asarray(demand_kwh).flat[0]) / (self.resol / 3600)
-        assert 0 <= self._soc <= 1, (
-            f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name} "
-            f"at timestep {self.time}"
-        )
-        # Get tank temperature for output (use _temperature if available, otherwise derive from SOC or use default)
-        t_tank_c = self._temperature if self._temperature is not None and not np.isnan(self._temperature) else 40.0
-        # For power-only mode, t_received_out_c is not applicable, use tank temperature
-        t_received_out_c = t_tank_c
-        # Calculate charging and delivered power (both should be positive)
-        # Charging occurs when demand is negative OR when there's excess input power after meeting demand
-        input_power_kw = self._get_input("q_received_kw")
-        
-        if demand_kw < 0:
-            # Negative demand means explicit charging request
-            q_ch_kw = -demand_kw  # Positive charging power
-            q_delivered_kw = 0.0   # No delivery when charging
-            q_charge_kw = q_ch_kw  # Charging power
-            q_discharge_kw = 0.0  # No discharge when charging
-        elif input_power_kw > 0 and demand_kw == 0:
-            # Input power available but no demand -> charge with all input power
-            q_ch_kw = input_power_kw  # Positive charging power
-            q_delivered_kw = 0.0       # No delivery
-            q_charge_kw = q_ch_kw      # Charging power
-            q_discharge_kw = 0.0       # No discharge
-        else:
-            # Normal discharging case
-            q_ch_kw = 0.0           # No charging when delivering
-            q_delivered_kw = demand_kw  # Positive delivered power
-            q_charge_kw = 0.0      # No charging when discharging
-            q_discharge_kw = q_delivered_kw  # Discharge power when delivering
-        
-        # In power-only mode, use tank temperature for charge/discharge temperatures
-        # Mass flows are 0 since we don't have fluid information
-        # Avoid NaN values - use appropriate defaults when not applicable
-        # FIXME
-        if q_ch_kw > 0:  # Charging
-            t_charge_in_c = t_tank_c
-            t_charge_out_c = t_tank_c
-            t_discharge_in_c = t_tank_c  # Not discharging
-            t_discharge_out_c = t_tank_c  # Not discharging
-            mdot_charge_kg_per_s = 0.0  # No mass flow info in power-only mode
-            mdot_discharge_kg_per_s = 0.0
-        elif q_delivered_kw > 0:  # Discharging
-            t_charge_in_c = t_tank_c  # Not charging
-            t_charge_out_c = t_tank_c  # Not charging
-            t_discharge_in_c = t_tank_c
-            t_discharge_out_c = t_tank_c
-            mdot_charge_kg_per_s = 0.0
-            mdot_discharge_kg_per_s = 0.0  # No mass flow info in power-only mode
-        else:  # No activity
-            t_charge_in_c = t_tank_c
-            t_charge_out_c = t_tank_c
-            t_discharge_in_c = t_tank_c
-            t_discharge_out_c = t_tank_c
-            mdot_charge_kg_per_s = 0.0
-            mdot_discharge_kg_per_s = 0.0
+        # -------------------------------------------------
+        # 5. Delivered power
+        # -------------------------------------------------
 
-        # q_delivered_kw is the total delivered power (bypass + discharge)
-        # In power-only mode, this equals q_discharge_kw since there's no bypass concept
-        q_delivered_kw = q_discharge_kw
-        
-        result = np.array([[float(self._soc), t_tank_c, q_ch_kw, q_discharge_kw, q_delivered_kw, mdot_charge_kg_per_s, 
-                            t_charge_in_c, t_charge_out_c, mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c]])
-        self.last_result = {"soc": self._soc, "t_tank_c": t_tank_c, "q_ch_kw": q_ch_kw, "q_dch_kw": q_discharge_kw, "q_delivered_kw": q_delivered_kw, "mdot_ch_kg_per_s": mdot_charge_kg_per_s,
+        q_delivered_kw = q_direct_kw + q_dch_kw
+
+        # -------------------------------------------------
+        # 6. Update storage energy
+        # -------------------------------------------------
+
+        delta_e_kwh = (q_ch_kw - q_dch_kw) * dt_h
+        e_storage_kwh += delta_e_kwh
+
+        # Numerical safety clamp
+        e_storage_kwh = max(0.0, min(capacity_kwh, e_storage_kwh))
+
+        self._soc = e_storage_kwh / capacity_kwh
+
+        assert 0 <= self._soc <= 1, (
+            f"SOC = {self._soc} invalid for controller {self.name} "
+            f"in prosumer {prosumer.name} at timestep {self.time}"
+        )
+
+        # -------------------------------------------------
+        # 7. Temperature update
+        # -------------------------------------------------
+
+        self._temperature = self._temperature_from_soc(prosumer, self._soc)
+        t_tank_c = self._temperature if self._temperature is not None else 40.0
+
+        # -------------------------------------------------
+        # 8. Power-only mode thermal outputs
+        # -------------------------------------------------
+
+        mdot_charge_kg_per_s = 0.0
+        mdot_discharge_kg_per_s = 0.0
+
+        t_charge_in_c = t_tank_c
+        t_charge_out_c = t_tank_c
+        t_discharge_in_c = t_tank_c
+        t_discharge_out_c = t_tank_c
+
+        # -------------------------------------------------
+        # 9. Result vector
+        # -------------------------------------------------
+
+        result = np.array([[ 
+            self._soc,
+            t_tank_c,
+            q_ch_kw,
+            q_dch_kw,
+            q_delivered_kw,
+            mdot_charge_kg_per_s,
+            t_charge_in_c,
+            t_charge_out_c,
+            mdot_discharge_kg_per_s,
+            t_discharge_in_c,
+            t_discharge_out_c
+        ]])
+        self.last_result = {"soc": self._soc, "t_tank_c": t_tank_c, "q_ch_kw": q_ch_kw, "q_dch_kw": q_dch_kw, "q_delivered_kw": q_delivered_kw, "mdot_ch_kg_per_s": mdot_charge_kg_per_s,
                            "t_ch_in_c": t_charge_in_c, "t_ch_out_c": t_charge_out_c, "mdot_dch_kg_per_s": mdot_discharge_kg_per_s,
                            "t_dch_in_c": t_discharge_in_c, "t_dch_out_c": t_discharge_out_c}
         self.finalize(prosumer, result)
@@ -589,6 +650,14 @@ class HeatStorageController(BasicProsumerController):
 
             self._temperature = t_tank_c
             self._calculate_heat_losses(prosumer)
+
+            # Update temperature values to use final temperature after heat losses when there's no flow
+            # has_incoming_flow = not (np.isnan(mdot_received_kg_per_s) or np.isnan(t_received_in_c)) and mdot_received_kg_per_s > 0
+            # if not has_incoming_flow and mdot_demand_kg_per_s == 0:
+            #     t_charge_in_c = self._temperature
+            #     t_charge_out_c = self._temperature
+            #     t_discharge_in_c = self._temperature
+            #     t_discharge_out_c = self._temperature
 
             soc_fluid = self._soc_from_temperature(prosumer)
             if soc_fluid is not None and not np.isnan(soc_fluid):

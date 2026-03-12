@@ -162,14 +162,6 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
         hp_res_df = prosumer.time_series.loc[0].data_source.df
         hs_res_df = prosumer.time_series.loc[1].data_source.df
         hd_res_df = prosumer.time_series.loc[2].data_source.df
-        
-        pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
-        print("Heat Pump Results:")
-        print(hp_res_df)
-        print("\nHeat Storage Results:")
-        print(hs_res_df)
-        print("\nHeat Demand Results:")
-        print(hd_res_df)
 
         assert not np.isnan(hp_res_df).any().any()
         assert not np.isnan(hs_res_df).any().any()
@@ -182,12 +174,12 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
         """
         Test the heat storage with GenericMapping only (power-only mode)
         """
-        prosumer = create_empty_prosumer_container()
+        prosumer = create_empty_prosumer_container(name="my_prosumer")
         
         # Create test data - ensure demand doesn't exceed source
         data = pd.DataFrame({
-            "q_source_kw": [0, 50, 80, 60, 20],
-            "q_demand_kw": [0, 30, 50, 40, 15]
+            "q_source_kw": [0, 50, 0, 60, 40],
+            "q_demand_kw": [0, 0, 50, 40, 60]
         })
 
         start = '2020-01-01 00:00:00'
@@ -201,10 +193,17 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
 
         # Heat storage parameters (GenericMapping only - no capacity_kg)
         hs_params = {
-            'e_capacity_kwh': 300.0,
-            't_tank_init_c': 40.0,
+            'e_capacity_kwh': 600.0,
+            't_tank_init_c': 45.0,
             'min_temp_c': 40.0,
             'max_temp_c': 60.0,
+            'name' : 'uniform_heat_storage'
+        }
+
+        hd_params = {
+            't_in_set_c': 60.0,
+            't_out_set_c': 40.0,
+            'name': 'heat_demand'
         }
 
         # Create controllers
@@ -214,6 +213,7 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                               data_source, period, 0, 0)
         hs_controller_index = create_controlled_heat_storage(prosumer, period=period, level=1, order=0, **hs_params)
+        hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=1, order=1, **hd_params)
 
         # Create GenericMappings
         GenericMapping(container=prosumer,
@@ -222,12 +222,53 @@ class Test1HeatPump1HeatStorage1HeatDemandMapping:
                        responder_id=hs_controller_index,
                        responder_column="q_received_kw",
                        order=0)
+        
+        GenericMapping(container=prosumer,
+                       initiator_id=cp_controller_index,
+                       initiator_column="q_demand_kw",
+                       responder_id=hd_controller_index,
+                       responder_column="q_demand_kw",
+                       order=0)
+
+        GenericMapping(container=prosumer,
+                       initiator_id=hs_controller_index,
+                       initiator_column="q_delivered_kw",
+                       responder_id=hd_controller_index,
+                       responder_column="q_received_kw",
+                       order=0)
 
         # Run the simulation to verify it works
         run_timeseries(prosumer, period, True)
 
-        hs_res_df = prosumer.time_series.loc[0].data_source.df
+        t_tank_c = [45., 46.666, 45., 45.666, 45.]
+        hs_data = {
+            'soc': [0.25, 0.33333, 0.25, 0.28, 0.25],
+            't_tank_c': t_tank_c,
+            'q_ch_kw': [max(0, i) for i in data["q_source_kw"] - data["q_demand_kw"]] ,  # Charging power
+            'q_dch_kw': [max(0, i) for i in data["q_demand_kw"] - data["q_source_kw"]],  # Discharge power
+            'q_delivered_kw': data['q_demand_kw'],  # Delivered power
+            'mdot_ch_kg_per_s': [0.] * 5,  # Mass flow during charging
+            't_ch_in_c': t_tank_c,  # Default to tank temp
+            't_ch_out_c': t_tank_c,  # Default to tank temp
+            'mdot_dch_kg_per_s': [0.] * 5,  # Mass flow during discharging
+            't_dch_in_c': t_tank_c,  # Default to tank temp
+            't_dch_out_c': t_tank_c,  # Default to tank temp
+        }
+        hs_expected = pd.DataFrame(hs_data, index=data.index)
 
-        pd.set_option('display.expand_frame_repr', False)  # Prevent line breaks
-        print("\nHeat Storage Results:")
-        print(hs_res_df)
+        dmd_data = {
+            'q_received_kw': data['q_demand_kw'],
+            'q_uncovered_kw': [0.] * 5,
+            'mdot_kg_per_s': [0.] * 5,
+            't_in_c': [0.] * 5,
+            't_out_c': [0.] * 5,
+        }
+        hd_expected = pd.DataFrame(dmd_data, index=data.index)
+
+        hs_res_df = prosumer.time_series.loc[0].data_source.df
+        hd_res_df = prosumer.time_series.loc[1].data_source.df
+
+        assert not np.isnan(hs_res_df).any().any()
+        assert not np.isnan(hd_res_df).any().any()
+        assert_frame_equal(hs_res_df.sort_index(axis=1), hs_expected.sort_index(axis=1), check_dtype=False, atol=.01)
+        assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, atol=.01)
