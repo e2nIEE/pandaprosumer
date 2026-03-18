@@ -11,7 +11,7 @@ from pandaprosumer.controller.base import BasicProsumerController
 
 def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, heating_value_kj_per_kg, 
                                efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
-                               max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s):
+                               max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, allow_stop):
         # FixMe: q_fluid_kw reaches zero only if the max_ramp_down allows it
         # FixMe: It doesn't prevent fast turn on / turn off of the boiler
         
@@ -57,16 +57,26 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
             # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
             mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
             
-        if min_q_kw and 1e-3 < q_fluid_kw < min_q_kw - 1e-3:
-            # If the thermal power is too low but not null, apply min power constraint
-            q_fluid_kw = min_q_kw
-            mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
-            # Recalculate the fluid mass flow is the temperature difference is > 0
-            if t_out_c - t_in_c > 1e-3:
-                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-            else:
-                # If not, recalculate the output temperature instead
-                t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+        if min_q_kw :
+            if 1e-3 < q_fluid_kw < min_q_kw - 1e-3:
+                # If the thermal power is too low but not null, apply min power constraint
+                q_fluid_kw = min_q_kw
+                mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
+                # Recalculate the fluid mass flow is the temperature difference is > 0
+                if t_out_c - t_in_c > 1e-3:
+                    mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                else:
+                    # If not, recalculate the output temperature instead
+                    t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
+            elif q_fluid_kw < 1e-3 and allow_stop == False and not np.isnan(q_previous_kw) and q_previous_kw > 1e-3:
+                q_fluid_kw = min_q_kw
+                mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
+                # Recalculate the fluid mass flow is the temperature difference is > 0
+                if t_out_c - t_in_c > 1e-3:
+                    mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+                else:
+                    # If not, recalculate the output temperature instead
+                    t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s
 
@@ -119,6 +129,9 @@ class GasBoilerController(BasicProsumerController):
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
         q_previous_kw = self.last_result.get('q_kw', np.nan)
         delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop == None or np.isnan(allow_stop):
+            allow_stop = True
 
         q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s = _calculate_gas_boiler_temp(mdot_kg_per_s, 
                                                                                                     t_out_c, 
@@ -132,7 +145,8 @@ class GasBoilerController(BasicProsumerController):
                                                                                                     delta_t_previous_c,
                                                                                                     max_ramp_up_kw_per_s,
                                                                                                     max_ramp_down_kw_per_s, 
-                                                                                                    self.resol)
+                                                                                                    self.resol,
+                                                                                                    allow_stop)
         
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s
 
