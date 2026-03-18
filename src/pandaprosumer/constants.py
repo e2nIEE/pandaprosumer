@@ -2,6 +2,7 @@ from pandapipes.constants import *
 
 CELSIUS_TO_K = NORMAL_TEMPERATURE
 TEMPERATURE_CONVERGENCE_THRESHOLD_C = 1
+MAX_RERUN = 20
 
 
 class HeatExchangerControl:
