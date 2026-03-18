@@ -222,25 +222,31 @@ class HeatDemandController(BasicProsumerController):
 
         # ToDo: If t_in < t_out, return t_in, not t_out
 
-        # When upstream (e.g. storage) sends no flow, we cannot receive any heat
-        no_flow = np.isnan(self._mdot_received_kg_per_s) or self._mdot_received_kg_per_s == 0
-        
-        if no_flow:
+        if np.isnan(self._mdot_received_kg_per_s) and not np.isnan(self._t_in_c):
+            # If upstream sends no flow, but there is a temperature, we can receive some heat with potential 'infinite' masses flow
+            q_received_kw = q_demand_kw
+            effective_t_in_c = self._t_in_c
+            t_mean_c = (effective_t_in_c + t_return_demand_c) / 2
+            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
+            mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            t_out_c = t_return_demand_c
+        elif self._mdot_received_kg_per_s == 0:
             # No flow from upstream means no heat transfer
             q_received_kw = 0.0
             mdot_received_kg_per_s = 0.0
-            t_out_c = t_return_demand_c
-            effective_t_in_c = t_feed_demand_c  # Use feed temp for reporting, but no actual heat transfer
+            effective_t_in_c = self._t_in_c
+            t_out_c = t_return_demand_c  # Should it be effective_t_in_c instead to have t_in_c == t_out_c ?
         else:
             # Normal operation with flow from upstream
             effective_t_in_c = self._t_in_c
             assert not np.isnan(effective_t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-            
+            mdot_received_kg_per_s = self._mdot_received_kg_per_s
+
             t_mean_c = (effective_t_in_c + t_return_demand_c) / 2
             cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-            mdot_received_kg_per_s = self._mdot_received_kg_per_s
             q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (effective_t_in_c - t_return_demand_c)
             t_out_c = t_return_demand_c
+
         # Calculate the difference between the received and the required power, wo considering the temperature level
         # FixMe: Consider the temperature level in the output
         q_uncovered_kw = q_demand_kw - q_received_kw

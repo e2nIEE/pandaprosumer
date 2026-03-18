@@ -76,9 +76,15 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
         q_discharge_kw = min(q_missing_kw, max(0.0, q_discharge_max_kw))
         mdot_discharge_kg_per_s = q_discharge_kw * 1e3 / (cp_j_per_kgk * max(current_temp - t_demand_in_c, 1e-9))
 
-    if remaining_received_mdot_kg_per_s > 0 and t_received_in_c > current_temp + 1e-9:
-        mdot_charge_kg_per_s = remaining_received_mdot_kg_per_s
-        q_charge_kw = mdot_charge_kg_per_s * cp_j_per_kgk * (t_received_in_c - current_temp) / 1e3
+    if remaining_received_mdot_kg_per_s > 0:
+        # Calculate energy transfer (positive = heating, negative = cooling)
+        q_charge_kw = remaining_received_mdot_kg_per_s * cp_j_per_kgk * (t_received_in_c - current_temp) / 1e3
+        # Set mdot_charge only if actually adding heat
+        if q_charge_kw > 1e-6:
+            mdot_charge_kg_per_s = remaining_received_mdot_kg_per_s
+        else:
+            mdot_charge_kg_per_s = 0.0
+            # Note: q_charge_kw can be negative (cooling); it still affects temperature but isn't "charging"
 
     net_energy_kj = (q_charge_kw - q_discharge_kw) * resol_s
     if capacity_kg > 0:
@@ -123,24 +129,19 @@ def _calculate_heat_storage(prosumer, mdot_demand_kg_per_s,
     # Note: t_tank_c here is the temperature after mixing but before heat losses
     # For output temperatures, we should use the final temperature after heat losses
     # final_tank_temp = t_tank_c  # This will be updated after heat losses in the caller
-    # t_charge_in_c = t_received_in_c if has_incoming_flow else final_tank_temp
-    # t_charge_out_c = final_tank_temp if mdot_charge_kg_per_s > 0 else final_tank_temp
-    # t_discharge_in_c = t_demand_in_c if has_demand else final_tank_temp
-    # t_discharge_out_c = final_tank_temp if mdot_discharge_kg_per_s > 0 else final_tank_temp
+    
+    # Compute charge and discharge temperatures avoiding NaN
+    t_charge_in_c = t_received_in_c if (mdot_charge_kg_per_s > 0 and not np.isnan(t_received_in_c)) else t_tank_c
+    t_charge_out_c = t_tank_c  # After mixing with tank
+    t_discharge_in_c = t_demand_in_c if (mdot_discharge_kg_per_s > 0 and not np.isnan(t_demand_in_c)) else t_tank_c
+    t_discharge_out_c = t_tank_c if mdot_discharge_kg_per_s > 0 else t_tank_c
 
-    # return (
-    #     soc_out, t_tank_c,
-    #     q_charge_kw, q_discharge_kw, q_delivered_kw,
-    #     mdot_delivered_kg_per_s, t_delivered_out_c, t_received_out_c,
-    #     mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
-    #     mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c
-    # )
     return (
         soc_out, t_tank_c,
         q_charge_kw, q_discharge_kw, q_delivered_kw,
         mdot_delivered_kg_per_s, t_delivered_out_c, t_received_out_c,
-        mdot_charge_kg_per_s, t_received_in_c, t_charge_out_c,
-        mdot_discharge_kg_per_s, t_demand_in_c, current_temp
+        mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
+        mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c
     )
 
 class HeatStorageController(BasicProsumerController):
@@ -683,10 +684,26 @@ class HeatStorageController(BasicProsumerController):
                     t_demand_in_c = t_return_demand_new_c
                     rerun = True
 
+        # When cold water enters (q_ch_kw < 0), remap to discharge interpretation
+        # if q_ch_kw < -1e-6:
+        #     # Cold water cools the tank - report as discharge of tank energy to cool incoming return water
+        #     q_ch_out = 0.0
+        #     q_dch_out = -q_ch_kw  # Convert cooling to discharge energy
+        #     mdot_dch_out = mdot_received_kg_per_s  # Return water mass flow
+        #     t_dch_in_out = t_received_in_c  # Return water inlet temperature
+        #     t_dch_out_out = current_temp  # Tank discharge outlet temp (before mixing)
+        # else:
+        # Normal case: hot water charging or actual discharge
+        q_ch_out = q_ch_kw
+        q_dch_out = q_discharge_kw
+        mdot_dch_out = mdot_discharge_kg_per_s
+        t_dch_in_out = t_discharge_in_c
+        t_dch_out_out = t_discharge_out_c
+        
         result = np.array([[float(self._soc), self._temperature,
-                            q_ch_kw, q_discharge_kw, q_delivered_kw,
+                            q_ch_out, q_dch_out, q_delivered_kw,
                             mdot_charge_kg_per_s, t_charge_in_c, t_charge_out_c,
-                            mdot_discharge_kg_per_s, t_discharge_in_c, t_discharge_out_c]])
+                            mdot_dch_out, t_dch_in_out, t_dch_out_out]])
 
         self.last_result = {
             "soc": float(self._soc),
@@ -708,6 +725,14 @@ class HeatStorageController(BasicProsumerController):
                 FluidMixMapping.TEMPERATURE_KEY: t_delivered_out_c,
                 FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s
             })
+        
+        # If no demand responders, add the return flow to the initiator
+        # if len(result_mdot_tab_kg_per_s) == 0 and not np.isnan(mdot_received_kg_per_s):
+        #     # Return the charge water at the final tank temperature (after mixing and heat losses)
+        #     result_fluid_mix.append({
+        #         FluidMixMapping.TEMPERATURE_KEY: self._temperature,
+        #         FluidMixMapping.MASS_FLOW_KEY: mdot_received_kg_per_s
+        #     })
 
         if (np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or
                 abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or
