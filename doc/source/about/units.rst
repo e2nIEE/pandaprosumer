@@ -29,8 +29,8 @@ Parameters, Variables and Units
     * Avoid **_charge** , **_n**
 
 - Constraints should always be named with max or min as the prefix.
-    * Use: **t_max**
-    * Avoid: **max_t**
+    * Use: **max_t_out_c**
+    * Avoid: **t_max_out_c**
 
 - When a variable has both adjective and unit, the unit should always come last in the variable name.
     * Use: **mdot_nom_kg_per_s**
