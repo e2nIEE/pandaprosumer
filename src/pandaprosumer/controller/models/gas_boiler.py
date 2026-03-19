@@ -74,10 +74,13 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
                 # Recalculate the fluid mass flow is the temperature difference is > 0
                 if t_out_c - t_in_c > 1e-3:
                     mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-                else:
+                elif mdot_kg_per_s != 0:
                     # If not, recalculate the output temperature instead
                     t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
-
+                else:
+                    q_fluid_kw = min_q_kw
+                    t_out_c = t_out_c + delta_t_previous_c
+                    mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s
 
 
