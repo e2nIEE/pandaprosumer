@@ -32,8 +32,8 @@ class TestGasBoiler:
         create_gas_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "gas_boiler")
         assert len(prosumer.gas_boiler) == 1
-        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"]
-        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True]
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service"]
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True, np.nan, True]
 
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
 
@@ -51,7 +51,9 @@ class TestGasBoiler:
                   'max_ramp_up_kw_per_s': 0.02,
                   'max_ramp_down_kw_per_s': 0.03,
                   'efficiency_percent': 75,
-                  'heating_value_kj_per_kg': 18e3}
+                  'heating_value_kj_per_kg': 18e3,
+                  'allow_stop': False,
+                  'max_t_out_c': 90.0}
 
         gsb_idx = create_gas_boiler(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "gas_boiler")
@@ -59,8 +61,8 @@ class TestGasBoiler:
         assert gsb_idx == 4
         assert prosumer.gas_boiler.index[0] == gsb_idx
 
-        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service", "custom"]
-        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 'test']
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "custom"]
+        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 90.0, False, 'test']
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
         assert prosumer.gas_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
@@ -287,5 +289,203 @@ class TestGasBoiler:
         expected = [min_power_kw, mdot_dmd, t_low_c, t_high_recalculated_c, mdot_fuel_expected_kg_per_s]
         assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_high_recalculated_c, .01),
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_dmd, .01)}]
+
+    def test_controller_run_control_allow_stop_false(self):
+        """
+        Test the Gas Boiler run control method with allow_stop=False, preventing the boiler from stopping.
+        """
+        min_power_kw = 20
+        lhv = 20e3
+        params = {'max_q_kw': 500,
+                  'min_q_kw': min_power_kw,
+                  'efficiency_percent': 100,
+                  'heating_value_kj_per_kg': lhv,
+                  'allow_stop': False}
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        t_high_c = 80
+        t_low_c = 20
+        mdot_dmd = 0.01  # Very low demand that would normally stop the boiler
+
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+
+        # With allow_stop=False, the boiler should maintain minimum power even when demand is very low
+        t_high_recalculated_c = t_low_c + min_power_kw / (mdot_dmd * 4.186)
+        mdot_fuel_expected_kg_per_s = min_power_kw / (lhv * (params['efficiency_percent'] / 100))
+        expected = [min_power_kw, mdot_dmd, t_low_c, t_high_recalculated_c, mdot_fuel_expected_kg_per_s]
+        assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
+
+    def test_controller_run_control_max_t_out_c(self):
+        """
+        Test the Gas Boiler run control method with max_t_out_c constraint.
+        """
+        lhv = 20e3
+        max_temp_c = 70  # Maximum output temperature constraint
+        params = {'max_q_kw': 500,
+                  'efficiency_percent': 100,
+                  'heating_value_kj_per_kg': lhv,
+                  'max_t_out_c': max_temp_c}
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        t_high_c = 80  # Requested temperature higher than max constraint
+        t_low_c = 20
+        mdot_dmd = 1.5
+
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+
+        # The output temperature should be limited to max_t_out_c
+        # After mass/energy balance adjustment, the temperature constraint is reapplied
+        # and power is recalculated to be consistent with the constrained temperature
+        q_kw = mdot_dmd * 4.186 * (max_temp_c - t_low_c)  # Power with constrained temperature
+        mdot_fuel_expected_kg_per_s = q_kw / lhv
+        expected = [q_kw, mdot_dmd, t_low_c, max_temp_c, mdot_fuel_expected_kg_per_s]
+        assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(max_temp_c, .01),
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_dmd, .01)}]
+
+    @pytest.mark.parametrize("min_power_kw, max_temp_c, t_high_c, t_low_c, mdot_dmd", [
+        # Base case: moderate temperature constraint, low demand
+        (20, 70, 80, 20, 0.05),
+        # Edge case: higher minimum power
+        (30, 70, 80, 20, 0.05),
+        # Edge case: lower temperature constraint
+        (20, 60, 80, 20, 0.05),
+        # Edge case: different temperature difference
+        (20, 70, 90, 30, 0.05),
+        # Edge case: very low demand
+        (20, 70, 80, 20, 0.01),
+    ])
+    def test_controller_run_control_allow_stop_false_with_max_t_out_c_parametrized(
+            self, min_power_kw, max_temp_c, t_high_c, t_low_c, mdot_dmd):
+        """
+        Parametrized test for Gas Boiler with allow_stop=False and max_t_out_c constraint.
+        Tests various combinations of minimum power, temperature constraints, and demand levels.
+        """
+        lhv = 20e3
+        
+        params = {'max_q_kw': 500,
+                  'min_q_kw': min_power_kw,
+                  'efficiency_percent': 100,
+                  'heating_value_kj_per_kg': lhv,
+                  'allow_stop': False,  # Boiler cannot stop
+                  'max_t_out_c': max_temp_c}
+        
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+        
+        # With allow_stop=False, the boiler should maintain minimum power even when demand is low
+        # and temperature is constrained. This is achieved by increasing mass flow.
+        cp_fluid = 4.186  # kJ/kgK (approximate for water)
+        mdot_delivered_expected = min_power_kw / (cp_fluid * (max_temp_c - t_low_c))
+        mdot_fuel_expected_kg_per_s = min_power_kw / lhv
+        
+        result = gsb_controller.step_results[0]
+        q_kw = result[0]
+        mdot_delivered = result[1]
+        t_out_c = result[3]
+        
+        # Verify key constraints
+        assert q_kw >= min_power_kw - 1e-2, f"Power {q_kw} kW should be at least {min_power_kw} kW"
+        assert t_out_c <= max_temp_c + 1e-2, f"Temperature {t_out_c} °C should not exceed {max_temp_c} °C"
+        assert mdot_delivered > mdot_dmd, f"Mass flow should be increased above demand"
+        
+        # Verify expected values with reasonable tolerance
+        assert q_kw == pytest.approx(min_power_kw, rel=1e-2)
+        assert mdot_delivered == pytest.approx(mdot_delivered_expected, rel=1e-2)
+        assert t_out_c == pytest.approx(max_temp_c, rel=1e-2)
+        
+    def test_controller_run_control_allow_stop_false_with_max_t_out_c(self):
+        """
+        Test the Gas Boiler run control method with allow_stop=False and max_t_out_c constraint.
+        This ensures that when temperature is constrained, the boiler maintains minimum power
+        by increasing mass flow rather than dropping below min_q_kw.
+        """
+        min_power_kw = 20
+        max_temp_c = 70  # Maximum output temperature constraint
+        lhv = 20e3
+        
+        params = {'max_q_kw': 500,
+                  'min_q_kw': min_power_kw,
+                  'efficiency_percent': 100,
+                  'heating_value_kj_per_kg': lhv,
+                  'allow_stop': False,  # Boiler cannot stop
+                  'max_t_out_c': max_temp_c}
+        
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        t_high_c = 80  # Requested temperature higher than max constraint
+        t_low_c = 20
+        mdot_dmd = 0.05  # Low demand that would normally result in power below min_q_kw
+        
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+        
+        # With allow_stop=False, the boiler should maintain minimum power even when demand is low
+        # and temperature is constrained. This is achieved by increasing mass flow.
+        cp_fluid = 4.186  # kJ/kgK (approximate for water)
+        mdot_delivered_expected = min_power_kw / (cp_fluid * (max_temp_c - t_low_c))
+        mdot_fuel_expected_kg_per_s = min_power_kw / lhv
+        
+        expected = [min_power_kw, mdot_delivered_expected, t_low_c, max_temp_c, mdot_fuel_expected_kg_per_s]
+        assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(max_temp_c, .01),
+                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_delivered_expected, .01)}]
+
+    def test_controller_run_control_max_t_out_c_at_boundary(self):
+        """
+        Test edge case where requested temperature equals max_t_out_c constraint.
+        This should not trigger the temperature constraint logic.
+        """
+        lhv = 20e3
+        max_temp_c = 70  # Maximum output temperature constraint
+        params = {'max_q_kw': 500,
+                  'efficiency_percent': 100,
+                  'heating_value_kj_per_kg': lhv,
+                  'max_t_out_c': max_temp_c}
+        prosumer = create_empty_prosumer_container()
+        gsb_controller_index = create_controlled_gas_boiler(prosumer,
+                                                            period=_default_period(prosumer),
+                                                            **params)
+        gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
+        
+        t_high_c = 70  # Requested temperature exactly at max constraint
+        t_low_c = 20
+        mdot_dmd = 1.5
+
+        gsb_controller.t_m_to_deliver = lambda x: (t_high_c, t_low_c, [mdot_dmd])
+        gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        gsb_controller.control_step(prosumer)
+
+        # Should work normally without triggering temperature constraint
+        q_kw = mdot_dmd * 4.186 * (t_high_c - t_low_c)
+        mdot_fuel_expected_kg_per_s = q_kw / lhv
+        expected = [q_kw, mdot_dmd, t_low_c, t_high_c, mdot_fuel_expected_kg_per_s]
+        assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
+        assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_high_c, .01),
                                                               FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_dmd, .01)}]
         

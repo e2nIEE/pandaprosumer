@@ -128,6 +128,7 @@ def create_controlled_heat_pump(prosumer,
                                 max_cop=np.nan,
                                 cond_fluid=None,
                                 evap_fluid=None,
+                                mode='carnot',
                                 name=None,
                                 index=None,
                                 in_service=True,
@@ -172,6 +173,8 @@ def create_controlled_heat_pump(prosumer,
 
             **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
             prosumer's fluid will be used
+
+            **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
 
             **level** (int, default 0) - The level of the controller
 
@@ -544,6 +547,8 @@ def create_controlled_gas_boiler(prosumer,
                                  max_ramp_down_kw_per_s=np.nan,
                                  heating_value_kj_per_kg=50e3,
                                  efficiency_percent=100,
+                                 allow_stop=True,
+                                 max_t_out_c=np.nan,
                                  name=None,
                                  index=None,
                                  in_service=True,
@@ -569,6 +574,12 @@ def create_controlled_gas_boiler(prosumer,
             **heating_value_kj_per_kg** (float, default 50e3) - Heating Value of the gas (amount of energy per kg of gas) [kJ/kg]
 
             **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
+
+            **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power). 
+                When False, the boiler maintains minimum power even with low demand. See edge cases documentation.
+
+            **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C. 
+                When set, limits the boiler's output temperature. See edge cases documentation for interaction with allow_stop.
 
             **name** (string, default None) - The name for this gas boiler
 

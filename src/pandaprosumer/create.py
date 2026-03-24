@@ -95,6 +95,7 @@ def create_heat_pump(prosumer,
                      max_cop=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
+                     mode='carnot',
                      name=None,
                      index=None,
                      in_service=True,
@@ -137,6 +138,8 @@ def create_heat_pump(prosumer,
         **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
         prosumer's fluid will be used
 
+        **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+
     OUTPUT:
         **index** (int) - The unique ID of the created heat pump
 
@@ -162,10 +165,10 @@ def create_heat_pump(prosumer,
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
              'min_p_comp_kw',  'max_ramp_up_kw_per_s', 'max_ramp_down_kw_per_s', 'max_t_cond_out_c',
-             'max_cop', 'cond_fluid', 'evap_fluid', 'in_service'],
+             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
              min_p_comp_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, max_t_cond_out_c,
-             max_cop, cond_fluid, evap_fluid, in_service])
+             max_cop, cond_fluid, evap_fluid, mode, in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
@@ -569,6 +572,8 @@ def create_gas_boiler(prosumer,
                       max_ramp_down_kw_per_s=np.nan,                      
                       heating_value_kj_per_kg=50e3,
                       efficiency_percent=100,
+                      allow_stop=True,
+                      max_t_out_c=np.nan,
                       name=None,
                       index=None,
                       in_service=True,
@@ -592,6 +597,10 @@ def create_gas_boiler(prosumer,
 
         **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
 
+        **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
+
+        **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
+
         **name** (string, default None) - The name for this gas boiler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -609,8 +618,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
-                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)

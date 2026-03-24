@@ -29,6 +29,8 @@ class GasBoilerElementData:
         ('max_ramp_down_kw_per_s', 'f8'),
         ('heating_value_kj_per_kg', 'f8'),
         ('efficiency_percent', 'f8'),
+        ('allow_stop', bool),
+        ('max_t_out_c', 'f8'),
         
         ('in_service', bool)
     ])

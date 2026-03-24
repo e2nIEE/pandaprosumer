@@ -35,6 +35,7 @@ class HeatPumpElementData:
         ('max_cop', 'f8'),
         ('cond_fluid', 'str'),
         ('evap_fluid', 'str'),
+        ('mode', 'str'),  # COP calculation mode: 'carnot' or 'lorenz'
 
         # ToDo: Take into account 'in_service' for every models
         ('in_service', bool)

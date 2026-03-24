@@ -215,17 +215,21 @@ class HeatPumpController(BasicProsumerController):
         # 5. Calculate the compressor power power_comp
         p_comp_kw = q_cond_kw / cop_hp
         
-        # Extra optional parameter to choose which cop calculation method to use
-        if self._get_element_param(prosumer, 'use_cop_lz'):
-            # 3bis. Calculate Lorenz cop
-            mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
-            mean_tc_c = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
-            cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
-            # 4bis. Calculate cop of heat pump with Lorenz
-            cop_hp_lz = carnot_efficiency * cop_lorenz
-            p_comp_lz_kw = q_cond_kw / cop_hp_lz
-            # 5bis. Calculate the compressor power power_comp with Lorenz
-            p_comp_kw = p_comp_lz_kw
+        # Check COP calculation mode
+        mode = self._get_element_param(prosumer, 'mode')
+        if mode:
+            mode = str(mode).lower()  # Make case insensitive
+            if mode == 'lorenz':
+                # Calculate Lorenz cop
+                mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
+                mean_tc_c = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+                cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
+                # Calculate cop of heat pump with Lorenz
+                cop_hp_lz = carnot_efficiency * cop_lorenz
+                p_comp_lz_kw = q_cond_kw / cop_hp_lz
+                # Use Lorenz compressor power
+                p_comp_kw = p_comp_lz_kw
+            # else: default 'carnot' mode already calculated above
 
         # 6. Calculate power of evaporator Q_evap
         q_evap_kw = q_cond_kw - p_comp_kw
