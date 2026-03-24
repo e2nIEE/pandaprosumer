@@ -10,14 +10,27 @@ from pandaprosumer.controller.base import BasicProsumerController
 
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, 
-                                    efficiency_percent, max_p_kw, p_el_consumed_previous_kw,
-                                    max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s):
+                                    efficiency_percent, max_p_kw, min_p_kw, p_el_consumed_previous_kw,
+                                    max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, 
+                                    allow_stop, max_t_out_c=None):
     # Calculate thermal power
     q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
     # Calculate electric power
     p_el_consumed_kw = q_fluid_kw / (efficiency_percent / 100)
     
+    # Apply maximum temperature constraint by keeping power constant and adjusting mass flow
+    if max_t_out_c is not None and t_out_c > max_t_out_c:
+        t_out_c = max_t_out_c
+        # Keep power constant and recalculate mass flow
+        if t_out_c - t_in_c > 1e-3:
+            mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+        else:
+            # If temperature difference is too small, set mass flow to zero
+            mdot_kg_per_s = 0
+            q_fluid_kw = 0
+            p_el_consumed_kw = 0
+
     # Apply ramp up/down constraints
     if not np.isnan(p_el_consumed_previous_kw):  # Constraint not applicable for the first timestep
         delta_p = (p_el_consumed_kw - p_el_consumed_previous_kw)
@@ -34,6 +47,31 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
             q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
             mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
 
+    # Apply minimum power constraint
+    if min_p_kw:
+        if 1e-3 < p_el_consumed_kw < min_p_kw - 1e-3:
+            # If the electrical power is too low but not null, apply min power constraint
+            p_el_consumed_kw = min_p_kw
+            q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
+            # Always recalculate the fluid mass flow to maintain the requested temperature
+            # This ensures we deliver the minimum power at the requested temperature
+            if t_out_c - t_in_c > 1e-3:
+                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+            else:
+                # If temperature difference is too small, we can't maintain minimum power
+                # This is an edge case that should be handled by the system design
+                pass
+        elif p_el_consumed_kw < 1e-3 and allow_stop == False and not np.isnan(p_el_consumed_previous_kw) and p_el_consumed_previous_kw > 1e-3:
+            # If power would drop to zero but previous power was non-zero and allow_stop is False, maintain minimum power
+            p_el_consumed_kw = min_p_kw
+            q_fluid_kw = p_el_consumed_kw * (efficiency_percent / 100)
+            # Always recalculate the fluid mass flow to maintain the requested temperature
+            if t_out_c - t_in_c > 1e-3:
+                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+            elif mdot_kg_per_s != 0:
+                # If mass flow is zero but we have a temperature difference, use that
+                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+    
     # Check maximum power constraint
     if max_p_kw and p_el_consumed_kw > max_p_kw + 1e-3:  # ToDo: Check numba if max_p_kw Nan
         # If the consumed electrical power is too high, recalculate the output mass flow rate
@@ -42,6 +80,18 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
         # FixMe: Should update the output temperature or the mass flow rate ?
         # t_out_c = t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk)
         mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+
+    # Apply maximum temperature constraint after all other calculations by keeping power constant
+    if max_t_out_c is not None and t_out_c > max_t_out_c:
+        t_out_c = max_t_out_c
+        # Keep power constant and recalculate mass flow
+        if t_out_c - t_in_c > 1e-3:
+            mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+        else:
+            # If temperature difference is too small, set mass flow to zero
+            mdot_kg_per_s = 0
+            q_fluid_kw = 0
+            p_el_consumed_kw = 0
 
     return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
@@ -83,9 +133,17 @@ class ElectricBoilerController(BasicProsumerController):
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
+        min_p_kw = self._get_element_param(prosumer, 'min_p_kw')
         p_el_consumed_previous_kw = self.last_result.get('p_kw', np.nan)
         max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop == None or np.isnan(allow_stop):
+            allow_stop = True
+
+        max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
+        if np.isnan(max_t_out_c):
+            max_t_out_c = None
 
         q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw = _calculate_electric_boiler_temp(mdot_kg_per_s,
                                                                                                        t_out_c,
@@ -93,10 +151,13 @@ class ElectricBoilerController(BasicProsumerController):
                                                                                                        cp_fluid_kj_per_kgk,
                                                                                                        efficiency_percent,
                                                                                                        max_p_kw,
+                                                                                                       min_p_kw,
                                                                                                        p_el_consumed_previous_kw,
                                                                                                        max_ramp_up_kw_per_s,
                                                                                                        max_ramp_down_kw_per_s,
-                                                                                                       self.resol)
+                                                                                                       self.resol,
+                                                                                                       allow_stop,
+                                                                                                       max_t_out_c)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
@@ -158,9 +219,18 @@ class ElectricBoilerController(BasicProsumerController):
         tol = 1e-9
         if abs(mdot_delivered_kg_per_s - mdot_used_kg_per_s) > tol:
             cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
+            efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
             if mdot_used_kg_per_s > tol:
                 t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
                 mdot_delivered_kg_per_s = mdot_used_kg_per_s
+                # Reapply max_t_out_c constraint after mass/energy balance adjustment
+                max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
+                if not np.isnan(max_t_out_c) and t_out_c > max_t_out_c:
+                    t_out_c = max_t_out_c
+                    # Recalculate power to maintain consistency
+                    q_kw = mdot_delivered_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
+                    # Recalculate electric power to maintain consistency with new thermal power
+                    p_kw = q_kw / (efficiency_percent / 100)
             elif -tol < mdot_used_kg_per_s < tol and q_kw > tol:
                 mdot_delivered_kg_per_s = q_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
                 # update result_mdot_tab_kg_per_s with the new mass flow, distribute evenly if several responders

@@ -478,9 +478,12 @@ def create_controlled_heat_exchanger(prosumer,
 
 def create_controlled_electric_boiler(prosumer,
                                       max_p_kw,
+                                      min_p_kw=np.nan,
                                       max_ramp_up_kw_per_s=np.nan,
                                       max_ramp_down_kw_per_s=np.nan,
                                       efficiency_percent=100,
+                                      allow_stop=True,
+                                      max_t_out_c=np.nan,
                                       name=None,
                                       index=None,
                                       in_service=True,
@@ -497,11 +500,17 @@ def create_controlled_electric_boiler(prosumer,
             **max_p_kw** (float) - Maximal electrical power of the boiler [kW]
 
         OPTIONAL:
-            **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
+            **min_p_kw** (float, default None) - Minimal electrical power of the boiler [kW]
+        
+        **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
         
             **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
             
             **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
+
+            **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
+
+            **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
             **name** (string, default None) - The name for this electric boiler
 
