@@ -112,8 +112,13 @@ class HeatDemandController(BasicProsumerController):
                 # TODO : error if t_out_set_c do not exists
                 t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
             else:
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
-                t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
+                # Handle division by zero case when both q_demand_kw and mdot_demand_kg_per_s are zero
+                if abs(self._q_demand_kw) < 1e-12 and abs(self._mdot_demand_kg_per_s) < 1e-12:
+                    # When both demand and mass flow are zero, set return temperature equal to feed temperature
+                    t_return_demand_c = t_feed_demand_c
+                else:
+                    cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
+                    t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
         else:
             t_return_demand_c = self._t_return_demand_c
         if np.isnan(self._mdot_demand_kg_per_s):
@@ -232,7 +237,12 @@ class HeatDemandController(BasicProsumerController):
         cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
         if np.isnan(self._mdot_received_kg_per_s):
             q_received_kw = q_demand_kw
-            mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            # Handle division by zero when temperatures are equal
+            if abs(self._t_in_c - t_return_demand_c) < 1e-12:
+                # When temperatures are equal, mass flow can be anything (we use 0)
+                mdot_received_kg_per_s = 0
+            else:
+                mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
         else:
             mdot_received_kg_per_s = self._mdot_received_kg_per_s
             q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
