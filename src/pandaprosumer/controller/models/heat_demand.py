@@ -4,6 +4,7 @@ Module containing the HeatDemandController class.
 
 import numpy as np
 import logging
+import sys
 
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
@@ -98,6 +99,9 @@ class HeatDemandController(BasicProsumerController):
                 or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s)):
             raise ValueError("Should not provide a value for all Heat Demand inputs")
 
+        # Initialize effective_q_demand_kw with default value
+        effective_q_demand_kw = self._q_demand_kw
+
         if np.isnan(self._t_feed_demand_c(prosumer)):
             if np.isnan(self._t_return_demand_c) or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
                 # TODO : error if t_in_set_c do not exists
@@ -112,15 +116,34 @@ class HeatDemandController(BasicProsumerController):
                 # TODO : error if t_out_set_c do not exists
                 t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
             else:
-                # Handle division by zero case when both q_demand_kw and mdot_demand_kg_per_s are zero
-                if abs(self._q_demand_kw) < 1e-12 and abs(self._mdot_demand_kg_per_s) < 1e-12:
-                    # When both demand and mass flow are zero, set return temperature equal to feed temperature
+                # Handle division by zero case when mass flow is zero or very small
+                if abs(self._mdot_demand_kg_per_s) < 1e-12:
+                    # When mass flow is zero, no heat can be transferred, so return temperature equals feed temperature
+                    # and effective heat demand becomes zero
+                    if not np.isnan(self._q_demand_kw) and abs(self._q_demand_kw) > 1e-12:
+                        warning_msg = (
+                            f"Heat Demand {self.name}: Mass flow is zero but heat demand is {self._q_demand_kw} kW. "
+                            f"Effective heat demand will be set to 0 kW since no mass flow means no heat transfer. "
+                            f"Timestep: {self.time}"
+                        )
+                        logger.warning(warning_msg)
                     t_return_demand_c = t_feed_demand_c
+                    effective_q_demand_kw = 0.0
                 else:
                     cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
                     t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
         else:
             t_return_demand_c = self._t_return_demand_c
+            # Handle case where mass flow is zero even when return temperature is provided
+            if abs(self._mdot_demand_kg_per_s) < 1e-12:
+                if not np.isnan(self._q_demand_kw) and abs(self._q_demand_kw) > 1e-12:
+                    warning_msg = (
+                        f"Heat Demand {self.name}: Mass flow is zero but heat demand is {self._q_demand_kw} kW. "
+                        f"Effective heat demand will be set to 0 kW since no mass flow means no heat transfer. "
+                        f"Timestep: {self.time}"
+                    )
+                    logger.warning(warning_msg)
+                effective_q_demand_kw = 0.0
         if np.isnan(self._mdot_demand_kg_per_s):
             if np.isnan(self._q_demand_kw):
                 raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
@@ -138,7 +161,7 @@ class HeatDemandController(BasicProsumerController):
             cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
             q_demand_kw = mdot_demand_kg_per_s * cp * (t_feed_demand_c - t_return_demand_c)
         else:
-            q_demand_kw = self._q_demand_kw
+            q_demand_kw = effective_q_demand_kw
         # if mdot_demand_kg_per_s < 1e-3:
         #     mdot_demand_kg_per_s = 0
         #     t_return_demand_c = t_feed_demand_c

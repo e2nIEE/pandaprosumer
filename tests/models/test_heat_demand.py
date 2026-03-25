@@ -340,6 +340,7 @@ class TestHeatDemand:
         assert temp_diff <= 60  # Should be less than the initial 50°C difference + some tolerance
 
     @pytest.mark.parametrize("q_demand, t_feed, t_return, mdot, expected_error", [
+        (100, 80, np.nan, 0, None), 
         # Test case: q_demand_kw, t_feed_demand_c and t_return_demand_c provided (3 inputs, mdot=NaN) - should work
         (100, 80, 30, np.nan, None),  # Should work - exactly 3 inputs provided
         # Test case: q_demand_kw, t_feed_demand_c and mdot_demand_kg_per_s provided (3 inputs, t_return=NaN) - should work
@@ -488,3 +489,33 @@ class TestHeatDemand:
         # Should handle zero demand correctly
         assert hd_controller.step_results[0, 0] == pytest.approx(0, 0.01)
         assert hd_controller.step_results[0, 1] == pytest.approx(0, 0.01)
+
+    def test_zero_mass_flow_with_non_zero_demand(self):
+        """
+        Test the edge case where mass flow is zero but heat demand is non-zero.
+        This should result in zero effective heat demand since no mass flow means no heat transfer.
+        """
+        prosumer = create_empty_prosumer_container()
+        hd_controller_idx = create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer))
+        hd_controller = prosumer.controller.iloc[hd_controller_idx].object
+
+        # Test case: q_demand=100, t_feed=80, t_return=NaN, mdot=0
+        # This should result in: q_demand_kw=0, t_feed=80, t_return=80, mdot=0
+        hd_controller.inputs = np.array([[100, 0, 80, np.nan, np.nan]])
+        result = hd_controller._demand_q_tf_tr_m(prosumer)
+        
+        # When mass flow is zero, no heat can be transferred
+        assert result[0] == pytest.approx(0.0)  # q_demand_kw should be 0
+        assert result[1] == pytest.approx(80.0)  # t_feed should remain 80
+        assert result[2] == pytest.approx(80.0)  # t_return should equal t_feed
+        assert result[3] == pytest.approx(0.0)  # mdot should remain 0
+
+        # Test case: q_demand=50, t_feed=60, t_return=NaN, mdot=0
+        # Even when t_feed is provided, zero mass flow means zero heat transfer
+        hd_controller.inputs = np.array([[50, 0, 60, np.nan, np.nan]])
+        result = hd_controller._demand_q_tf_tr_m(prosumer)
+        
+        assert result[0] == pytest.approx(0.0)  # q_demand_kw should be 0
+        assert result[1] == pytest.approx(60.0)  # t_feed should remain 60
+        assert result[2] == pytest.approx(60.0)  # t_return should equal t_feed
+        assert result[3] == pytest.approx(0.0)  # mdot should remain 0
