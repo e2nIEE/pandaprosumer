@@ -12,7 +12,7 @@ from pandapower.auxiliary import ADict
 from pandapipes import __version__
 from pandapipes import pandapipesNet
 
-from pandaprosumer.pandaprosumer_container import pandaprosumerContainer
+from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, save_prosumer_results
 
 try:
     import pandaplan.core.pplog as logging
@@ -88,6 +88,26 @@ class EnergySystem(ADict):
             for tb in par:
                 r += "\n   - %s (%s elements)" % (tb, len(self[tb]))
         return r
+
+
+def save_energy_system_results(energy_system, res_folder, first_prosumer_period=None):
+    """
+    Save the results of an energy system simulation, including prosumers and networks.
+    
+    Args:
+        energy_system: The energy system object
+        res_folder: The base folder path where results will be saved
+        first_prosumer_period: Optional period information for OutputWriter timing
+    """
+    logger.info(f"Saving prosumers results to folder {res_folder}")
+
+    # Save prosumer results
+    for prosumer_name, prosumer in energy_system.prosumer.items():
+        save_prosumer_results(prosumer, res_folder)
+    
+    # Note: Network OutputWriter should be initialized when adding networks to energy system
+    # using add_net_to_energy_system() with output_path parameter
+    logger.info("Network results will be saved by OutputWriter instances initialized during network addition")
 
 
 def get_default_energy_system_structure():

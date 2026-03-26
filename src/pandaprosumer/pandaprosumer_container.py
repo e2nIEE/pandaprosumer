@@ -1,4 +1,5 @@
 import copy
+import os
 
 import pandas as pd
 from numpy import dtype
@@ -42,6 +43,34 @@ class pandaprosumerContainer(ADict):
         r += "\nFollowing Rules are generated:"
         r += "\n   - %s (%s entries)" % ('rules', len(self['rules']))
         return r
+
+
+def save_prosumer_results(prosumer, res_folder):
+    """
+    Save the results of a prosumer simulation to CSV files.
+    
+    Args:
+        prosumer: The prosumer container object
+        res_folder: The base folder path where results will be saved
+    """
+    # for prosumer in energy_system.prosumer.values():
+    for i, ts in prosumer.time_series.iterrows():
+        try:
+            folder_path = os.path.join(res_folder, "prosumers", prosumer.name, f"res_{ts.element}")
+            if not os.path.exists(folder_path):
+                os.makedirs(folder_path)
+            
+            # Handle both dict-like access and attribute access for ts['name']
+            try:
+                series_name = ts['name'] if hasattr(ts, '__getitem__') else ts.name
+            except (AttributeError, KeyError):
+                series_name = f"series_{i}"
+            
+            output_file = os.path.join(folder_path, f"{series_name}.csv")
+            ts.data_source.df.to_csv(output_file)
+        except Exception as e:
+            logger.warning(f"Prosumer `{prosumer.name}`: Skipping writing results for"
+                          f" {ts.element}_{int(ts.element_index)}_{getattr(ts, 'name', 'unknown')}. Reason: {str(e)}")
 
 
 def get_default_prosumer_container_structure():
