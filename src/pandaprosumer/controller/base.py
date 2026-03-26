@@ -7,6 +7,7 @@ import logging as pplog
 import numpy as np
 
 from .mapped import MappedController
+from .messaging import ControllerMessaging
 from ..mapping import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
@@ -39,6 +40,9 @@ class BasicProsumerController(MappedController):
         """
         super().__init__(container, basic_prosumer_object, order, level, in_service, index,
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
+        
+        # Initialize messaging service
+        self.messaging = ControllerMessaging(self)
 
     def control_step(self, prosumer):
         """

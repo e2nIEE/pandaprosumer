@@ -269,12 +269,12 @@ class HeatPumpController(BasicProsumerController):
         t_cond_out_required_c, t_cond_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_cond_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
 
-        assert not np.isnan(mdot_cond_required_kg_per_s), f"Heat Pump {self.name} mdot_cond_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_cond_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_cond_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(self._t_evap_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_cond_out_required_c >= t_cond_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_cond_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_not_nan(mdot_cond_required_kg_per_s, "mdot_cond_required_kg_per_s")
+        self.messaging.assert_not_nan(t_cond_out_required_c, "t_cond_out_required_c")
+        self.messaging.assert_not_nan(t_cond_in_required_c, "t_cond_in_required_c")
+        self.messaging.assert_not_nan(self._t_evap_in_c, "t_evap_in_c")
+        self.messaging.assert_greater_equal(t_cond_out_required_c, t_cond_in_required_c, "t_cond_out_required_c", "t_cond_in_required_c")
+        self.messaging.assert_positive(mdot_cond_required_kg_per_s, "mdot_cond_required_kg_per_s")
 
         rerun = True
         while rerun:
@@ -359,15 +359,18 @@ class HeatPumpController(BasicProsumerController):
             "t_evap_out_c": t_evap_out_c,
         }
 
-        assert cop_hp >= 0, f"Heat Pump {self.name} COP is negative ({cop_hp}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_evap_kg_per_s >= 0, f"Heat Pump {self.name} mdot_evap_kg_per_s is negative ({mdot_evap_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_cond_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert p_comp_kw >= 0, f"Heat Pump {self.name} p_comp_kw is negative ({p_comp_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert q_cond_kw >= 0, f"Heat Pump {self.name} q_cond_kw is negative ({q_cond_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert q_evap_kw >= 0, f"Heat Pump {self.name} q_evap_kw is negative ({q_evap_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_positive(cop_hp, "cop_hp")
+        self.messaging.assert_positive(mdot_evap_kg_per_s, "mdot_evap_kg_per_s")
+        self.messaging.assert_positive(mdot_cond_kg_per_s, "mdot_cond_kg_per_s")
+        self.messaging.assert_positive(p_comp_kw, "p_comp_kw")
+        self.messaging.assert_positive(q_cond_kw, "q_cond_kw")
+        self.messaging.assert_positive(q_evap_kw, "q_evap_kw")
         max_t_cond_out_c = self._get_element_param(prosumer, 'max_t_cond_out_c')
         if not np.isnan(max_t_cond_out_c):
-            assert t_cond_out_c <= max_t_cond_out_c, f"Heat Pump {self.name} t_cond_out_c is higher than the maximum ({t_cond_out_c} > {max_t_cond_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            self.messaging.assert_condition(
+                t_cond_out_c <= max_t_cond_out_c,
+                f"t_cond_out_c ({t_cond_out_c}) is higher than maximum ({max_t_cond_out_c})"
+            )
 
         if np.isnan(self.t_keep_return_c) or mdot_evap_kg_per_s == 0 or abs(t_evap_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
             # If the actual output temperature is the same as the promised one, the storage is correctly applied

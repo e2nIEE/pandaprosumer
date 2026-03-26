@@ -119,7 +119,10 @@ class HeatDemandController(BasicProsumerController):
             t_return_demand_c = self._t_return_demand_c
         if np.isnan(self._mdot_demand_kg_per_s):
             if np.isnan(self._q_demand_kw):
-                raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
+                self.messaging.error(
+                    "Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input",
+                    ValueError
+                )
             else:
                 t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
                 cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
@@ -154,11 +157,11 @@ class HeatDemandController(BasicProsumerController):
             if t_feed_demand_c <= t_return_demand_c or mdot_demand_kg_per_s < 1e-12:
                 t_feed_demand_c = t_return_demand_c
                 mdot_demand_kg_per_s = 0
-            assert not np.isnan(t_feed_demand_c)
-            assert not np.isnan(t_return_demand_c)
-            assert not np.isnan(mdot_demand_kg_per_s)
-            assert mdot_demand_kg_per_s >= 0
-            assert t_feed_demand_c >= t_return_demand_c
+            self.messaging.assert_not_nan(t_feed_demand_c, "t_feed_demand_c")
+            self.messaging.assert_not_nan(t_return_demand_c, "t_return_demand_c")
+            self.messaging.assert_not_nan(mdot_demand_kg_per_s, "mdot_demand_kg_per_s")
+            self.messaging.assert_positive(mdot_demand_kg_per_s, "mdot_demand_kg_per_s")
+            self.messaging.assert_greater_equal(t_feed_demand_c, t_return_demand_c, "t_feed_demand_c", "t_return_demand_c")
             return t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
 
     def _save_state(self):
@@ -220,11 +223,11 @@ class HeatDemandController(BasicProsumerController):
 
         # ToDo: If t_in < t_out, return t_in, not t_out
 
-        assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_not_nan(self._t_in_c, "t_in_c")
+        self.messaging.assert_not_nan(t_feed_demand_c, "t_feed_demand_c")
+        self.messaging.assert_not_nan(t_return_demand_c, "t_return_demand_c")
+        self.messaging.assert_not_nan(q_demand_kw, "q_demand_kw")
+        self.messaging.assert_not_nan(mdot_demand_kg_per_s, "mdot_demand_kg_per_s")
 
         t_mean_c = (self._t_in_c + t_return_demand_c) / 2
         cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000

@@ -118,14 +118,17 @@ class DryCoolerController(BasicProsumerController):
         mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s', prosumer)
 
         if not np.isnan(self.t_previous_out_c):
-            assert self.mdot_previous_in_kg_per_s >= 0
-            assert self.t_previous_in_c + 1e-9 >= self.t_previous_out_c
+            self.messaging.assert_positive(self.mdot_previous_in_kg_per_s, "mdot_previous_in_kg_per_s")
+            self.messaging.assert_condition(
+                self.t_previous_in_c + 1e-9 >= self.t_previous_out_c,
+                f"t_previous_in_c ({self.t_previous_in_c}) < t_previous_out_c ({self.t_previous_out_c})"
+            )
             if self.t_previous_in_c < self.t_previous_out_c:
                 self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
-            assert mdot_required_kg_per_s >= 0
-            assert t_feed_required_c >= t_return_required_c
+            self.messaging.assert_positive(mdot_required_kg_per_s, "mdot_required_kg_per_s")
+            self.messaging.assert_greater_equal(t_feed_required_c, t_return_required_c, "t_feed_required_c", "t_return_required_c")
             return t_feed_required_c, t_return_required_c, mdot_required_kg_per_s
 
     def _calculate_air_cooled_heat_exchanger(self, prosumer, t_fluid_in_c, t_fluid_out_c, mdot_fluid_kg_per_s, t_air_in_c):
@@ -289,9 +292,9 @@ class DryCoolerController(BasicProsumerController):
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         t_out_required_c = self._get_input('t_out_c', prosumer)
 
-        assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_supplied_kg_per_s), f"Dry Cooler {self.name} mdot_supplied_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_not_nan(t_in_supplied_c, "t_in_supplied_c")
+        self.messaging.assert_not_nan(t_out_required_c, "t_out_required_c")
+        self.messaging.assert_not_nan(mdot_supplied_kg_per_s, "mdot_supplied_kg_per_s")
 
         (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
          mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
@@ -333,7 +336,10 @@ class DryCoolerController(BasicProsumerController):
             "t_fluid_out_c": t_fluid_out_c,
         }
 
-        assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_condition(
+            round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4),
+            f"t_fluid_out_c ({t_fluid_out_c}) > t_fluid_in_c ({t_fluid_in_c})"
+        )
 
         # ToDo: Add a condition to check whether the mass flows are equal
         if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:

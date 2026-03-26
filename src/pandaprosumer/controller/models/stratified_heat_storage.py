@@ -494,9 +494,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                                      resol=self.resol,
                                                      max_dt_s=max_dt_s)
 
-        assert (self._layer_temps_c > 0).all(), (f"The SHS model has diverged - "
-                                                 f"Negative temperature in the storage for "
-                                                 f"timestep {self.time} layers= {self._layer_temps_c}")
+        self.messaging.assert_condition(
+            (self._layer_temps_c > 0).all(),
+            f"Negative temperature in the storage: {self._layer_temps_c}"
+        )
 
         cp_discharge_j_per_kgk = float(self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_discharge_out_c + t_demand_in_c) / 2))
         q_discharge_kw = mdot_discharge_kg_per_s * cp_discharge_j_per_kgk * (t_discharge_out_c - t_demand_in_c) / 1e3
@@ -572,9 +573,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_demand_kg_per_s = sum(mdot_demand_tab_kg_per_s)
 
-        assert mdot_demand_kg_per_s >= 0, f"SHS {self.name} mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_out_c >= t_demand_in_c, f"SHS {self.name} t_demand_out_c < t_demand_in_c is negative ({t_demand_out_c} < {t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_in_c >= 0, f"SHS {self.name} t_demand_in_c is negative ({t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_positive(mdot_demand_kg_per_s, "mdot_demand_kg_per_s")
+        self.messaging.assert_greater_equal(t_demand_out_c, t_demand_in_c, "t_demand_out_c", "t_demand_in_c")
+        self.messaging.assert_positive(t_demand_in_c, "t_demand_in_c")
 
         layer_temp_init_c = self._layer_temps_c.copy()
 

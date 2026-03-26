@@ -80,10 +80,10 @@ class GasBoilerController(BasicProsumerController):
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
 
-        assert not np.isnan(t_out_required_c), f"Gas Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_in_required_c), f"Gas Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_required_kg_per_s).any(), f"Gas Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_out_required_c >= t_in_required_c, f"Gas Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_not_nan(t_out_required_c, "t_out_required_c")
+        self.messaging.assert_not_nan(t_in_required_c, "t_in_required_c")
+        self.messaging.assert_not_nan(mdot_required_kg_per_s, "mdot_required_kg_per_s")
+        self.messaging.assert_greater_equal(t_out_required_c, t_in_required_c, "t_out_required_c", "t_in_required_c")
 
         rerun = True
         while rerun:
@@ -112,7 +112,7 @@ class GasBoilerController(BasicProsumerController):
                     t_in_required_c = t_in_new_c
                     rerun = True
 
-        assert q_kw >= 0, f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
+        self.messaging.assert_positive(q_kw, "q_kw")
 
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
