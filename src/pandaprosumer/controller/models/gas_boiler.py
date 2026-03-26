@@ -18,8 +18,14 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         # Calculate the demand heating power
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
         
+        # Handle case where input temperature exceeds maximum output temperature
+        if max_t_out_c is not None and t_in_c > max_t_out_c + 1e-3:
+            # When t_in_c > max_t_out_c, set t_out_c = t_in_c but mdot = 0 and q_kw = 0
+            t_out_c = t_in_c
+            mdot_kg_per_s = 0
+            q_fluid_kw = 0
         # Apply maximum temperature constraint by keeping power constant and adjusting mass flow
-        if max_t_out_c is not None and t_out_c > max_t_out_c:
+        elif max_t_out_c is not None and t_out_c > max_t_out_c:
             t_out_c = max_t_out_c
             # Keep power constant and recalculate mass flow
             if t_out_c - t_in_c > 1e-3:
@@ -79,7 +85,14 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
             mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
         
         # Apply maximum temperature constraint after all other calculations by keeping power constant
-        if max_t_out_c is not None and t_out_c > max_t_out_c:
+        if max_t_out_c is not None and t_in_c > max_t_out_c + 1e-3:
+            # When t_in_c > max_t_out_c, we already handled this case above
+            # Just ensure the values remain consistent
+            t_out_c = t_in_c
+            mdot_kg_per_s = 0
+            q_fluid_kw = 0
+            mdot_fuel_kg_per_s = 0
+        elif max_t_out_c is not None and t_out_c > max_t_out_c:
             t_out_c = max_t_out_c
             # Keep power constant and recalculate mass flow
             if t_out_c - t_in_c > 1e-3:

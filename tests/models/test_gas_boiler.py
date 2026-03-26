@@ -488,4 +488,81 @@ class TestGasBoiler:
         assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
         assert gsb_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: pytest.approx(t_high_c, .01),
                                                               FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_dmd, .01)}]
+
+    def test_gas_boiler_t_in_greater_than_max_t_out(self):
+        """Test gas boiler calculation when t_in_c > max_t_out_c."""
+        # Test parameters
+        mdot_kg_per_s = 1.0  # Initial mass flow
+        t_in_c = 70.0        # Input temperature > max_t_out_c
+        t_out_c = 80.0      # Requested output temperature
+        cp_fluid_kj_per_kgk = 4.18  # Heat capacity of water
+        heating_value_kj_per_kg = 50000
+        efficiency_percent = 90
+        max_q_kw = 1000e3
+        min_q_kw = 100e3
+        q_previous_kw = np.nan
+        delta_t_previous_c = np.nan
+        max_ramp_up_kw_per_s = None
+        max_ramp_down_kw_per_s = None
+        time_step_s = 3600
+        allow_stop = True
+        max_t_out_c = 60.0  # Maximum output temperature
         
+        # Call the calculation function
+        q_fluid_kw, mdot_result, t_in_result, t_out_result, mdot_fuel = _calculate_gas_boiler_temp(
+            mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, heating_value_kj_per_kg,
+            efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
+            max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, allow_stop, max_t_out_c
+        )
+        
+        # When t_in_c > max_t_out_c, we should have:
+        # t_out_c = t_in_c, mdot = 0, q_kw = 0
+        expected_t_out_c = t_in_c  # Should equal input temperature
+        expected_mdot = 0.0        # Should be zero
+        expected_q_kw = 0.0        # Should be zero
+        
+        np.testing.assert_almost_equal(t_out_result, expected_t_out_c, decimal=6,
+                                      err_msg="When t_in_c > max_t_out_c, t_out_c should equal t_in_c")
+        
+        np.testing.assert_almost_equal(mdot_result, expected_mdot, decimal=6,
+                                      err_msg="When t_in_c > max_t_out_c, mass flow should be zero")
+        
+        np.testing.assert_almost_equal(q_fluid_kw, expected_q_kw, decimal=6,
+                                      err_msg="When t_in_c > max_t_out_c, heat output should be zero")
+
+    def test_gas_boiler_normal_operation_with_max_t_out_constraint(self):
+        """Test gas boiler normal operation where t_out_c > max_t_out_c but t_in_c < max_t_out_c."""
+        # Test parameters
+        mdot_kg_per_s = 1.0  # Initial mass flow
+        t_in_c = 40.0        # Input temperature < max_t_out_c
+        t_out_c = 70.0      # Requested output temperature > max_t_out_c
+        cp_fluid_kj_per_kgk = 4.18  # Heat capacity of water
+        heating_value_kj_per_kg = 50000
+        efficiency_percent = 90
+        max_q_kw = 1000e3
+        min_q_kw = 100e3
+        q_previous_kw = np.nan
+        delta_t_previous_c = np.nan
+        max_ramp_up_kw_per_s = None
+        max_ramp_down_kw_per_s = None
+        time_step_s = 3600
+        allow_stop = True
+        max_t_out_c = 60.0  # Maximum output temperature
+        
+        # Call the calculation function
+        q_fluid_kw, mdot_result, t_in_result, t_out_result, mdot_fuel = _calculate_gas_boiler_temp(
+            mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, heating_value_kj_per_kg,
+            efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
+            max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, allow_stop, max_t_out_c
+        )
+        
+        # When t_out_c > max_t_out_c but t_in_c < max_t_out_c,
+        # t_out_c should be constrained to max_t_out_c, but mdot and q_kw should be non-zero
+        expected_t_out_c = max_t_out_c  # Should be constrained to max_t_out_c
+        
+        np.testing.assert_almost_equal(t_out_result, expected_t_out_c, decimal=1,
+                                      err_msg="When t_out_c > max_t_out_c but t_in_c < max_t_out_c, t_out_c should be constrained to max_t_out_c")
+        
+        # Mass flow and heat output should be non-zero (since we can still deliver heat at constrained temperature)
+        assert mdot_result > 0, "Mass flow should be non-zero when t_in_c < max_t_out_c"
+        assert q_fluid_kw > 0, "Heat output should be non-zero when t_in_c < max_t_out_c"
