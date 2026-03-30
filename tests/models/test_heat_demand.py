@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
-from pandaprosumer import *
+from pandaprosumer import create_empty_prosumer_container, create_period, create_heat_demand, create_controlled_heat_demand
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():

@@ -1,6 +1,6 @@
 import pytest
-from pandaprosumer import *
 import numpy as np
+from pandaprosumer import create_empty_prosumer_container, create_period, create_solar_thermal, create_controlled_solar_thermal
 
 def _default_argument():
     return {}

@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
-
-from pandaprosumer import *
+from pandaprosumer import create_empty_prosumer_container, create_period, create_gas_boiler, create_controlled_gas_boiler
+from pandaprosumer.controller.models.gas_boiler import _calculate_gas_boiler_temp
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():

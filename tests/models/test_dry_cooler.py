@@ -1,5 +1,7 @@
 import pytest
-from pandaprosumer import *
+import numpy as np
+from pandaprosumer import create_empty_prosumer_container, create_period, create_dry_cooler, create_controlled_dry_cooler
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():

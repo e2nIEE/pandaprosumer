@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
-
-from pandaprosumer import *
+from pandaprosumer import create_empty_prosumer_container, create_period, create_heat_pump, create_controlled_heat_pump
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():

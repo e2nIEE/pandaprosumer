@@ -1,12 +1,11 @@
 import pytest
 import numpy as np
-
-from pandaprosumer import *
 from pandaprosumer.create import (
     create_empty_prosumer_container,
     create_period,
     create_pv_production,
 )
+from pandaprosumer.create_controlled import create_controlled_pv_production
 from pandaprosumer.controller import PvProductionController
 from pandaprosumer.controller.data_model import PvProductionComponentData
 
