@@ -36,10 +36,10 @@ def create_pandapipes_net_loop(ow_time_steps, mdot_dmd_kg_per_s, t_feed_prod_k, 
     # alpha_w_per_m2k -> u_w_per_m2k = pandapipes 0.11
     pandapipes.create_pipes_from_parameters(net, from_junctions=[j0, j1, j2, j2, j8], to_junctions=[j1, j2, j3, j8, j9],
                                             length_km=0.1,
-                                            diameter_m=0.05, alpha_w_per_m2k=10, u_w_per_m2k=10, text_k=t_amb_k)
+                                            diameter_m=0.05, u_w_per_m2k=10, text_k=t_amb_k)
     pandapipes.create_pipes_from_parameters(net, from_junctions=[j4, j5, j6, j10, j11], to_junctions=[j5, j6, j7, j11, j5],
                                             length_km=0.1,
-                                            diameter_m=0.05, alpha_w_per_m2k=10, u_w_per_m2k=10, text_k=t_amb_k)
+                                            diameter_m=0.05, u_w_per_m2k=10, text_k=t_amb_k)
 
     pandapipes.create_circ_pump_const_pressure(net,
                                                j7,
