@@ -106,7 +106,6 @@ class HeatExchangerController(BasicProsumerController):
         :param t_feed_c: The feed temperature
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        print("Calculating t_m_to_receive_for_t with t_feed_c:", t_feed_c)
         t_out_2_required_c, t_in_2_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_2_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
 
@@ -117,7 +116,6 @@ class HeatExchangerController(BasicProsumerController):
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
         else:
-            print("Calculating heat exchanger for t_feed_c:", t_feed_c)
             (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
              mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
                                                                                    t_out_2_required_c,
@@ -149,7 +147,6 @@ class HeatExchangerController(BasicProsumerController):
         :param mdot_2_kg_per_s: The secondary mass flow
         :param t_1_in_c: The primary input (hot feed pipe) temperature
         """
-        print(f"calculating heat exchanger with t_2_out_c: {t_2_out_c}, t_2_in_c: {t_2_in_c}, mdot_2_kg_per_s: {mdot_2_kg_per_s}, t_1_in_c: {t_1_in_c}")
         t_1_hot_nom_c = self._get_element_param(prosumer, 't_1_in_nom_c')
         t_1_cold_nom_c = self._get_element_param(prosumer, 't_1_out_nom_c')
         t_2_cold_nom_c = self._get_element_param(prosumer, 't_2_in_nom_c')
@@ -198,7 +195,6 @@ class HeatExchangerController(BasicProsumerController):
             # a higher t_1_out_c
             # ToDo: create test for this case
             min_delta_t_cold_c = 3  # ToDo: constant
-            print(self.time, 'delta_t_hot_c', delta_t_hot_c)
             t_1_out_c = t_2_in_c + min_delta_t_cold_c
             assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name}: t_1_out_c ({t_1_out_c}) is greater than t_1_in_c ({t_1_in_c})"
             x = 1 - min_delta_t_cold_c / delta_t_hot_c
@@ -304,7 +300,6 @@ class HeatExchangerController(BasicProsumerController):
 
         :param prosumer: The prosumer object
         """
-        print(self.time, "Heat Exchanger control step for prosumer", prosumer.name)
         if not prosumer.rerun:
             self._save_state()
         else:
@@ -329,7 +324,6 @@ class HeatExchangerController(BasicProsumerController):
 
         t_1_in_c = self._t_feed_in_c
         
-        print(t_out_2_required_c, t_in_2_required_c, mdot_tab_required_kg_per_s, t_1_in_c)
 
         assert not np.isnan(t_1_in_c), f"Heat Exchanger {self.name} t_1_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_2_required_c), f"Heat Exchanger {self.name} t_out_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
@@ -343,15 +337,12 @@ class HeatExchangerController(BasicProsumerController):
             mdot_2_kg_per_s = mdot_2_required_kg_per_s
             t_2_in_c = t_in_2_required_c
             t_2_out_c = t_out_2_required_c
-            print("No exchanged")
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
-            print(result_mdot_tab_kg_per_s)
             
         
             # Handle case where primary mass flow is provided but no heat exchange occurs (full bypass)
             if not np.isnan(self._mdot_1_provided_kg_per_s):
-                print("Full bypass with provided primary mass flow")
                 mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
                 # Temperature remains the same (bypass)
                 t_1_out_c = t_1_in_c
@@ -446,7 +437,6 @@ class HeatExchangerController(BasicProsumerController):
             # If the actual output mass flow is higher than the one required, redistribute the extra mass flow
             # to the other downstream elements,
             # so the through the secondary side mass flow is the same as the total distributed mass flow
-            print(f"Heat Exchanger {self.name} delivered more mass flow ({mdot_2_kg_per_s} kg/s) than required ({mdot_2_required_kg_per_s} kg/s), redistributing the extra mass flow to the downstream elements")
             for i in range(len(result_mdot_tab_kg_per_s)):
                 result_mdot_tab_kg_per_s[i] = result_mdot_tab_kg_per_s[i] + (mdot_2_kg_per_s - mdot_2_required_kg_per_s) / len(result_mdot_tab_kg_per_s)
 
@@ -460,7 +450,6 @@ class HeatExchangerController(BasicProsumerController):
         result = np.array(
             [[q_exchanged_kw, mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c]]
         )
-        print('results:', result)
 
         self.last_result = {
             "q_exchanged_kw": q_exchanged_kw,
