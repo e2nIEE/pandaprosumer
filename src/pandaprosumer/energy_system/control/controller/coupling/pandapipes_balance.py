@@ -73,13 +73,6 @@ class PandapipesBalanceControl(BasicProsumerController):
             net.heat_consumer.loc[hc_element_index, "qext_w"] = q_ext_w
             net.heat_consumer.loc[hc_element_index, "controlled_mdot_kg_per_s"] = mdot_kg_per_s
 
-        # print("PandapipesBalanceControl.control_step")
-        # print(self.pandapipes_connector_controllers)
-        # print(self.hc_element_indexes)
-        # print(self.connector_prosumers)
-        # print(net.heat_consumer)
-        # print(net.circ_pump_pressure)
-
         if not self.first:
             assert not np.isnan(net.heat_consumer["_pandaprosumer_t_feed_c"]).any(), \
                 "The heat_consumer elements must have a '_pandaprosumer_t_feed_c' attribute"
