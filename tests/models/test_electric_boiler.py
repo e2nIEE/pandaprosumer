@@ -78,8 +78,7 @@ class TestElectricBoiler:
 
                                                                order=0,
                                                                period=_default_period(prosumer),
-                                                               **_default_argument())
-        print(elb_controller_idx)
+                                                               **_default_argument()))
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         input_columns_expected = []
         result_columns_expected = ['q_kw', 'mdot_kg_per_s', 't_in_c', 't_out_c', 'p_kw']

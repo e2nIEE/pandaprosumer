@@ -105,7 +105,6 @@ def tvd_convection_step(layer_temps_c,
     #
     ## bottom layer, see equation (3) in the paper
     #
-    # print("time step and: ", timeStep, temp_charge_c, temp_return_c, mass_flow_charge_kg_per_s, mass_flow_discharge_kg_per_s);input()
     T = layer_temps_c
     deltaT = np.diff(T, 1)
     T_return = t_return_c
@@ -128,14 +127,13 @@ def tvd_convection_step(layer_temps_c,
     term_3 = m_cC_p * (deltaT[0])
     term_4 = m_dC_p * (T_return - T_1)
     delta_layer_0 = term_1 + term_2 + term_3 + term_4
-    # print("delta_layer_0: ", delta_layer_0)
-    #
+
     theta = np.ones_like(T)
     limiter = np.ones_like(T)
     num = np.zeros_like(T)
     den = np.ones_like(T)
     den[2:] = -deltaT[1:]
-    # print("den.size: ", deltaT[1:].size)
+
     if m_eC_p > 0:
         num[:-1] = -deltaT[:]
     else:
