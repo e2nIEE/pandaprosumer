@@ -101,7 +101,8 @@ class TestDryCooler:
         input_columns_expected = ["mdot_fluid_kg_per_s", "t_in_c", "t_out_c", "t_air_in_c", "phi_air_in_percent"]
         result_columns_expected = ['q_exchanged_kw', 'p_fans_kw', 'n_rpm', 'mdot_air_m3_per_h',
                                    'mdot_air_kg_per_s', 't_air_in_c', 't_air_out_c',
-                                   'mdot_fluid_kg_per_s', 't_fluid_in_c', 't_fluid_out_c']
+                                   'mdot_fluid_kg_per_s', 't_fluid_in_c', 't_fluid_out_c',
+                                   'mdot_water_kg_per_s']
 
         assert dc_controller.input_columns == input_columns_expected
         assert dc_controller.result_columns == result_columns_expected
@@ -122,7 +123,7 @@ class TestDryCooler:
         dc_controller.time_step(prosumer, "2020-01-01 00:00:00")
 
         dc_controller.control_step(prosumer)
-        expected = [0., 0., 0., 0., 0., 20., 20., 2., 80., 80.]
+        expected = [0., 0., 0., 0., 0., 20., 20., 2., 80., 80., 0.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_demand(self):
@@ -143,7 +144,7 @@ class TestDryCooler:
 
         expected = [334.81412, .027525388, 104.512057, 19785.70731,
                     5.9638259, 20., 75.75057,
-                    2., 80., 40.]
+                    2., 80., 40., 0.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_nominal(self):
@@ -175,7 +176,7 @@ class TestDryCooler:
 
         expected = [q_w / 1000, 15 * 3, 300, 200,
                     .06510377, 20., 25.,
-                    mdot_water_kg_per_s, 50., 38.]
+                    mdot_water_kg_per_s, 50., 38., 0.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]), .015)
 
     def test_controller_run_control_adiabatic_nominal(self):
@@ -209,7 +210,7 @@ class TestDryCooler:
 
         expected = [q_w / 1000, 15 * 3, 300, 200,
                     .06510377, 20., 25.02236376,
-                    mdot_water_kg_per_s, 50., 38.]
+                    mdot_water_kg_per_s, 50., 38., 0.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]), .015)
 
     def test_controller_run_control_adiabatic(self):
@@ -245,7 +246,7 @@ class TestDryCooler:
 
         expected = [q_w / 1000, .327555633, 58.1405016, 38.7603344,
                     .0127564, 9.1619787, 34.7959426,
-                    mdot_water_kg_per_s, 50., 38.]
+                    mdot_water_kg_per_s, 50., 38., 0.00005752]
         assert dc_controller.step_results == pytest.approx(np.array([expected]), .015)
 
     def test_controller_run_control_adiabatic_no_sat(self):
@@ -282,7 +283,7 @@ class TestDryCooler:
 
         expected = [q_w / 1000, .36699935, 60.38635981, 40.2575732,
                     .0131884, 9.6682871, 34.461331,
-                    mdot_water_kg_per_s, 50., 38.]
+                    mdot_water_kg_per_s, 50., 38., 0.00005624]
         assert dc_controller.step_results == pytest.approx(np.array([expected]), .015)
 
     def test_controller_run_control_adiabatic_outrange(self):
@@ -321,7 +322,7 @@ class TestDryCooler:
 
         expected = [0.49796684, 138.996498, 436.903009, 291.268673,
                     .098901, 9.161978, 14.161978,
-                    mdot_water_kg_per_s, 50., 48.1851619]
+                    mdot_water_kg_per_s, 50., 48.1851619, 0.00044576]
         assert dc_controller.step_results == pytest.approx(np.array([expected]), .015)
 
     def test_controller_run_control_data(self):
@@ -348,7 +349,7 @@ class TestDryCooler:
 
         expected = [818.9229, 2.572381, 474.27876, 89788.117,
                     29.23532, 10., 37.8167,
-                    39.16667, 53., 48.]
+                    39.16667, 53., 48., 0.]
         assert dc_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_t_m_to_receive(self):

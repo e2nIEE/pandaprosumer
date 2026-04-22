@@ -2,6 +2,8 @@ from pandapipes.constants import *
 
 CELSIUS_TO_K = NORMAL_TEMPERATURE
 TEMPERATURE_CONVERGENCE_THRESHOLD_C = 1
+# Latent heat of vaporization of water at ~30°C [J/kg], for adiabatic cooler water consumption
+LATENT_HEAT_VAPORIZATION_WATER_J_PER_KG = 2430e3
 MAX_RERUN = 20
 
 
