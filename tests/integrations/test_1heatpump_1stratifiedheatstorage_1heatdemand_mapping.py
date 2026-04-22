@@ -1,10 +1,13 @@
 import pytest
+import numpy as np
+import pandas as pd
 from pandas.testing import assert_frame_equal, assert_series_equal
+from pandaprosumer import DFData
 
 from pandaprosumer.run_time_series import run_timeseries
-from pandaprosumer.mapping import GenericMapping
+from pandaprosumer.mapping import GenericMapping, FluidMixMapping
+from pandaprosumer import create_empty_prosumer_container, create_period, create_controlled_const_profile, create_controlled_heat_pump, create_controlled_stratified_heat_storage, create_controlled_heat_demand
 
-from pandaprosumer import *
 
 
 class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:

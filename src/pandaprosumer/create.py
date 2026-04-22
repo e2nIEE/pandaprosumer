@@ -663,16 +663,55 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
 
 
 def create_heat_storage(prosumer,
-                        q_capacity_kwh=0.,
+                        e_capacity_kwh=0.,
+                        capacity_kg=np.nan,
+                        min_temp_c=np.nan,
+                        max_temp_c=np.nan,
+                        u_w_per_m2k=np.nan,
+                        area_wall_m2=np.nan,
+                        t_ext_c=np.nan,
                         in_service=True,
                         index=None,
                         name=None,
                         **kwargs):
+    """
+    Creates a heat storage element. Use with GenericMapping (power only) or
+    FluidMixMapping (uniform tank; set capacity_kg and optionally t_tank_init_c,
+    min_temp_c, max_temp_c for SOC from temperature).
+    """
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
+    
+    if np.isnan(capacity_kg) and e_capacity_kwh == 0.:
+        raise ValueError("Error creating Heat Storage:At least one of capacity_kg and e_capacity_kwh must be provided.")
+    elif not np.isnan(capacity_kg) and not e_capacity_kwh == 0:
+        raise ValueError("Error creating Heat Storage: Only one of capacity_kg and e_capacity_kwh can be provided, not both.")
+    else:
+        if not np.isnan(min_temp_c) and not np.isnan(max_temp_c):
+            t_mean_c = (max_temp_c + min_temp_c) / 2
+            delta_t_c = max_temp_c - min_temp_c
+            if np.isnan(capacity_kg):
+                # Estimate capacity_kg from e_capacity_kwh
+                capacity_kg = e_capacity_kwh * 3600 / (prosumer.get_cp_fluid_j_per_kgk(t_mean_c) / 1000 * delta_t_c)
+            else:
+                # Estimate e_capacity_kwh from capacity_kg
+                e_capacity_kwh = capacity_kg * prosumer.get_cp_fluid_j_per_kgk(t_mean_c) / 1000 * delta_t_c / 3600
+        else:
+            if e_capacity_kwh == 0.:
+                raise ValueError("Error creating Heat Storage: If capacity_kg is provided, min_temp_c and max_temp_c must also be provided to estimate e_capacity_kwh.")
+            else:
+                # Cannot estimate capacity_kg without temperature limits, but we can still create the storage with e_capacity_kwh (no temperature needed with generic mapping)
+                pass
 
-    entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
+    entries = dict(zip(
+        ['name', 'e_capacity_kwh', 'in_service',
+         'capacity_kg', 'min_temp_c', 'max_temp_c',
+         'u_w_per_m2k', 'area_wall_m2', 't_ext_c'],
+        [name, e_capacity_kwh, in_service,
+         capacity_kg, min_temp_c, max_temp_c,
+         u_w_per_m2k, area_wall_m2, t_ext_c]
+    ))
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
     return int(index)

@@ -23,6 +23,14 @@ class HeatStorageElementData:
         ('name', dtype(object)),
         ('in_service', bool),
 
-        # Instance properties
-        ('q_capacity_kwh', 'f8')
+        # Power-only mode (GenericMapping)
+        ('e_capacity_kwh', 'f8'),
+
+        # Optional: FluidMix / uniform tank mode
+        ('capacity_kg', 'f8'),       # Tank fluid mass [kg]; if set, enables FluidMixMapping
+        ('min_temp_c', 'f8'),       # Min temperature for SOC from T (optional)
+        ('max_temp_c', 'f8'),       # Max temperature for SOC from T (optional)
+        ('u_w_per_m2k', 'f8'),      # Wall U-value [W/(m²·K)]
+        ('area_wall_m2', 'f8'),     # Wall area [m²]
+        ('t_ext_c', 'f8'),         # Ambient temperature for losses [°C]
     ])

@@ -53,7 +53,8 @@ def run_loop(net, ts_variables, run_control_fct=run_control, output_writer_fct=_
             run_time_step(net, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
-def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=None):
+def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=None, max_iter=30,
+                   continue_on_divergence=False):
 
     start = prosumer.period.at[period_index, 'start']
     end = prosumer.period.at[period_index, 'end']
@@ -61,7 +62,8 @@ def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=Non
     dur = pd.date_range(start, end, freq='%ss' % resol, tz=prosumer.period.at[period_index, 'timezone'])
 
     #control_diagnostic_pandaprosumer(prosumer, start, end, resol)
-    ts_variables = init_time_series(prosumer, dur, verbose)
+    ts_variables = init_time_series(prosumer, dur, verbose, max_iter=max_iter,
+                                     continue_on_divergence=continue_on_divergence)
     time_series_initialization(ts_variables['controller_order'])
     run_loop(prosumer, ts_variables, output_writer_fct=output_writer_fct, evaluate_net_fct=evaluate_prosumer_fct,
              run_control_fct=run_control, check_results_fct=check_results_fct)
@@ -178,6 +180,8 @@ def init_time_series(prosumer, time_steps, verbose=True, **kwargs):
     ts_variables = prepare_run_ctrl(prosumer, **kwargs)
     ts_variables['time_steps'] = time_steps
     ts_variables['verbose'] = verbose
+    ts_variables['max_iter'] = kwargs.get('max_iter', 30)
+    ts_variables['continue_on_divergence'] = kwargs.get('continue_on_divergence', False)
 
     if logger.level != 10 and verbose:
         # simple progress bar

@@ -245,3 +245,23 @@ class TestHeatDemand:
         hd_controller.control_step(prosumer)
         expected = [104.58385, 0., .50163058, 80., 30.16287]  # no uncovered demand
         assert hd_controller.step_results == pytest.approx(np.array([expected]), 0.01, 1)
+
+    def test_controller_run_control_no_mass_flow(self):
+        """
+        Test the control step of the heat demand controller with different inputs
+        """
+        params = {'t_in_set_c': 76.85,
+                  't_out_set_c': 30}
+        prosumer = create_empty_prosumer_container()
+        hd_controller_idx = create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer),
+                                                          **params)
+        hd_controller = prosumer.controller.iloc[hd_controller_idx].object
+        hd_controller.inputs = np.array([[104.58385, .5, 80, np.nan, np.nan]])
+        # Provide a temperature but no mass flow
+        hd_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 80
+        hd_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 0.
+
+        hd_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hd_controller.control_step(prosumer)
+        expected = [0., 104.58385, 0., 80., 30.]  # full uncovered demand
+        assert hd_controller.step_results == pytest.approx(np.array([expected]), 0.01, 1)

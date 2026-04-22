@@ -105,7 +105,6 @@ def tvd_convection_step(layer_temps_c,
     #
     ## bottom layer, see equation (3) in the paper
     #
-    # print("time step and: ", timeStep, temp_charge_c, temp_return_c, mass_flow_charge_kg_per_s, mass_flow_discharge_kg_per_s);input()
     T = layer_temps_c
     deltaT = np.diff(T, 1)
     T_return = t_return_c
@@ -128,14 +127,13 @@ def tvd_convection_step(layer_temps_c,
     term_3 = m_cC_p * (deltaT[0])
     term_4 = m_dC_p * (T_return - T_1)
     delta_layer_0 = term_1 + term_2 + term_3 + term_4
-    # print("delta_layer_0: ", delta_layer_0)
-    #
+
     theta = np.ones_like(T)
     limiter = np.ones_like(T)
     num = np.zeros_like(T)
     den = np.ones_like(T)
     den[2:] = -deltaT[1:]
-    # print("den.size: ", deltaT[1:].size)
+
     if m_eC_p > 0:
         num[:-1] = -deltaT[:]
     else:
@@ -270,7 +268,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         h_ext_w_per_m2k = self._get_element_param(prosumer, 'h_ext_w_per_m2k')  # natural convection
 
         # Heat transfer coefficient with the environment (diffusion through insulation + convection with ambient air)
-        self.U_w_per_m2k = 1 / ((1 / h_ext_w_per_m2k) + (d_insu_m / k_insu_w_per_mk))  # see eq. 6
+        if h_ext_w_per_m2k == 0:
+            self.U_w_per_m2k = k_insu_w_per_mk / d_insu_m
+        else:
+            self.U_w_per_m2k = 1 / ((1 / h_ext_w_per_m2k) + (d_insu_m / k_insu_w_per_mk))  # see eq. 6
         # We assume that the tank fluid to overall heat transfer coefficient for the top and bottom layers is the same
         # as the overall heat transfer coefficient
         self.U1_w_per_m2k = self.UN_w_per_m2k = self.U_w_per_m2k
@@ -598,9 +599,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
-                # If the heat Pump is not able to deliver the required mass flow,
+                # If the stratified heat storage is not able to deliver the required mass flow,
                 # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
+                # still return the same temperature, even if the mass flow delivered to them by the Stratified Heat Storage is lower
                 t_return_tab_c = self.get_treturn_tab_c(prosumer)
                 if abs(mdot_delivered_kg_per_s) > 1e-8:
                     t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s

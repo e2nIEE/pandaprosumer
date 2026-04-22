@@ -1,10 +1,14 @@
 import copy
 
 import pandas as pd
-from numpy import dtype
+from collections.abc import Iterable
+import numpy as np
+from numpy import dtype, mean
 
 from pandapower.auxiliary import ADict
 from pandaprosumer import __version__
+
+from .constants import CELSIUS_TO_K
 
 import logging
 
@@ -42,6 +46,27 @@ class pandaprosumerContainer(ADict):
         r += "\nFollowing Rules are generated:"
         r += "\n   - %s (%s entries)" % ('rules', len(self['rules']))
         return r
+
+    def get_cp_fluid_j_per_kgk(self, t_c):
+        """
+        Get the heat capacity [J/(kg·K)] of the prosumer's fluid for a temperature t_c [°C].
+        Default to 4180.0 [J/(kg·K)] if no valid fluid is defined in the prosumer.
+        If t_c is a list of temperature, use the average of the temperatures.
+        Use the pandapipes fluid library.
+
+        :param t_c (float | list[float]): Fluid temperature [°C]
+        :return: float
+        """
+        if isinstance(t_c, Iterable):
+            t_c = np.mean(t_c)
+        fluid = getattr(self, "fluid", None)
+        if fluid is not None and hasattr(fluid, "get_heat_capacity"):
+            cp_j_per_kgk = fluid.get_heat_capacity(CELSIUS_TO_K + t_c)
+        else:
+            cp_j_per_kgk = 4180.0  # default water [J/(kg·K)]
+        if np.isnan(cp_j_per_kgk) or cp_j_per_kgk <= 0:
+            cp_j_per_kgk = 4180.0
+        return cp_j_per_kgk
 
 
 def get_default_prosumer_container_structure():

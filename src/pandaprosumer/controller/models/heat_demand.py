@@ -201,6 +201,7 @@ class HeatDemandController(BasicProsumerController):
             return
 
         if not np.isnan(self._get_input('q_received_kw')):
+            # Generic Mapping case
             q_received_kw = self._get_input('q_received_kw')
             q_uncovered_kw = self._q_demand_kw - q_received_kw
             result = np.array([[q_received_kw, q_uncovered_kw, 0, 0, 0]])
@@ -216,34 +217,45 @@ class HeatDemandController(BasicProsumerController):
             self.applied = True
             return
 
+        # FluidMix Mapping case
         q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
 
         # ToDo: If t_in < t_out, return t_in, not t_out
 
-        assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
-
-        t_mean_c = (self._t_in_c + t_return_demand_c) / 2
-        cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-        if np.isnan(self._mdot_received_kg_per_s):
+        if np.isnan(self._mdot_received_kg_per_s) and not np.isnan(self._t_in_c):
+            # If upstream sends no flow, but there is a temperature, we can receive some heat with potential 'infinite' masses flow
             q_received_kw = q_demand_kw
+            effective_t_in_c = self._t_in_c
+            t_mean_c = (effective_t_in_c + t_return_demand_c) / 2
+            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
             mdot_received_kg_per_s = q_demand_kw / (cp_kj_per_kgk * (self._t_in_c - t_return_demand_c))
+            t_out_c = t_return_demand_c
+        elif self._mdot_received_kg_per_s == 0:
+            # No flow from upstream means no heat transfer
+            q_received_kw = 0.0
+            mdot_received_kg_per_s = 0.0
+            effective_t_in_c = self._t_in_c
+            t_out_c = t_return_demand_c  # Should it be effective_t_in_c instead to have t_in_c == t_out_c ?
         else:
+            # Normal operation with flow from upstream
+            effective_t_in_c = self._t_in_c
+            assert not np.isnan(effective_t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
             mdot_received_kg_per_s = self._mdot_received_kg_per_s
-            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (self._t_in_c - t_return_demand_c)
-        t_out_c = t_return_demand_c
+
+            t_mean_c = (effective_t_in_c + t_return_demand_c) / 2
+            cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
+            q_received_kw = cp_kj_per_kgk * mdot_received_kg_per_s * (effective_t_in_c - t_return_demand_c)
+            t_out_c = t_return_demand_c
+
         # Calculate the difference between the received and the required power, wo considering the temperature level
         # FixMe: Consider the temperature level in the output
         q_uncovered_kw = q_demand_kw - q_received_kw
-        result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, self._t_in_c, t_out_c]])
+        result = np.array([[q_received_kw, q_uncovered_kw, mdot_received_kg_per_s, effective_t_in_c, t_out_c]])
         self.last_result = {
             "q_received_kw": q_received_kw,
             "q_uncovered_kw": q_uncovered_kw,
             "mdot_received_kg_per_s": mdot_received_kg_per_s,
-            "t_in_c": self._t_in_c,
+            "t_in_c": effective_t_in_c,
             "t_out_c": t_out_c
         }
         if np.isnan(result).any():

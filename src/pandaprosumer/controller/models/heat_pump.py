@@ -133,7 +133,14 @@ class HeatPumpController(BasicProsumerController):
 
         # 3. Calculate carnot cop
         # FixMe: Why using the condenser output temperature ?
-        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+        temperature_lift = t_cond_out_c - t_evap_in_c
+        if temperature_lift <= 0:
+            # Heat pump cannot operate if condenser outlet temp is not higher than evaporator inlet temp
+            return (0, 0, 0, 0,
+                    mdot_cond_kg_per_s, t_cond_in_c, t_cond_in_c,
+                    0, t_evap_in_c, t_evap_in_c)
+        
+        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / temperature_lift
 
         # 3bis. Calculate Lorenz cop
         mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
@@ -268,7 +275,7 @@ class HeatPumpController(BasicProsumerController):
 
         t_cond_out_required_c, t_cond_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_cond_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
-
+        
         assert not np.isnan(mdot_cond_required_kg_per_s), f"Heat Pump {self.name} mdot_cond_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"

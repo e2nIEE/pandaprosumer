@@ -4,9 +4,11 @@ Module containing the BasicProsumerController class.
 
 import logging as pplog
 
+from collections.abc import Iterable
 import numpy as np
 
 from .mapped import MappedController
+from .. import CELSIUS_TO_K
 from ..mapping import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
@@ -47,6 +49,19 @@ class BasicProsumerController(MappedController):
         :param prosumer: The prosumer object
         """
         super().control_step(prosumer)
+
+    def get_cp_fluid_j_per_kgk(self, prosumer, t_c):
+        """
+        Get the heat capacity [J/(kg·K)] of the prosumer's fluid for a temperature t_c [°C].
+        Default to 4180.0 [J/(kg·K)] if no valid fluid is defined in the prosumer.
+        If t_c is a list of temperature, use the average of the temperatures.
+        Use the pandapipes fluid library.
+
+        :param prosumer: The prosumer object
+        :param t_c (float | list[float]): Fluid temperature [°C]
+        :return: float
+        """
+        return prosumer.get_cp_fluid_j_per_kgk(t_c)
 
     def get_treturn_tab_c(self, prosumer):
         """

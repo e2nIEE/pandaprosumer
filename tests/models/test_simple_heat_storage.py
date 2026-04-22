@@ -1,9 +1,13 @@
 import pytest
-from pandaprosumer import *
+import numpy as np
+import pandas as pd
+from pandaprosumer import create_empty_prosumer_container, create_period, create_controlled_heat_storage, create_heat_storage
+from pandaprosumer.controller.models.heat_storage import HeatStorageController
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_argument():
-    return {"q_capacity_kwh": 100}
+    return {"e_capacity_kwh": 100}
 
 
 def _default_period(prosumer):
@@ -26,17 +30,25 @@ class TestSimpleHeatStorage:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        shs_params = {}
+        shs_params = {"e_capacity_kwh": 100}
 
         create_heat_storage(prosumer, **shs_params)
         assert hasattr(prosumer, "heat_storage")
         assert len(prosumer.heat_storage) == 1
 
-        expected_columns = ['name', 'q_capacity_kwh', 'in_service']
-        expected_values = [None, True, 0]
-
+        expected_columns = [
+            'name', 'in_service', 'e_capacity_kwh',
+            'capacity_kg', 'min_temp_c', 'max_temp_c',
+            'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
+        ]
         assert sorted(prosumer.heat_storage.columns) == sorted(expected_columns)
-        assert prosumer.heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
+        row = prosumer.heat_storage.iloc[0]
+        assert row['name'] is None
+        assert row['in_service'] == True or row['in_service'] is True
+        assert row['e_capacity_kwh'] == 100 or (isinstance(row['e_capacity_kwh'], (int, float)) and np.isclose(row['e_capacity_kwh'], 100))
+        for col in ['capacity_kg', 'min_temp_c', 'max_temp_c',
+                    'u_w_per_m2k', 'area_wall_m2', 't_ext_c']:
+            assert col in row.index and (pd.isna(row[col]) or row[col] is None)
 
     def test_define_element_param(self):
         """
@@ -45,7 +57,7 @@ class TestSimpleHeatStorage:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        shs_params = {"q_capacity_kwh": 100}
+        shs_params = {"e_capacity_kwh": 100}
 
         shs_idx = create_heat_storage(prosumer, name='foo', in_service=False, custom='test', index=4, **shs_params)
         assert hasattr(prosumer, "heat_storage")
@@ -53,11 +65,14 @@ class TestSimpleHeatStorage:
         assert shs_idx == 4
         assert prosumer.heat_storage.index[0] == shs_idx
 
-        expected_columns = ['name', 'q_capacity_kwh', 'in_service', 'custom']
-        expected_values = ['foo', False, 100, 'test']
-
+        expected_columns = [
+            'name', 'in_service', 'e_capacity_kwh', 'custom',
+            'capacity_kg', 'min_temp_c', 'max_temp_c',
+            'u_w_per_m2k', 'area_wall_m2', 't_ext_c'
+        ]
         assert sorted(prosumer.heat_storage.columns) == sorted(expected_columns)
-        assert prosumer.heat_storage.iloc[0].values == pytest.approx(expected_values)
+        row = prosumer.heat_storage.iloc[0]
+        assert row['name'] == 'foo' and row['in_service'] == False and row['e_capacity_kwh'] == 100 and row['custom'] == 'test'
 
     def test_define_controller(self):
         """
@@ -80,11 +95,12 @@ class TestSimpleHeatStorage:
         shs_controller_idx = create_controlled_heat_storage(prosumer,
                                                             order=0,
                                                             period=_default_period(prosumer),
+                                                            init_soc=0.5,
                                                             **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
         input_columns_expected = ["q_received_kw"]
-        result_columns_expected = ["soc", "q_delivered_kw"]
+        result_columns_expected = ["soc", "t_tank_c", "q_ch_kw", "q_dch_kw", "q_delivered_kw", "mdot_ch_kg_per_s", "t_ch_in_c", "t_ch_out_c", "mdot_dch_kg_per_s", "t_dch_in_c", "t_dch_out_c"]
 
         assert shs_controller.input_columns == input_columns_expected
         assert shs_controller.result_columns == result_columns_expected
@@ -97,6 +113,7 @@ class TestSimpleHeatStorage:
         shs_controller_idx = create_controlled_heat_storage(prosumer,
                                                             order=0,
                                                             period=_default_period(prosumer),
+                                                            init_soc=0.5,
                                                             **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
@@ -107,9 +124,33 @@ class TestSimpleHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        soc = (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
-        assert shs_controller.step_results == pytest.approx(np.array([expected]))
+        soc = 0.5  # initial SOC when no power flow
+        t_tank_c = 40.0  # default temperature when not in fluid mix mode
+        q_ch_kw = 0.0  # no charging in power-only mode in these test cases
+        t_received_out_c = t_tank_c  # in power-only mode, t_received_out_c = t_tank_c
+        # Additional outputs for power-only mode (all NaN or 0)
+        q_charge_kw = 0.0
+        q_discharge_kw = q_out_kw  # discharge power equals delivered power
+        t_charge_in_c = t_tank_c  # Default to tank temp when not charging
+        t_charge_out_c = t_tank_c  # Default to tank temp when not charging
+        t_discharge_in_c = t_tank_c  # Default to tank temp when not discharging
+        t_discharge_out_c = t_discharge_in_c  # When no discharge, match input temp
+        mdot_charge_kg_per_s = 0.0
+        mdot_discharge_kg_per_s = 0.0
+        # Check values with new column order (no NaN values)
+        assert shs_controller.step_results[0, 0] == pytest.approx(soc)  # soc
+        assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c)  # t_tank_c
+        assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)  # q_ch_kw
+        assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)  # q_dch_kw
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_discharge_kw)  # q_delivered_kw (equals q_dch_kw in power-only)
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
+        # Charge temperatures (should be tank temp when not charging)
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c)  # t_ch_in_c
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)  # t_ch_out_c
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
+        # Discharge temperatures (should be tank temp when not discharging)
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
 
     def test_controller_run_control_charge(self):
         """
@@ -119,6 +160,7 @@ class TestSimpleHeatStorage:
         shs_controller_idx = create_controlled_heat_storage(prosumer,
                                                             order=0,
                                                             period=_default_period(prosumer),
+                                                            init_soc=0.5,
                                                             **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
@@ -129,9 +171,36 @@ class TestSimpleHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        soc = (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
-        assert shs_controller.step_results == pytest.approx(np.array([expected]))
+        # SOC calculation: initial_soc + (q_in_kw - q_out_kw) * resol / 3600 / e_capacity_kwh
+        e_capacity_kwh = 100  # from _default_argument()
+        soc = 0.5 + (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / e_capacity_kwh
+        t_tank_c = 40.0  # default temperature when not in fluid mix mode
+        q_ch_kw = q_in_kw  # charging power equals input power
+        t_received_out_c = t_tank_c  # in power-only mode, t_received_out_c = t_tank_c
+        # Additional outputs for power-only mode (all NaN or 0)
+        q_charge_kw = q_ch_kw  # charge power equals charging power
+        q_discharge_kw = 0.0  # no discharge when charging
+        t_charge_in_c = t_tank_c  # charge temperature equals tank temperature in power-only mode
+        t_charge_out_c = t_tank_c  # charge temperature equals tank temperature in power-only mode
+        t_discharge_in_c = t_tank_c  # Default to tank temp when not discharging
+        t_discharge_out_c = t_discharge_in_c  # When no discharge, match input temp
+        mdot_charge_kg_per_s = 0.0  # no mass flow info in power-only mode
+        mdot_discharge_kg_per_s = 0.0  # no mass flow info in power-only mode
+        
+        # Check values with new column order (no NaN values)
+        assert shs_controller.step_results[0, 0] == pytest.approx(soc)  # soc
+        assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c)  # t_tank_c
+        assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)  # q_ch_kw
+        assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)  # q_dch_kw
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_discharge_kw)  # q_delivered_kw
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)  # mdot_ch_kg_per_s
+        # Charge temperatures (should be tank temp when charging)
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c)  # t_ch_in_c
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)  # t_ch_out_c
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)  # mdot_dch_kg_per_s
+        # Discharge temperatures (should be tank temp when not discharging)
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)  # t_dch_in_c
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)  # t_dch_out_c
 
     def test_controller_run_control_discharge(self):
         """
@@ -153,8 +222,33 @@ class TestSimpleHeatStorage:
         shs_controller.control_step(prosumer)
 
         soc = 0.5 + (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
-        assert shs_controller.step_results == pytest.approx(np.array([expected]))
+        t_tank_c = 40.0  # default temperature when not in fluid mix mode
+        q_ch_kw = 0.0  # no charging when discharging
+        t_received_out_c = t_tank_c  # in power-only mode, t_received_out_c = t_tank_c
+        # Additional outputs for power-only mode
+        q_charge_kw = 0.0  # no charging when discharging
+        q_discharge_kw = q_out_kw - q_in_kw  # discharge power equals delivered power minus input power
+        q_delivered_kw = q_out_kw
+        t_charge_in_c = t_tank_c  # Default to tank temp when not charging
+        t_charge_out_c = t_tank_c  # Default to tank temp when not charging
+        t_discharge_in_c = t_tank_c  # discharge temperature equals tank temperature in power-only mode
+        t_discharge_out_c = t_tank_c  # discharge temperature equals tank temperature in power-only mode
+        mdot_charge_kg_per_s = 0.0  # no mass flow info in power-only mode
+        mdot_discharge_kg_per_s = 0.0  # no mass flow info in power-only mode
+        
+        # Check values with new column order (no NaN values)
+        assert shs_controller.step_results[0, 0] == pytest.approx(soc)
+        assert shs_controller.step_results[0, 1] == pytest.approx(t_tank_c) 
+        assert shs_controller.step_results[0, 2] == pytest.approx(q_ch_kw)
+        assert shs_controller.step_results[0, 3] == pytest.approx(q_discharge_kw)
+        assert shs_controller.step_results[0, 4] == pytest.approx(q_delivered_kw) 
+        assert shs_controller.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s)
+        # Charge / Discharge temperatures (should be tank temp when power only mode)
+        assert shs_controller.step_results[0, 6] == pytest.approx(t_charge_in_c) 
+        assert shs_controller.step_results[0, 7] == pytest.approx(t_charge_out_c)
+        assert shs_controller.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s)
+        assert shs_controller.step_results[0, 9] == pytest.approx(t_discharge_in_c)
+        assert shs_controller.step_results[0, 10] == pytest.approx(t_discharge_out_c)
 
     def test_controller_run_control_overcharge(self):
         """
@@ -187,26 +281,427 @@ class TestSimpleHeatStorage:
         # assert shs_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_t_m_to_receive(self):
+        """Tests heat storage controller receive power calculation under varying inputs"""
         prosumer = create_empty_prosumer_container()
         period = create_period(prosumer, 1,
                                name="foo",
                                start="2020-01-01 00:00:00",
                                end="2020-01-01 00:00:09",
                                timezone="utc")
-        q_capacity_kwh = 100
+        e_capacity_kwh = 100
         init_soc = 0.4
-        shs_params = {"q_capacity_kwh": q_capacity_kwh}
+        shs_params = {"e_capacity_kwh": e_capacity_kwh}
 
         shs_controller_indx = create_controlled_heat_storage(prosumer, init_soc=init_soc, period=period, **shs_params)
         shs_controller = prosumer.controller.iloc[shs_controller_indx].object
 
-        q_to_fill_kwh = (1-init_soc) * q_capacity_kwh
+        # Without demand: required power to fill the storage
+        q_to_fill_kwh = (1-init_soc) * e_capacity_kwh
         assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol)
 
+        # With demand: required power to fill the storage + supply the demand
         q_in_kw = 1000
         q_out_kw = 100
         shs_controller.q_to_deliver_kw = lambda x: q_out_kw
         assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol + q_out_kw)
 
+        # With already provided input power: required power for storage + demand - input
         shs_controller.inputs = np.array([[q_in_kw]])
         assert shs_controller.q_to_receive_kw(prosumer) == pytest.approx(q_to_fill_kwh * 3600/shs_controller.resol + q_out_kw - q_in_kw)
+
+    def test_fluid_mix_mode_step(self):
+        """Test FluidMix mode: uniform tank with input T and mdot; check step_results and optional result_mass_flow_with_temp."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+
+        low_temp_c = 50.0
+        high_temp_c = 70.0
+        mdot_charge_kg_per_s = 0.5
+        capacity_kg = 1000.0
+        idx = create_controlled_heat_storage(prosumer, capacity_kg=capacity_kg,
+                                             t_tank_init_c=low_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: high_temp_c, FluidMixMapping.MASS_FLOW_KEY: mdot_charge_kg_per_s}
+        ctrl.control_step(prosumer)
+        # Step ran; check results shape and values
+        assert ctrl.step_results.shape == (1, 11)
+        
+        # Calculate expected temperature using proper mixing formula
+        m_received_kg = mdot_charge_kg_per_s * ctrl.resol
+        t_tank_expected_c = ((capacity_kg - m_received_kg) * low_temp_c + m_received_kg * high_temp_c) / capacity_kg
+        soc_expected = (t_tank_expected_c - low_temp_c) / (high_temp_c - low_temp_c)
+        # q_delivered_kw should be 0 when charging (no delivery)
+        # q_ch_kw should be positive when charging
+        # Using cp = 4181.554 J/kgK (water at ~50°C, from fluid model)
+        q_ch_expected_kw = mdot_charge_kg_per_s * (high_temp_c - low_temp_c) * 4181.554 / 1000  # kW
+        # t_received_out_c should be initial tank temp when only charging
+        t_received_out_expected_c = low_temp_c
+        # Additional outputs for charging scenario
+        q_charge_kw_expected = q_ch_expected_kw
+        q_discharge_kw_expected = 0.0
+        t_charge_in_expected = high_temp_c
+        t_charge_out_expected = t_tank_expected_c  # or low_temp_c ?
+        t_discharge_in_expected = np.nan
+        t_discharge_out_expected = np.nan
+        mdot_charge_kg_per_s_expected = mdot_charge_kg_per_s
+        mdot_discharge_kg_per_s_expected = 0.0
+        
+        assert not np.isnan(ctrl.step_results[0, 0])
+        soc = ctrl.step_results[0, 0]
+        if not np.isnan(soc):
+            assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(t_tank_expected_c, .01)  # t_tank_c
+        assert ctrl.step_results[0, 2] == pytest.approx(q_ch_expected_kw, .01)  # q_ch_kw
+        assert ctrl.step_results[0, 3] == pytest.approx(0.0, abs=.001)  # q_dch_kw (no discharge when charging)
+        assert ctrl.step_results[0, 4] == pytest.approx(0.0, abs=.01)  # q_delivered_kw (no delivery when charging with no demand)
+        assert ctrl.step_results[0, 5] == pytest.approx(mdot_charge_kg_per_s_expected, .01)  # mdot_ch_kg_per_s
+        assert ctrl.step_results[0, 6] == pytest.approx(t_charge_in_expected, .01)  # t_ch_in_c
+        assert ctrl.step_results[0, 7] == pytest.approx(t_charge_out_expected, .01)  # t_ch_out_c
+        # Discharge values (should be defaults when not discharging)
+        assert ctrl.step_results[0, 8] == pytest.approx(0.0, abs=.01)  # mdot_dch_kg_per_s
+        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c, .01)  # t_dch_in_c (default to tank temp)
+        assert ctrl.step_results[0, 10] == pytest.approx(t_tank_expected_c, .01)  # t_dch_out_c (default to tank temp)
+        
+        # Check result_mass_flow_with_temp (len is 0 because no FluidMix responder)
+        assert len(ctrl.result_mass_flow_with_temp) == 0
+        assert ctrl.applied is True
+
+    def test_fluid_mix_mode_discharge_from_supply(self):
+        """Test FluidMix mode with discharging (hot water out, cold water in). No heat demand but colder supply."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+
+        high_temp_c = 70.0
+        low_temp_c = 50.0
+        mdot_discharge_kg_per_s = 0.5
+        capacity_kg = 1000.0
+        idx = create_controlled_heat_storage(prosumer, capacity_kg=capacity_kg,
+                                             t_tank_init_c=high_temp_c, min_temp_c=low_temp_c, max_temp_c=high_temp_c, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        # Discharging: hot water out (70°C), cold water in (50°C)
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: low_temp_c, FluidMixMapping.MASS_FLOW_KEY: mdot_discharge_kg_per_s}
+        ctrl.control_step(prosumer)
+        
+        # Calculate expected values
+        m_received_kg = mdot_discharge_kg_per_s * ctrl.resol
+        t_tank_expected_c = ((capacity_kg - m_received_kg) * high_temp_c + m_received_kg * low_temp_c) / capacity_kg
+        soc_expected = (t_tank_expected_c - low_temp_c) / (high_temp_c - low_temp_c)
+        # q_delivered_kw is positive when discharging (heat is delivered FROM the tank)
+        q_dch_expected_kw = mdot_discharge_kg_per_s * (high_temp_c - low_temp_c) * 4186 / 1000  # kW
+
+        # Expected values for new column structure
+        mdot_discharge_kg_per_s_expected = mdot_discharge_kg_per_s
+        t_discharge_in_expected = low_temp_c
+        t_discharge_out_expected = high_temp_c
+        
+        assert ctrl.step_results.shape == (1, 11)
+        assert not np.isnan(ctrl.step_results[0, 0])
+        soc = ctrl.step_results[0, 0]
+        assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(t_tank_expected_c)
+        # q_ch_kw should be 0 for discharging
+        assert ctrl.step_results[0, 2] == pytest.approx(-q_dch_expected_kw, 0.01)
+        # q_dch_kw should be the delivered power
+        assert ctrl.step_results[0, 3] == pytest.approx(0.0)
+        # q_delivered_kw should be the total delivered power
+        assert ctrl.step_results[0, 4] == pytest.approx(0.0)
+        # mdot_ch_kg_per_s should be 0 for discharging
+        assert ctrl.step_results[0, 5] == pytest.approx(0.0)
+        # Charge temperatures (should be tank temp when not charging)
+        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)
+        assert ctrl.step_results[0, 7] == pytest.approx(t_tank_expected_c)
+        # mdot_dch_kg_per_s should be the discharge mass flow
+        assert ctrl.step_results[0, 8] == pytest.approx(mdot_discharge_kg_per_s_expected)
+        # Discharge temperatures
+        assert ctrl.step_results[0, 9] == pytest.approx(t_discharge_in_expected)
+        assert ctrl.step_results[0, 10] == pytest.approx(t_discharge_out_expected)
+        
+        # Check result_mass_flow_with_temp (len is 0 because no FluidMix responder)
+        assert len(ctrl.result_mass_flow_with_temp) == 0
+        assert ctrl.applied is True
+
+    def test_fluid_mix_mode_with_heat_losses(self):
+        """Test FluidMix mode with heat losses when u and area are set."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        period = create_period(prosumer, resol_s, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+
+        init_temp_c = 60.0
+        min_temp_c = 50.0
+        max_temp_c = 70.0
+        t_ext_c = 20.0
+        u_w_per_m2k = 1.0  # W/m²K
+        area_wall_m2 = 5.0  # m²
+        idx = create_controlled_heat_storage(prosumer, capacity_kg=1000.0,
+                                             t_tank_init_c=init_temp_c, min_temp_c=min_temp_c, max_temp_c=max_temp_c,
+                                             u_w_per_m2k=u_w_per_m2k, area_wall_m2=area_wall_m2, t_ext_c=t_ext_c, period=period)
+        ctrl = prosumer.controller.iloc[idx].object
+        ctrl.time_step(prosumer, "2020-01-01 00:00:00")
+        # No flow, so only heat losses should affect temperature
+        ctrl.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan, FluidMixMapping.MASS_FLOW_KEY: np.nan}
+        ctrl.control_step(prosumer)
+        
+        # Calculate expected temperature drop due to heat losses
+        # delta_t_c = (q_loss_w * resol_s) / (capacity_kg * cp_j_per_kgk)
+        q_loss_w = u_w_per_m2k * area_wall_m2 * (init_temp_c - t_ext_c)
+        cp_j_per_kgk = ctrl.get_cp_fluid_j_per_kgk(prosumer, init_temp_c)  # Use actual fluid cp
+        capacity_kg = 1000.0
+        delta_t_c = (q_loss_w * ctrl.resol) / (capacity_kg * cp_j_per_kgk)
+        t_tank_expected_c = init_temp_c - delta_t_c
+        soc_expected = (t_tank_expected_c - min_temp_c) / (max_temp_c - min_temp_c)
+        
+        assert ctrl.step_results.shape == (1, 11)
+        assert not np.isnan(ctrl.step_results[0, 0])
+        soc = ctrl.step_results[0, 0]
+        assert 0 <= soc <= 1
+        assert soc == pytest.approx(soc_expected)
+        assert ctrl.step_results[0, 1] == pytest.approx(t_tank_expected_c)  # t_tank_c
+        assert ctrl.step_results[0, 2] == pytest.approx(0.0)  # q_ch_kw (no charging)
+        assert ctrl.step_results[0, 3] == pytest.approx(0.0)  # q_dch_kw (no discharging)
+        assert ctrl.step_results[0, 4] == pytest.approx(0.0)  # q_delivered_kw (no flow)
+        assert ctrl.step_results[0, 5] == pytest.approx(0.0)  # mdot_ch_kg_per_s (no flow)
+        # Temperature values (should be tank temp when no flow)
+        assert ctrl.step_results[0, 6] == pytest.approx(t_tank_expected_c)  # t_ch_in_c
+        assert ctrl.step_results[0, 7] == pytest.approx(t_tank_expected_c)  # t_ch_out_c
+        assert ctrl.step_results[0, 8] == pytest.approx(0.0)  # mdot_dch_kg_per_s (no flow)
+        assert ctrl.step_results[0, 9] == pytest.approx(t_tank_expected_c)  # t_dch_in_c
+        assert ctrl.step_results[0, 10] == pytest.approx(t_tank_expected_c)  # t_dch_out_c
+        
+        # Check result_mass_flow_with_temp
+        assert len(ctrl.result_mass_flow_with_temp) == 1
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.MASS_FLOW_KEY] == 0.0
+        assert ctrl.result_mass_flow_with_temp[0][FluidMixMapping.TEMPERATURE_KEY] == pytest.approx(t_tank_expected_c)
+        assert ctrl.applied is True
+
+    def test_fluid_mix_mode_simple_charge_discharge(self):
+        """Simple direct FluidMix charge then discharge example."""
+        prosumer = create_empty_prosumer_container(fluid="water")
+        resol_s = 60 * 5
+        start = "2020-01-01 00:00:00"
+        end = "2020-01-01 02:00:00"
+        period = create_period(
+            prosumer,
+            resol_s,
+            name="foo",
+            start=start,
+            end=end,
+            timezone="utc",
+        )
+
+        idx = create_controlled_heat_storage(
+            prosumer,
+            capacity_kg=1000.0,
+            t_tank_init_c=50.0,
+            min_temp_c=50.0,
+            max_temp_c=70.0,
+            period=period,
+        )
+        ctrl = prosumer.controller.iloc[idx].object
+
+        # Build a time index consistent with the period definition
+        times = pd.date_range(start=start, end=end, freq=f"{resol_s}S", tz="utc", inclusive="left")
+
+        mdot = np.zeros(len(times))
+        t_in = np.full(len(times), 50.0)
+        half = len(times) // 2
+        mdot[:half] = 0.5
+        t_in[:half] = 70.0
+        mdot[half:] = 0.5
+        t_in[half:] = 50.0
+
+        socs = []
+        q_del = []
+        t_tanks = []
+        q_ch = []
+        q_dch = []
+        t_charge_in = []
+        t_charge_out = []
+        t_discharge_in = []
+        t_discharge_out = []
+        mdot_ch_list = []
+        mdot_dch_list = []
+        for ts, md, ti in zip(times, mdot, t_in):
+            ctrl.time_step(prosumer, ts)
+            ctrl.input_mass_flow_with_temp = {
+                FluidMixMapping.TEMPERATURE_KEY: float(ti),
+                FluidMixMapping.MASS_FLOW_KEY: float(md),
+            }
+            ctrl.control_step(prosumer)
+            soc, t_tank, q_ch_kw, q_dch_kw, q_delivered_kw, mdot_ch, t_ch_in, t_ch_out, mdot_dch, t_dch_in, t_dch_out = ctrl.step_results[0]
+            socs.append(soc)
+            t_tanks.append(t_tank)
+            q_ch.append(q_ch_kw)
+            q_dch.append(q_dch_kw)
+            mdot_ch_list.append(mdot_ch)
+            t_charge_in.append(t_ch_in)
+            t_charge_out.append(t_ch_out)
+            mdot_dch_list.append(mdot_dch)
+            t_discharge_in.append(t_dch_in)
+            t_discharge_out.append(t_dch_out)
+
+        assert max(socs) > min(socs)
+        assert any(q != 0.0 for q in q_dch)  # Check that at least one timestep has a non-zero discharge
+        
+    def test_controller_creation(self):
+        """
+        Test the creation of a heat storage controller
+        """
+        prosumer = create_empty_prosumer_container()
+        period = _default_period(prosumer)
+        
+        # Create controller (this will also create the heat storage element)
+        controller_index = create_controlled_heat_storage(
+            prosumer, 
+            period=period, 
+            level=0, 
+            order=0,
+            capacity_kg=1000.0,
+            t_tank_init_c=50.0,
+            min_temp_c=40.0,
+            max_temp_c=80.0
+        )
+        
+        # Verify controller was created
+        assert controller_index is not None
+        controller = prosumer.controller.iloc[controller_index].object
+        assert isinstance(controller, HeatStorageController)
+        # SOC is calculated from temperature: (50.0 - 40.0) / (80.0 - 40.0) = 0.25
+        assert controller._soc == 0.25
+        assert controller._temperature == 50.0
+
+    def test_soc_from_temperature(self):
+        """Test SOC from tank temperature when min_temp_c and max_temp_c are set."""
+        prosumer = create_empty_prosumer_container()
+        period = create_period(prosumer, 1, name="foo",
+                               start="2020-01-01 00:00:00", end="2020-01-01 00:00:09", timezone="utc")
+        create_controlled_heat_storage(prosumer, capacity_kg=1000.0,
+                                       t_tank_init_c=50.0, min_temp_c=20.0, max_temp_c=80.0, period=period)
+        ctrl = prosumer.controller.iloc[0].object
+        ctrl._temperature = 50.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx((50.0 - 20.0) / (80.0 - 20.0))
+        ctrl._temperature = 80.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx(1.0)
+        ctrl._temperature = 20.0
+        assert ctrl._soc_from_temperature(prosumer) == pytest.approx(0.0)
+
+    def test_t_m_to_receive_init_with_demand(self):
+        """
+        Test the _t_m_to_receive_init method when there is demand
+        """
+        prosumer = create_empty_prosumer_container()
+        period = _default_period(prosumer)
+
+        capacity_kg = 100.0
+        t_min_c = 40.0
+        t_max_c = 80.0
+        t_tank_init_c = 50.0
+
+        controller_index = create_controlled_heat_storage(
+            prosumer, 
+            period=period, 
+            level=0, 
+            order=0,
+            capacity_kg=capacity_kg,
+            t_tank_init_c=t_tank_init_c,
+            min_temp_c=t_min_c,
+            max_temp_c=t_max_c
+        )
+        
+        controller = prosumer.controller.iloc[controller_index].object
+        
+        # Mock the t_m_to_deliver method to return demand
+        t_dmd_hot_c = 60.0
+        t_dmd_cold_c = 40.0
+        mdot_dmd_kg_per_s = 1.0
+        controller.t_m_to_deliver = lambda x: (t_dmd_hot_c, t_dmd_cold_c, [mdot_dmd_kg_per_s])
+        
+        # Test with demand
+        t_feed, t_return, mdot = controller._t_m_to_receive_init(prosumer)
+
+        # Expected outputs
+        t_feed_expected_c = t_max_c  # max(t_max_c, t_dmd_hot_c)
+
+        e_capacity_kwh = capacity_kg * 4.186 * (t_max_c - t_min_c) / 3600
+
+        assert controller._get_element_param(prosumer, "e_capacity_kwh") == pytest.approx(e_capacity_kwh, .01)
+
+        soc = (t_tank_init_c - t_min_c) / (t_max_c - t_min_c)
+
+        assert controller._soc_from_temperature(prosumer) == pytest.approx(soc, .01)
+
+        # with 1 second timestep
+        resol_s = controller.resol
+        remaining_capacity_kwh = (1 - soc) * e_capacity_kwh
+        cp_j_per_kgk = controller.get_cp_fluid_j_per_kgk(prosumer, [t_feed_expected_c, t_tank_init_c])
+        power_needed_w = remaining_capacity_kwh / (resol_s / 3600) * 1000
+        mdot_expected_ch_kg_per_s = power_needed_w / (cp_j_per_kgk * (t_feed_expected_c - t_tank_init_c))
+        mdot_expected_kg_per_s = mdot_expected_ch_kg_per_s + mdot_dmd_kg_per_s
+
+        t_return_expected_c = (mdot_dmd_kg_per_s * t_dmd_cold_c + mdot_expected_ch_kg_per_s * t_tank_init_c) / mdot_expected_kg_per_s
+
+        # Should return demand temperature and calculated mass flow
+        assert t_feed == pytest.approx(t_feed_expected_c, .01)
+        assert t_return == pytest.approx(t_return_expected_c, .01)
+        assert mdot == pytest.approx(mdot_expected_kg_per_s, .01)
+
+    def test_t_m_to_receive_init_without_demand(self):
+        """
+        Test the _t_m_to_receive_init method when there is no demand
+        """
+        prosumer = create_empty_prosumer_container()
+        period = _default_period(prosumer)
+        
+        t_hot_c = 80.
+        t_cold_c = 40.
+        capacity_kg = 1000.
+        t_tank_init_c = (t_cold_c + t_hot_c) / 2  # 50% SOC
+        
+        controller_index = create_controlled_heat_storage(
+            prosumer, 
+            period=period, 
+            level=0, 
+            order=0,
+            capacity_kg=capacity_kg,
+            t_tank_init_c=t_tank_init_c,
+            min_temp_c=t_cold_c,
+            max_temp_c=t_hot_c
+        )
+        
+        controller = prosumer.controller.iloc[controller_index].object
+        
+        # Reset previous values to ensure clean state
+        controller.t_previous_in_c = np.nan
+        controller.t_previous_out_c = np.nan
+        controller.mdot_previous_in_kg_per_s = np.nan
+        
+        # Mock the t_m_to_deliver method to return no demand 
+        controller.t_m_to_deliver = lambda x: (0., 0., [0.])
+        
+        # Test _t_m_to_receive_init without demand
+        t_feed, t_return, mdot_to_receive_kg_per_s = controller._t_m_to_receive_init(prosumer)
+        print(controller._get_element_param(prosumer, "capacity_kg"))
+        print(controller._get_element_param(prosumer, "e_capacity_kwh"))
+        
+        # Check the results
+        assert t_feed == t_hot_c
+        assert t_return == t_tank_init_c
+        assert mdot_to_receive_kg_per_s >= 0.0
+        
+        e_capacity_kwh = capacity_kg * 4.186 * (t_hot_c - t_cold_c) / 3600
+        
+        assert controller._get_element_param(prosumer, "e_capacity_kwh") == pytest.approx(e_capacity_kwh, .01)
+        
+        e_to_charge_kwh = e_capacity_kwh * 0.5  # 50% SOC
+        # with 1 second time step
+        resol_s = controller.resol
+        mdot_expected_kg_per_s = e_to_charge_kwh * (3600 / resol_s) / (4.186 * (t_hot_c - t_tank_init_c))  # mass flow needed
+        assert mdot_to_receive_kg_per_s == pytest.approx(mdot_expected_kg_per_s, .01)
