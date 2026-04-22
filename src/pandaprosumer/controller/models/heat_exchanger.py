@@ -7,7 +7,7 @@ import numpy as np
 from pandapipes import call_lib
 
 from pandaprosumer.controller.base import BasicProsumerController
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
@@ -172,6 +172,13 @@ class HeatExchangerController(BasicProsumerController):
         delta_t_hot_nom_c = t_1_hot_nom_c - t_2_hot_nom_c
         delta_t_cold_nom_c = t_1_cold_nom_c - t_2_cold_nom_c
         delta_t_hot_c = t_1_in_c - t_2_out_c
+        
+        if delta_t_hot_c <= 0:
+            t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
+                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
+                                                      heat_consumer=False)
+            return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
+        
         # Logarithmic mean temperature difference (LMTD) at nominal conditions
         if delta_t_hot_nom_c == delta_t_cold_nom_c:
             lmtd_nom = delta_t_hot_nom_c
@@ -183,23 +190,42 @@ class HeatExchangerController(BasicProsumerController):
         max_t_1_out_c = t_1_in_c - min_delta_t_1_c
         min_x = 1 - (max_t_1_out_c - t_2_in_c) / delta_t_hot_c
 
-        min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1  # FixMe: case where min_x == 1 or >= 1 ?
-
-        if a < min_a:
-            # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
-            # else t_1_out_c would be hotter than t_1_in_c
-            a = min_a
-            q_ratio = delta_t_hot_c / (min_a * lmtd_nom)
-            q_exchanged_w = q_ratio * q_exchanged_nom_w
+        if min_x >= 1 :
+            # If t_2_in_c >= max_t_1_out, ignore min_delta_t_1_c but calculate which q_exchanged will give
+            # a higher t_1_out_c
+            # ToDo: create test for this case
+            min_delta_t_cold_c = 3  # ToDo: constant
+            t_1_out_c = t_2_in_c + min_delta_t_cold_c
+            assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name}: t_1_out_c ({t_1_out_c}) is greater than t_1_in_c ({t_1_in_c})"
+            x = 1 - min_delta_t_cold_c / delta_t_hot_c
+            if x > 0 and x < 1:
+                a = -np.log(1 - x) / x
+            else:
+                raise ValueError(f"In prosumer {prosumer.name} a timestep {self.time}: Heat Exchanger {self.name}: Invalid value of x ({x}) calculated from min_delta_t_cold_c ({min_delta_t_cold_c}) and delta_t_hot_c ({delta_t_hot_c})")
+            q_exchanged_w = (delta_t_hot_c * q_exchanged_nom_w) / (a * lmtd_nom)
             mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kgk * delta_t_2_c)
-            # delta_t_cold = _calculate_cold_temperature_difference(a, delta_t_hot_c)
-            t_1_out_c = max_t_1_out_c
             t_mean_1_c = CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2
-            mdot_1_kg_per_s = q_exchanged_w / (self.primary_fluid.get_heat_capacity(t_mean_1_c) * (t_1_in_c - t_1_out_c))
+            cp_1_j_per_kgk = self.primary_fluid.get_heat_capacity(t_mean_1_c)
+            mdot_1_kg_per_s = q_exchanged_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
+
         else:
-            t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
-                                                      delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
-                                                      heat_consumer=False)
+            min_a = -np.log(1 - min_x) / min_x if min_x != 0 else 1
+
+            if a < min_a:
+                # If 'a' is too low, q_exchanged_w is too big so reduce mdot_2_kg_per_s
+                # else t_1_out_c would be hotter than t_1_in_c
+                a = min_a
+                q_ratio = delta_t_hot_c / (min_a * lmtd_nom)
+                q_exchanged_w = q_ratio * q_exchanged_nom_w
+                mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kgk * delta_t_2_c)
+                # delta_t_cold = _calculate_cold_temperature_difference(a, delta_t_hot_c)
+                t_1_out_c = max_t_1_out_c
+                t_mean_1_c = CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2
+                mdot_1_kg_per_s = q_exchanged_w / (self.primary_fluid.get_heat_capacity(t_mean_1_c) * (t_1_in_c - t_1_out_c))
+            else:
+                t_1_out_c, mdot_1_kg_per_s = compute_temp(q_ratio, q_exchanged_w, t_1_in_c, t_2_in_c, t_2_out_c,
+                                                          delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
+                                                          heat_consumer=False)
 
         # If the primary mass flow is too low, no heat is exchanged to the secondary side
         # if mdot_1_kg_per_s < 1e-6:
@@ -297,6 +323,7 @@ class HeatExchangerController(BasicProsumerController):
         mdot_2_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
 
         t_1_in_c = self._t_feed_in_c
+        
 
         assert not np.isnan(t_1_in_c), f"Heat Exchanger {self.name} t_1_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_2_required_c), f"Heat Exchanger {self.name} t_out_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
@@ -312,6 +339,14 @@ class HeatExchangerController(BasicProsumerController):
             t_2_out_c = t_out_2_required_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
+            
+        
+            # Handle case where primary mass flow is provided but no heat exchange occurs (full bypass)
+            if not np.isnan(self._mdot_1_provided_kg_per_s):
+                mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
+                # Temperature remains the same (bypass)
+                t_1_out_c = t_1_in_c
+
         else:
             # FixMe: case where t_out_2_required_c == t_in_2_required_c
             t_out_2_required_c_init = t_out_2_required_c
@@ -327,8 +362,8 @@ class HeatExchangerController(BasicProsumerController):
             nb_runs = 0
             while rerun:
                 nb_runs += 1
-                if nb_runs > 20:
-                    raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+                if nb_runs > MAX_RERUN:
+                    raise Exception(f"Heat Exchanger calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
                 (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
                  mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
                                                                                        t_out_2_required_c,

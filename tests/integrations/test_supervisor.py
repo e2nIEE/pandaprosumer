@@ -316,7 +316,6 @@ class TestSupervisor:
         expected_rule_count = 4  # rule1, rule2, rule2_, rule3
         assert len(rules_df) == expected_rule_count
 
-        print(rules_df['controlled_columns'])
         assert set(rules_df['controlled_columns']) == {'p_comp_kw', 'price_gas', 'q_demand_kw'}
 
         combining_rule_index = rules_df[rules_df['logical_operator'] == 'AND'].index

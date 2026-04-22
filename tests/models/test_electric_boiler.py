@@ -119,11 +119,9 @@ class TestElectricBoiler:
         Test the input and result columns of the Electric Boiler controller"""
         prosumer = create_empty_prosumer_container()
         elb_controller_idx = create_controlled_electric_boiler(prosumer,
-
                                                                order=0,
                                                                period=_default_period(prosumer),
                                                                **_default_argument())
-        print(elb_controller_idx)
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
         input_columns_expected = []
         result_columns_expected = ['q_kw', 'mdot_kg_per_s', 't_in_c', 't_out_c', 'p_kw']
