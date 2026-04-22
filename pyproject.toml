@@ -40,7 +40,7 @@ dependencies = [
     "scipy>=1.11.0",
     "seaborn==0.12.2",
     "simbench==1.4.0",
-    "tqdm==4.65.0",
+    "tqdm==4.66.3",
     "numba==0.59.1",
     "openpyxl==3.1.5",
     "CoolProp==6.7.0",
