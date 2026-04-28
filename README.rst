@@ -15,7 +15,7 @@ own components based on the pandaprosumer framework.
 It also comes with a logic to simulate different combinations of these components with each other and different
 inputs (e.g. a heat demand timeseries) and outputs (e.g. power load timeseries on the powergrid).
 
-It extends the libraries `pandapower <http://pandapower.org>`_ and `pandapipes <https:/pandapipes.org>`_ ,
+It extends the libraries `pandapower <https://pandapower.org>`_ and `pandapipes <https://pandapipes.org>`_ ,
 was created at Universität Kassel, Fraunhofer IEE and has received support from the European Institute for Energy Research in the frame of the "Senergy Nets" project, funded by the European Union.
 
 Getting started:
