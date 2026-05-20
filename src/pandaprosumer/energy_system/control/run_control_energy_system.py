@@ -136,7 +136,10 @@ def get_controller_order_energy_system(energy_system):
             continue
         nets = [net] * len(net.controller)
         comp_list += nets
-        controller_list += [net.controller.values]
+        # Remove the 'name' column from network controller for consistency with prosumer controllers
+        net_controller = net.controller.copy()
+        net_controller = net_controller.drop(columns=['name'], errors='ignore')
+        controller_list += [net_controller.values]
 
     for pros_name in energy_system['prosumer'].keys():
         prosumer = energy_system['prosumer'][pros_name]
@@ -147,6 +150,8 @@ def get_controller_order_energy_system(energy_system):
         controller = prosumer.controller.copy()
         controller['initial_run'] = False
         controller['recycle'] = False
+        # Remove the 'name' column from prosumer controller before adding to energy system controller list
+        controller = controller.drop(columns=['name'], errors='ignore')
         comp_list += prosumers
         controller_list += [controller.values]
 
@@ -154,6 +159,7 @@ def get_controller_order_energy_system(energy_system):
         # if no controllers are in the net, we have no levels and no order lists
         return [0], [[]]
     else:
+        # Now we can safely create the DataFrame with energy_system.controller.columns
         controller_list = pd.DataFrame(np.concatenate(controller_list), columns=energy_system.controller.columns)
         controller_list = controller_list.astype(energy_system.controller.dtypes)
         return get_controller_order(comp_list, controller_list)

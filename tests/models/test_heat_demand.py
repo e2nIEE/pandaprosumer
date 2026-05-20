@@ -53,8 +53,8 @@ class TestHeatDemand:
         assert hd_idx == 4
         assert prosumer.heat_demand.index[0] == hd_idx
 
-        expected_columns = ["name", "scaling", "in_service", "custom", "t_in_set_c", "t_out_set_c", ]
-        expected_values = ['foo', 3.2, False, 'test', 63, 35]
+        expected_columns = ["name", "scaling", "in_service", "t_in_set_c", "t_out_set_c", "custom"]
+        expected_values = ['foo', 3.2, False, 63, 35, 'test']
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
         assert prosumer.heat_demand.iloc[0].values == pytest.approx(expected_values)

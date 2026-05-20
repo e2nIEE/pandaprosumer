@@ -36,8 +36,9 @@ def _create_pipes_network():
                                                plift_bar=5,
                                                t_flow_k=350)
 
+    # For pandapipes 0.13.0+, use exactly 2 params from [controlled_mdot_kg_per_s, qext_w, deltat_k, treturn_k]
     pandapipes.create_heat_consumer(net, from_junction=j1, to_junction=j2,
-                                    qext_w=100e3, controlled_mdot_kg_per_s=3)
+                                    controlled_mdot_kg_per_s=1.0, treturn_k=340)
 
     return net
 
@@ -179,14 +180,7 @@ class TestNetworkCoupling:
         pump_elmt_index = 0
         consumer_elmt_index = 0
 
-        # nc_read_pump_index = create_controlled_network_coupling(net,
-        #                                                         pump_elmt_index,
-        #                                                         element_name='circ_pump_pressure',
-        #                                                         result_columns=['t_from_k', 't_to_k',
-        #                                                                         'mdot_from_kg_per_s'],
-        #                                                         level=1,
-        #                                                         order=0)
-
+        # Test NetworkCouplingControl creation and parameter storage
         nc_write_pump_index = create_controlled_network_coupling(net,
                                                                  pump_elmt_index,
                                                                  element_name='circ_pump_pressure',
@@ -195,6 +189,15 @@ class TestNetworkCoupling:
                                                                  # FixMe: doesn't exist in circ_pump_pressure
                                                                  level=4,
                                                                  order=0)
+
+        # Verify the controller was created and parameters are stored
+        assert nc_write_pump_index == 0
+        nc_write_pump_ctrl = net.controller.loc[nc_write_pump_index, 'object']
+        assert isinstance(nc_write_pump_ctrl, NetworkCouplingControl)
+        assert hasattr(nc_write_pump_ctrl, 'temp_fluid_map_input_col')
+        assert nc_write_pump_ctrl.temp_fluid_map_input_col == ['t_flow_k']
+        assert hasattr(nc_write_pump_ctrl, 'mdot_fluid_map_input_col')
+        assert nc_write_pump_ctrl.mdot_fluid_map_input_col == ['mdot_flow_kg_per_s']
 
         nc_read_dmd_index = create_controlled_network_coupling(net,
                                                                consumer_elmt_index,
@@ -205,11 +208,25 @@ class TestNetworkCoupling:
                                                                mdot_fluid_map_output_idx=2,
                                                                level=1, order=2)
 
+        # Verify the read controller parameters are stored
+        assert nc_read_dmd_index == 1
+        nc_read_dmd_ctrl = net.controller.loc[nc_read_dmd_index, 'object']
+        assert isinstance(nc_read_dmd_ctrl, NetworkCouplingControl)
+        assert hasattr(nc_read_dmd_ctrl, 'temp_fluid_map_output_idx')
+        assert nc_read_dmd_ctrl.temp_fluid_map_output_idx == 0
+        assert hasattr(nc_read_dmd_ctrl, 'mdot_fluid_map_output_idx')
+        assert nc_read_dmd_ctrl.mdot_fluid_map_output_idx == 2
+
         nc_write_dmd_index = create_controlled_network_coupling(net,
                                                                 consumer_elmt_index,
                                                                 element_name='heat_consumer',
                                                                 input_columns=['qext_w', 'controlled_mdot_kg_per_s'],
                                                                 level=4, order=2)
+
+        # Verify the write controller was created
+        assert nc_write_dmd_index == 2
+        nc_write_dmd_ctrl = net.controller.loc[nc_write_dmd_index, 'object']
+        assert isinstance(nc_write_dmd_ctrl, NetworkCouplingControl)
 
         # assert nc_read_pump_index == 0
         # assert nc_write_pump_index == 1

@@ -39,9 +39,19 @@ class MappedController(Controller):
         """
         Initializes the BasicProsumerController.
         """
-        super().__init__(container, in_service, order, level, index, False,
-                         drop_same_existing_ctrl, True, overwrite,
-                         matching_params, **kwargs)
+        # Pandaprosumer-specific parameters that shouldn't be passed to pandapower Controller
+        pandaprosumer_specific_params = {'period_index', 'data_source', 'temp_fluid_map_idx', 'mdot_fluid_map_idx',
+                                          'temp_fluid_map_output_idx', 'mdot_fluid_map_output_idx'}
+        pandaprosumer_params = {k: v for k, v in kwargs.items() if k in pandaprosumer_specific_params}
+        kwargs_filtered = {k: v for k, v in kwargs.items() if k not in pandaprosumer_specific_params}
+        
+        super().__init__(container, name, in_service, order, level, index,
+                         False, drop_same_existing_ctrl, True, overwrite,
+                         matching_params, **kwargs_filtered)
+        
+        # Store pandaprosumer-specific parameters as instance attributes
+        for key, value in pandaprosumer_params.items():
+            setattr(self, key, value)
 
         if getattr(container, "check_order", False):
             if isinstance(order, list):

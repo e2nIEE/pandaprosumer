@@ -20,6 +20,7 @@ class NetworkCouplingControl(BasicProsumerController):
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
         super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
+        self.net = net  # Store network reference for later use
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
         self.treturn_required_k = 't_from_k'
@@ -30,6 +31,16 @@ class NetworkCouplingControl(BasicProsumerController):
         if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
             assert len(self.result_columns) > temp_fluid_map_output_idx
             assert len(self.result_columns) > mdot_fluid_map_output_idx
+
+    def t_m_to_receive(self, prosumer):
+        """
+        Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s.
+        Override to properly handle network container.
+
+        :param prosumer: The prosumer object (used to pass the network through container)
+        :return: A Tuple (Feed temperature, return temperature and mass flow)
+        """
+        return self._t_m_to_receive_init(self.net)
 
     def _t_m_to_receive_init(self, net):
         """

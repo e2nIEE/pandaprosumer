@@ -16,6 +16,25 @@ from pandaprosumer.time_series.time_series import TimeSeries
 logger = logging.getLogger()
 
 
+def _add_custom_attributes(entries, kwargs, standard_params):
+    """
+    Add custom attributes to entries, filtering out standard parameters.
+    This is needed from pandapower 3, where _set_entries does not allow to pass custom attributes as kwargs anymore.
+    All attributes should be included in the entries dictionary.
+    
+    Args:
+        entries: Dictionary of standard entries
+        kwargs: Additional keyword arguments
+        standard_params: List of standard parameter names to exclude
+    
+    Returns:
+        Updated entries dictionary with custom attributes
+    """
+    custom_attrs = {k: v for k, v in kwargs.items() if k not in standard_params and not k.startswith('_')}
+    entries.update(custom_attrs)
+    return entries
+
+
 def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", check_order=True):
     """
     This function initializes the prosumer datastructure
@@ -78,7 +97,7 @@ def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, n
     entries = dict(zip(["name", "start", "end", "resolution_s", "timezone"],
                        [name, start, end, resolution_s, timezone]))
 
-    _set_entries(prosumer, "period", index, **entries)
+    _set_entries(prosumer, "period", index, entries=entries)
     return int(index)
 
 
@@ -160,7 +179,13 @@ def create_heat_pump(prosumer,
              min_p_comp_kw, max_t_cond_out_c, max_cop, cond_fluid, evap_fluid, in_service])
     )
 
-    _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
+    # Add custom attributes using helper function
+    standard_params = ['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 
+                      'max_p_comp_kw', 'min_p_comp_kw', 'max_t_cond_out_c', 'max_cop', 
+                      'cond_fluid', 'evap_fluid', 'in_service', 'index']
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "heat_pump", index, entries=entries)
 
     # _add_to_entries_if_not_nan(prosumer, "heat_pump", entries, index, "max_p_comp_kw", max_p_comp_kw)
     # _add_to_entries_if_not_nan(prosumer, "heat_pump", entries, index, "min_p_comp_kw", min_p_comp_kw)
@@ -209,10 +234,17 @@ def create_heat_demand(prosumer,
     entries = dict(zip(["name", "scaling", "in_service"],
                        [name, scaling, in_service]))
 
-    _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
+    # Add optional parameters if provided
+    if 't_in_set_c' in kwargs:
+        entries['t_in_set_c'] = kwargs['t_in_set_c']
+    if 't_out_set_c' in kwargs:
+        entries['t_out_set_c'] = kwargs['t_out_set_c']
+    
+    # Add custom attributes using helper function
+    standard_params = ['t_in_set_c', 't_out_set_c', 'name', 'scaling', 'in_service', 'index']
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
 
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
+    _set_entries(prosumer, "heat_demand", index, entries=entries)
 
     return int(index)
 
@@ -337,7 +369,15 @@ def create_stratified_heat_storage(prosumer,
                         t_discharge_out_tol_c, max_dt_s, height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
-    _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
+    # Add custom attributes using helper function
+    standard_params = ['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
+                      'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
+                      'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
+                      't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
+                      'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service', 'index']
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "stratified_heat_storage", index, entries=entries)
     return int(index)
 
 
@@ -428,7 +468,12 @@ def create_heat_exchanger(prosumer,
                         delta_t_hot_default_c, max_q_kw, min_delta_t_1_c, primary_fluid, secondary_fluid,
                         in_service]))
 
-    _set_entries(prosumer, "heat_exchanger", index, **entries, **kwargs)
+    standard_params = ["name", "t_1_in_nom_c", "t_1_out_nom_c", "t_2_in_nom_c", "t_2_out_nom_c", "mdot_2_nom_kg_per_s",
+                      "delta_t_hot_default_c", "max_q_kw", "min_delta_t_1_c", "primary_fluid", "secondary_fluid",
+                      "in_service"]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "heat_exchanger", index, entries=entries)
     return int(index)
 
 
@@ -502,7 +547,13 @@ def create_dry_cooler(prosumer,
                         t_fluid_in_nom_c, t_fluid_out_nom_c, fans_number,
                         adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c, in_service]))
 
-    _set_entries(prosumer, "dry_cooler", index, **entries, **kwargs)
+    # Add custom attributes using helper function
+    standard_params = ["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c", "t_air_out_nom_c",
+                      "t_fluid_in_nom_c", "t_fluid_out_nom_c", "fans_number",
+                      "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c", "in_service", "index"]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "dry_cooler", index, entries=entries)
     return int(index)
 
 
@@ -544,7 +595,11 @@ def create_electric_boiler(prosumer,
     entries = dict(zip(["name", "max_p_kw", "efficiency_percent", "in_service"],
                        [name, max_p_kw, efficiency_percent, in_service]))
 
-    _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
+    # Add custom attributes using helper function
+    standard_params = ['name', 'max_p_kw', 'efficiency_percent', 'in_service', 'index']
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "electric_boiler", index, entries=entries)
     return int(index)
 
 
@@ -589,7 +644,11 @@ def create_gas_boiler(prosumer,
     entries = dict(zip(["name", "max_q_kw", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
                        [name, max_q_kw, heating_value_kj_per_kg, efficiency_percent, in_service]))
 
-    _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
+    # Add custom attributes using helper function
+    standard_params = ['name', 'max_q_kw', 'heating_value_kj_per_kg', 'efficiency_percent', 'in_service', 'index']
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "gas_boiler", index, entries=entries)
     return int(index)
 
 
@@ -630,7 +689,10 @@ def create_booster_heat_pump(
         )
     )
 
-    _set_entries(prosumer, "booster_heat_pump", index, **entries, **kwargs)
+    standard_params = ["name", "bhp_type", "q_max_kw", "in_service"]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "booster_heat_pump", index, entries=entries)
     return int(index)
 
 
@@ -658,7 +720,7 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
         )
     )
 
-    _set_entries(prosumer, "ice_chp", index, **entries, **kwargs)
+    _set_entries(prosumer, "ice_chp", index, entries=entries)
     return int(index)
 
 
@@ -674,7 +736,10 @@ def create_heat_storage(prosumer,
 
     entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
 
-    _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
+    standard_params = ["name", "q_capacity_kwh", "in_service"]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "heat_storage", index, entries=entries)
     return int(index)
 
 
@@ -768,7 +833,7 @@ def create_chiller(
         )
     )
 
-    _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
+    _set_entries(prosumer, "sn_chiller", index, entries=entries)
     return int(index)
 
 def create_solar_thermal(prosumer,
@@ -894,7 +959,15 @@ def create_solar_thermal(prosumer,
         )
     )
 
-    _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
+    standard_params = [
+        "name", "in_service", "collector_area", "optical_efficiency", "thermal_losses",
+        "second_thermal_losses", "incidence_angle", "flow_rate", "test_specific_heat",
+        "use_specific_heat", "number_collectors", "series", "piping_length", "piping_diameter",
+        "piping_thickness", "piping_conductivity", "collector_slope", "collector_azimut"
+    ]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "solar_thermal", index, entries=entries)
 
     return int(index)
 
@@ -921,6 +994,10 @@ def create_converter(prosumer,
 
         **in_service** (boolean, default True) - True for in_service or False for out of service
 
+        **custom** (any, default None) - Custom attribute that can be used for any purpose
+
+        **kwargs** - Additional custom attributes
+
     OUTPUT:
         **index** (int) - The unique ID of the created heat demand
 
@@ -934,10 +1011,10 @@ def create_converter(prosumer,
     entries = dict(zip(["name", "cp_water", "in_service"],
                        [name, cp_water, in_service]))
 
-    _set_entries(prosumer, "converter", index, **entries, **kwargs)
+    standard_params = ["name", "cp_water", "in_service"]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
 
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
+    _set_entries(prosumer, "converter", index, entries=entries)
 
     return int(index)
 
@@ -1018,7 +1095,7 @@ def create_senergy_nets_pv_production(
     name : str or None, optional
         Name of the PV element. If None, a default name is generated.
     **kwargs :
-        Additional keyword arguments passed through to `_set_entries`.
+        Additional keyword arguments passed through to `set_entries`.
 
     Returns
     -------
@@ -1081,7 +1158,21 @@ def create_senergy_nets_pv_production(
         )
     )
 
-    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    standard_params = [
+        "name", "in_service", "latitude", "longitude", "raddatabase", "surface_tilt", "surface_azimuth",
+        "peakpower", "loss", "usehorizon", "userhorizon", "pvtechchoice", "mountingplace", "trackingtype",
+        "optimal_surface_tilt", "optimalangles", "outputformat", "url", "map_variables", "timeout"
+    ]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    standard_params = [
+        "name", "in_service", "latitude", "longitude", "raddatabase", "surface_tilt", "surface_azimuth",
+        "peakpower", "loss", "usehorizon", "userhorizon", "pvtechchoice", "mountingplace", "trackingtype",
+        "optimal_surface_tilt", "optimalangles", "outputformat", "url", "map_variables", "timeout"
+    ]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "sn_pv_production", index, entries=entries)
     return int(index)
 
 
@@ -1127,7 +1218,7 @@ def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwa
         )
     )
 
-    _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
+    _set_entries(prosumer, "mdu_chp", index, entries=entries)
     return int(index)
   
   
@@ -1208,7 +1299,7 @@ def create_senergy_nets_pv_production(
     name : str or None, optional
         Name of the PV element. If None, a default name is generated.
     **kwargs :
-        Additional keyword arguments passed through to `_set_entries`.
+        Additional keyword arguments passed through to `set_entries`.
 
     Returns
     -------
@@ -1271,5 +1362,12 @@ def create_senergy_nets_pv_production(
         )
     )
 
-    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    standard_params = [
+        "name", "in_service", "latitude", "longitude", "raddatabase", "surface_tilt", "surface_azimuth",
+        "peakpower", "loss", "usehorizon", "userhorizon", "pvtechchoice", "mountingplace", "trackingtype",
+        "optimal_surface_tilt", "optimalangles", "outputformat", "url", "map_variables", "timeout"
+    ]
+    entries = _add_custom_attributes(entries, kwargs, standard_params)
+
+    _set_entries(prosumer, "sn_pv_production", index, entries=entries)
     return int(index)
