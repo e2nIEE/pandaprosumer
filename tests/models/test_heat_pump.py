@@ -41,7 +41,7 @@ class TestHeatPump:
                             "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy"]
         expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
-                           'water', 'water', 'carnot', True, 'cap']
+                           'water', 'water', 'carnot', True, 'dump_proportional']
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -77,7 +77,7 @@ class TestHeatPump:
                             "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy", "custom"]
         expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'carnot',
-                           False, 'cap', 'test']
+                           False, 'dump_proportional', 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
 
@@ -491,7 +491,8 @@ class TestHeatPump:
                   'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
                   'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
                   'max_t_cond_out_c': 100,
-                  'max_cop': 10}
+                  'max_cop': 10,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         hp_controller_index = create_controlled_heat_pump(prosumer,
                                                           period=_default_period(prosumer),

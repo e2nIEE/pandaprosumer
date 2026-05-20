@@ -522,6 +522,16 @@ class HeatPumpController(BasicProsumerController):
                 pinch_c,
             )
 
+        cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(
+            CELSIUS_TO_K + (t_cond_out_c + t_cond_in_c) / 2) / 1000
+        self._check_fluid_mix_balance(prosumer,
+                                      q_kw=q_cond_kw,
+                                      mdot_kg_per_s=mdot_cond_kg_per_s,
+                                      t_out_c=t_cond_out_c,
+                                      t_in_c=t_cond_in_c,
+                                      result_mdot_tab_kg_per_s=result_mdot_tab_kg_per_s,
+                                      cp_fluid_kj_per_kgk=cp_cond_kj_per_kgk)
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,

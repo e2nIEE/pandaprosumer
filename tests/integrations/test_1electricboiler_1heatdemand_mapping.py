@@ -44,6 +44,9 @@ class Test1ElectricBoiler1HeatDemandMapping:
             'max_p_kw': max_p_kw,
             'min_p_kw': min_p_kw,
             'efficiency_percent': 100,
+            # This test pins the legacy 'cap' behaviour: when demand < min,
+            # the boiler holds its thermal output by raising t_out_c.
+            'overflow_strategy': 'cap',
         }
 
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}

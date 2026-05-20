@@ -46,7 +46,10 @@ class Test1GasBoiler1HeatDemandMapping:
              'min_q_kw': min_power_kw,
              'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
              'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
-             'heating_value_kj_per_kg': lhv
+             'heating_value_kj_per_kg': lhv,
+             # Pinned to legacy behaviour: when the demand is below min_q_kw,
+             # the boiler raises t_out_c instead of pushing extra mass flow.
+             'overflow_strategy': 'cap',
             }
 
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}

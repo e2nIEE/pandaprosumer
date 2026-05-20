@@ -52,7 +52,7 @@ Input Static Data
     "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
     "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
     "mode", "COP calculation mode. Options: 'carnot' (default) or 'lorenz'", "str", "'carnot' or 'lorenz'", "No"
-    "overflow_strategy", "How to dispatch surplus mass flow to responders when the heat pump is clamped to ``min_p_comp_kw`` but the demand requires a smaller condenser mass flow. ``'cap'`` (default) drops the surplus, leaving a mismatch between ``q_cond_kw`` and the heat delivered to the responder; ``'dump_on_last'`` pushes the surplus onto the last responder at ``t_cond_out_c``; ``'dump_proportional'`` splits the surplus across responders in proportion to their requests. See :ref:`overflow_strategy`.", "str"
+    "overflow_strategy", "How to dispatch surplus mass flow to responders when the heat pump is clamped to ``min_p_comp_kw`` but the demand requires a smaller condenser mass flow. ``'dump_proportional'`` (default) splits the surplus across responders in proportion to their requests, closing the energy balance; ``'dump_on_last'`` pushes the surplus onto the last responder at ``t_cond_out_c``; ``'cap'`` drops the surplus and leaves a mismatch between ``q_cond_kw`` and the heat delivered to the responder (an ``EnergyLeakWarning`` is emitted). See :ref:`overflow_strategy`.", "str"
     "in_service", "True for in_service or False for out of service", "boolean"
 
 

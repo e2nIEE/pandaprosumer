@@ -75,6 +75,10 @@ class Test1HeatPump1HeatDemandMinPCompMapping:
             'delta_t_evap_c': 5,
             'max_p_comp_kw': max_p_comp_kw,
             'min_p_comp_kw': min_p_comp_kw,
+            # Pinned to legacy 'cap' behaviour, which documents the
+            # known energy leak between hp_df.q_cond_kw and
+            # hd_df.q_received_kw at the min-p hysteresis step.
+            'overflow_strategy': 'cap',
         }
         hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
 

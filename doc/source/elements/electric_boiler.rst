@@ -45,7 +45,7 @@ These are the physical parameters required for the Electric Boiler element to en
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
    "allow_stop", "Whether the boiler is allowed to stop completely (reach zero power) when there is zero demand. If False and min_p_kw is set, the boiler will operate at min_p_kw even with zero demand.", "Boolean"
    "max_t_out_c", "Maximum output temperature constraint. If the calculated output temperature exceeds this value, it will be limited to this temperature.", "Degree Celsius"
-   "overflow_strategy", "How to dispatch surplus mass flow to responders when the boiler runs at ``min_p_kw`` but the demand asks for less. ``'cap'`` (default) drops the surplus and raises ``t_out_c`` to keep energy balance; ``'dump_on_last'`` pushes the surplus mass flow onto the last responder at the requested feed temperature; ``'dump_proportional'`` splits the surplus across responders in proportion to their requests. See :ref:`overflow_strategy`.", "str"
+   "overflow_strategy", "How to dispatch surplus mass flow to responders when the boiler runs at ``min_p_kw`` but the demand asks for less. ``'dump_proportional'`` (default) splits the surplus across responders in proportion to their requests; ``'dump_on_last'`` pushes the surplus mass flow onto the last responder at the requested feed temperature; ``'cap'`` drops the surplus and raises ``t_out_c`` to keep energy balance. See :ref:`overflow_strategy`.", "str"
 
 
 Input Time Series

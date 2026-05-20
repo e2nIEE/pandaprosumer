@@ -14,6 +14,26 @@ from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 logger = pplog.getLogger(__name__)
 
 
+class EnergyLeakWarning(UserWarning):
+    """
+    Raised when a producer controller dispatches less mass flow (and thus
+    less energy) through the FluidMixMapping than it recorded as its own
+    output. This indicates an inconsistency between the producer's
+    internal state and what reaches the mapped responders - i.e. energy
+    that should be tracked has gone missing at the interface.
+
+    Typical cause: ``overflow_strategy='cap'`` (the legacy backwards-
+    compatible setting) on a heat pump clamped to ``min_p_comp_kw``.
+    The default ``overflow_strategy='dump_proportional'`` avoids the leak
+    by pushing the surplus to the responders; switch to it if the leak
+    is unintentional. See the :ref:`overflow_strategy` docs.
+
+    Filter with ``warnings.simplefilter("ignore", EnergyLeakWarning)`` if
+    the mismatch is expected and accepted by your model.
+    """
+    pass
+
+
 class MappedController(Controller):
     """
     Base class for all prosumer controllers that are associated to an element and can be mapped.
@@ -508,6 +528,63 @@ class MappedController(Controller):
                 )
 
         return mdot_res_tab_kg_per_s
+
+    def _check_fluid_mix_balance(self, container, q_kw, mdot_kg_per_s,
+                                 t_out_c, t_in_c, result_mdot_tab_kg_per_s,
+                                 cp_fluid_kj_per_kgk=None, tol_kw=1e-3):
+        """
+        Warn if the producer's recorded mass-flow / thermal output does not
+        match what is dispatched to the FluidMix responders, i.e. detect
+        an energy leak at the FluidMix interface.
+
+        Should be called by producer controllers at the end of their
+        ``control_step``, just before ``finalize``, with their final
+        reported state (``q_kw``, ``mdot_kg_per_s``, ``t_out_c``,
+        ``t_in_c``) and the per-responder dispatched mass flows.
+
+        Emits ``EnergyLeakWarning`` with the gap in kW and a hint about
+        ``overflow_strategy`` when the gap exceeds ``tol_kw``.
+
+        :param container: The prosumer/net/energy_system object
+        :param q_kw: Thermal power the producer claims to deliver [kW]
+        :param mdot_kg_per_s: Mass flow the producer claims to deliver [kg/s]
+        :param t_out_c: Producer outlet temperature [°C]
+        :param t_in_c: Producer inlet temperature [°C]
+        :param result_mdot_tab_kg_per_s: Per-responder mass flows actually dispatched
+        :param cp_fluid_kj_per_kgk: Heat capacity to convert mdot gap to kW;
+                                     defaults to 4.19 (water) if omitted
+        :param tol_kw: Suppress the warning when |gap| < tol_kw
+        """
+        if mdot_kg_per_s is None or mdot_kg_per_s <= 1e-9:
+            return  # Producer is off
+        dispatched_mdot = float(np.sum(result_mdot_tab_kg_per_s)) if len(result_mdot_tab_kg_per_s) else 0.0
+        mdot_gap = float(mdot_kg_per_s) - dispatched_mdot
+        if abs(mdot_gap) < 1e-9:
+            return
+
+        cp = cp_fluid_kj_per_kgk if cp_fluid_kj_per_kgk is not None else 4.19
+        delta_t = float(t_out_c) - float(t_in_c)
+        leak_kw = mdot_gap * cp * delta_t
+        if abs(leak_kw) < tol_kw:
+            return
+
+        overflow_strategy = self._get_element_param(container, 'overflow_strategy')
+        if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
+            overflow_strategy = "cap"
+        hint = ""
+        if overflow_strategy == "cap":
+            hint = (" Consider setting overflow_strategy='dump_on_last' (or "
+                    "'dump_proportional') on this producer to dispatch the surplus "
+                    "to a responder instead.")
+
+        warn(
+            (f"{self.name_class()} '{self.name}' at timestep {self.time}: "
+             f"energy leak of {leak_kw:.3f} kW at the FluidMix interface "
+             f"(producer mdot={mdot_kg_per_s:.6f} kg/s, dispatched={dispatched_mdot:.6f} kg/s, "
+             f"q_kw={q_kw:.3f} kW, overflow_strategy='{overflow_strategy}').{hint}"),
+            EnergyLeakWarning,
+            stacklevel=3,
+        )
 
     def finalize(self, container, result, result_fluid_mix=None):
         """

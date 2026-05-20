@@ -34,7 +34,7 @@ class TestGasBoiler:
         assert hasattr(prosumer, "gas_boiler")
         assert len(prosumer.gas_boiler) == 1
         expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
-        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True, np.nan, True, 'cap']
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True, np.nan, True, 'dump_proportional']
 
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
 
@@ -63,7 +63,7 @@ class TestGasBoiler:
         assert prosumer.gas_boiler.index[0] == gsb_idx
 
         expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy", "custom"]
-        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 90.0, False, 'cap', 'test']
+        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 90.0, False, 'dump_proportional', 'test']
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
         assert prosumer.gas_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
@@ -209,13 +209,14 @@ class TestGasBoiler:
                   'efficiency_percent': 100,
                   'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
                   'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
-                  'heating_value_kj_per_kg': lhv}
+                  'heating_value_kj_per_kg': lhv,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         gsb_controller_index = create_controlled_gas_boiler(prosumer,
                                                             period=_default_period(prosumer),
                                                             **params)
         gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
-        
+
         t_high_c = 80
         t_low_c = 20
         mdot_init = 1.5
@@ -269,7 +270,8 @@ class TestGasBoiler:
                   'efficiency_percent': 100,
                   'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
                   'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
-                  'heating_value_kj_per_kg': lhv}
+                  'heating_value_kj_per_kg': lhv,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         gsb_controller_index = create_controlled_gas_boiler(prosumer,
                                                             period=_default_period(prosumer),
@@ -302,7 +304,8 @@ class TestGasBoiler:
                   'min_q_kw': min_power_kw,
                   'efficiency_percent': 100,
                   'heating_value_kj_per_kg': lhv,
-                  'allow_stop': False}
+                  'allow_stop': False,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         gsb_controller_index = create_controlled_gas_boiler(prosumer,
                                                             period=_default_period(prosumer),
@@ -332,13 +335,14 @@ class TestGasBoiler:
         params = {'max_q_kw': 500,
                   'efficiency_percent': 100,
                   'heating_value_kj_per_kg': lhv,
-                  'max_t_out_c': max_temp_c}
+                  'max_t_out_c': max_temp_c,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         gsb_controller_index = create_controlled_gas_boiler(prosumer,
                                                             period=_default_period(prosumer),
                                                             **params)
         gsb_controller = prosumer.controller.iloc[gsb_controller_index].object
-        
+
         t_high_c = 80  # Requested temperature higher than max constraint
         t_low_c = 20
         mdot_dmd = 1.5

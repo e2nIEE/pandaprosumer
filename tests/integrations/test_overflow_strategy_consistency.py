@@ -25,11 +25,14 @@ invariants on every step:
   * mass flow:  producer.mdot_*_kg_per_s == demand.mdot_kg_per_s
   * energy:     producer.q_*_kw      == demand.q_received_kw
 """
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_series_equal
 
+from pandaprosumer.controller.mapped import EnergyLeakWarning
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 from pandaprosumer import (create_period, DFData, create_empty_prosumer_container,
@@ -748,3 +751,182 @@ class TestMassBalanceAtFluidMixInterface:
                                        hd_df.mdot_kg_per_s.values,
                                        atol=1e-6,
                                        err_msg=f"{strategy}: mdot must balance on every step")
+
+
+# ---------------------------------------------------------------------------
+# Energy-leak warning
+# ---------------------------------------------------------------------------
+# When the producer's recorded mass flow does not match what is dispatched
+# to responders via FluidMixMapping, energy effectively disappears at the
+# interface. The controllers emit an EnergyLeakWarning on every step where
+# this happens so the silent failure cannot pass unnoticed.
+
+
+def _run_hp_min_p_scenario(overflow_strategy):
+    prosumer = create_empty_prosumer_container()
+    data = pd.DataFrame({
+        "Tin_evap": [25] * 6,
+        "demand_kw": [0, 20, 200, 30, 0, 25],
+        "tdmd_feed_c": [76.85] * 6,
+        "tdmd_return_c": [30] * 6,
+    })
+    start = '2020-01-01 00:00:00'
+    resol = 3600
+    end = pd.Timestamp(start) + len(data) * pd.Timedelta(f"00:00:{resol}") - pd.Timedelta("00:00:01")
+    period = create_period(prosumer, resol, start, end, 'utc', 'default')
+    data.index = pd.date_range(start, end, freq=f'{resol}s', tz='utc')
+    cp = create_controlled_const_profile(
+        prosumer, ["Tin_evap", "demand_kw", "tdmd_feed_c", "tdmd_return_c"],
+        ["t_evap_in_c", "qdemand_kw", "tdmd_feed_c", "tdmd_return_c"],
+        DFData(data), period, level=0, order=0)
+    hp = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
+                                     carnot_efficiency=0.5, pinch_c=0,
+                                     delta_t_evap_c=5,
+                                     max_p_comp_kw=100, min_p_comp_kw=15,
+                                     overflow_strategy=overflow_strategy)
+    hd = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
+                                       t_in_set_c=76.85, t_out_set_c=30)
+    GenericMapping(container=prosumer, initiator_id=cp,
+                   initiator_column="t_evap_in_c", responder_id=hp,
+                   responder_column="t_evap_in_c", order=0)
+    GenericMapping(container=prosumer, initiator_id=cp,
+                   initiator_column=["qdemand_kw", "tdmd_feed_c", "tdmd_return_c"],
+                   responder_id=hd,
+                   responder_column=["q_demand_kw", "t_feed_demand_c", "t_return_demand_c"],
+                   order=1)
+    FluidMixMapping(container=prosumer, initiator_id=hp, responder_id=hd, order=0)
+    run_timeseries(prosumer, period, True)
+    return prosumer
+
+
+def _run_eb_min_p_scenario(overflow_strategy):
+    prosumer = create_empty_prosumer_container()
+    data = pd.DataFrame({"demand_1": [0, 10, 20, 90, 110, 0, 5]})
+    start = '2020-01-01 00:00:00'
+    resol = 1
+    end = pd.Timestamp(start) + len(data) * pd.Timedelta(f"00:00:{resol}") - pd.Timedelta("00:00:01")
+    period = create_period(prosumer, resol, start, end, 'utc', 'default')
+    data.index = pd.date_range(start, end, freq=f'{resol}s', tz='utc')
+    cp = create_controlled_const_profile(prosumer, ["demand_1"], ["qdemand_kw"],
+                                         DFData(data), period, 0, 0)
+    eb = create_controlled_electric_boiler(prosumer, period=period, level=1, order=0,
+                                           max_p_kw=100, min_p_kw=20,
+                                           efficiency_percent=100,
+                                           overflow_strategy=overflow_strategy)
+    hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
+                                       t_in_set_c=76.85, t_out_set_c=30)
+    GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
+                   responder_id=hd, responder_column="q_demand_kw", order=1)
+    FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
+    run_timeseries(prosumer, period, True)
+    return prosumer
+
+
+class TestEnergyLeakWarning:
+    """
+    EnergyLeakWarning MUST fire for every timestep where the producer
+    silently drops mass flow that should have reached the demand. It MUST
+    NOT fire when the producer reconciles its state (boilers raising
+    t_out_c, or HP using a dump strategy).
+    """
+
+    def test_warning_fires_for_hp_under_cap(self):
+        """HP + cap + min_p_comp triggered -> warning fires with concrete numbers."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_hp_min_p_scenario("cap")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert len(leak_warnings) >= 1, \
+            "EnergyLeakWarning must fire on the hysteresis step under 'cap'"
+        # Quantitative content: the leak is ~20 kW
+        msg = str(leak_warnings[0].message)
+        assert "energy leak of" in msg
+        assert "overflow_strategy='cap'" in msg
+        # The hint should suggest the fix
+        assert "dump_on_last" in msg
+
+    def test_no_warning_for_hp_under_dump_on_last(self):
+        """HP + dump_on_last -> producer mdot matches dispatched -> no warning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_hp_min_p_scenario("dump_on_last")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == [], \
+            f"No EnergyLeakWarning expected under 'dump_on_last', got {[str(x.message) for x in leak_warnings]}"
+
+    def test_no_warning_for_hp_under_dump_proportional(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_hp_min_p_scenario("dump_proportional")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == []
+
+    def test_no_warning_for_electric_boiler_under_cap(self):
+        """Boilers reconcile via t_out_c so 'cap' should not leak."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_eb_min_p_scenario("cap")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == [], \
+            f"Boiler 'cap' is supposed to compensate via t_out_c; got leak warnings: {[str(x.message) for x in leak_warnings]}"
+
+    def test_no_warning_for_electric_boiler_under_dump_on_last(self):
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_eb_min_p_scenario("dump_on_last")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == []
+
+    def test_no_warning_in_normal_operation(self):
+        """Normal operation (demand within min..max) must be silent for every producer."""
+        prosumer = create_empty_prosumer_container()
+        data = pd.DataFrame({"demand_1": [50, 60, 70, 80]})
+        start = '2020-01-01 00:00:00'
+        resol = 1
+        end = pd.Timestamp(start) + len(data) * pd.Timedelta(f"00:00:{resol}") - pd.Timedelta("00:00:01")
+        period = create_period(prosumer, resol, start, end, 'utc', 'default')
+        data.index = pd.date_range(start, end, freq=f'{resol}s', tz='utc')
+        cp = create_controlled_const_profile(prosumer, ["demand_1"], ["qdemand_kw"],
+                                             DFData(data), period, 0, 0)
+        gb = create_controlled_gas_boiler(prosumer, period=period, level=1, order=0,
+                                          max_q_kw=100, min_q_kw=20,
+                                          efficiency_percent=100,
+                                          heating_value_kj_per_kg=20e3)
+        hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
+                                           t_in_set_c=76.85, t_out_set_c=30)
+        GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
+                       responder_id=hd, responder_column="q_demand_kw", order=1)
+        FluidMixMapping(container=prosumer, initiator_id=gb, responder_id=hd, order=0)
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            run_timeseries(prosumer, period, True)
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == [], \
+            f"Normal operation must not emit EnergyLeakWarning, got: {[str(x.message) for x in leak_warnings]}"
+
+    def test_warning_message_contains_actionable_fields(self):
+        """The warning message must include enough info to identify and fix the leak."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            _run_hp_min_p_scenario("cap")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings, "Need at least one leak warning to check its content"
+        msg = str(leak_warnings[0].message)
+        # Identifies the producer class
+        assert "heat_pump" in msg.lower()
+        # Reports producer & dispatched mass flow
+        assert "producer mdot" in msg
+        assert "dispatched" in msg
+        # Reports q_kw
+        assert "q_kw" in msg
+        # Suggests the fix
+        assert "dump_on_last" in msg or "dump_proportional" in msg
+
+    def test_warning_can_be_silenced_per_category(self):
+        """Users who accept the leak can filter EnergyLeakWarning explicitly."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            warnings.simplefilter("ignore", EnergyLeakWarning)
+            _run_hp_min_p_scenario("cap")
+        leak_warnings = [x for x in w if issubclass(x.category, EnergyLeakWarning)]
+        assert leak_warnings == []

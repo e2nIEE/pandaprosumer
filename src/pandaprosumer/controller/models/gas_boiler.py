@@ -319,6 +319,15 @@ class GasBoilerController(BasicProsumerController):
             f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
         )
 
+        cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
+        self._check_fluid_mix_balance(prosumer,
+                                      q_kw=q_kw,
+                                      mdot_kg_per_s=mdot_delivered_kg_per_s,
+                                      t_out_c=t_out_c,
+                                      t_in_c=t_in_c,
+                                      result_mdot_tab_kg_per_s=result_mdot_tab_kg_per_s,
+                                      cp_fluid_kj_per_kgk=cp_fluid_kj_per_kgk)
+
         result_fluid_mix = []
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_out_c,

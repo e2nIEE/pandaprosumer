@@ -72,7 +72,7 @@ class TestElectricBoiler:
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
         expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
-        expected_values = [None, 100, np.nan, np.nan, np.nan, 100, True, np.nan, True, 'cap']
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 100, True, np.nan, True, 'dump_proportional']
 
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
 
@@ -97,7 +97,7 @@ class TestElectricBoiler:
         assert prosumer.electric_boiler.index[0] == elb_idx
 
         expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy", "custom"]
-        expected_values = ['foo', 250, np.nan, 0.02, 0.03, 75, True, np.nan, False, 'cap', 'test']
+        expected_values = ['foo', 250, np.nan, 0.02, 0.03, 75, True, np.nan, False, 'dump_proportional', 'test']
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
         assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
@@ -231,7 +231,8 @@ class TestElectricBoiler:
         resol_s = 1
         params = {'max_p_kw': 500,
                   'max_ramp_up_kw_per_s': max_ramp_up_kw_per_s,
-                  'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s}
+                  'max_ramp_down_kw_per_s': max_ramp_down_kw_per_s,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         elb_controller_index = create_controlled_electric_boiler(prosumer,
                                                                 period=_default_period(prosumer),
@@ -290,7 +291,8 @@ class TestElectricBoiler:
         """
         params = {'max_p_kw': 500,
                   'max_t_out_c': max_t_out_c,
-                  'order': 0}
+                  'order': 0,
+                  'overflow_strategy': 'cap'}
         prosumer = create_empty_prosumer_container()
         elb_controller_idx = create_controlled_electric_boiler(prosumer,
                                                                period=_default_period(prosumer),
@@ -402,7 +404,7 @@ class TestElectricBoiler:
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
         expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
-        expected_values = [None, 100, 10, np.nan, np.nan, 100, False, 75, True, 'cap']
+        expected_values = [None, 100, 10, np.nan, np.nan, 100, False, 75, True, 'dump_proportional']
 
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
         assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
