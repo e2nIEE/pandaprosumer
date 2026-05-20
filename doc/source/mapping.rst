@@ -90,6 +90,70 @@ The FluidMixMapping operation performs the following steps:
 
 - **FluidMixMapping** sets the argument ``no_chain=False`` by default. The `no_chain` attribute is a key flag that defines whether a mapping participates in controller chaining.
 
+.. _overflow_strategy:
+
+Overflow Strategy: Dispatching Surplus Mass Flow
+=================================================
+
+When a producer (Gas Boiler, Electric Boiler, Heat Pump) is forced onto a
+thermal floor (``min_q_kw`` / ``min_p_kw`` / ``min_p_comp_kw``) but the
+mapped responder(s) request less mass flow than that floor implies, the
+``_merit_order_mass_flow`` helper has to decide what to do with the
+surplus mass flow it cannot place. The ``overflow_strategy`` parameter on
+each producer element selects between three behaviours:
+
+- ``'cap'`` (default, backwards compatible):
+    The surplus mass flow is silently dropped. Each responder receives at
+    most ``min(its_request, what_is_left)``. To keep the global energy
+    balance, the boiler controllers compensate after the dispatch by
+    raising ``t_out_c`` so the smaller mass flow still carries the
+    producer's full thermal output - the responder ends up over-supplied
+    via temperature (e.g. 123.7 °C instead of the requested 76.85 °C).
+    The Heat Pump cannot raise ``t_cond_out_c`` (it must respect the
+    demand's setpoint), so under ``'cap'`` the surplus is lost: the HP
+    records ``q_cond_kw = min_p_comp_kw * COP`` while the responder
+    receives only what it asked for.
+
+- ``'dump_on_last'``:
+    The surplus mass flow is added to the **last** responder (lowest
+    merit-order priority). The responder receives more mass flow than it
+    requested, at the producer's nominal ``t_out_c`` / ``t_cond_out_c``.
+    The downstream heat demand recomputes ``q_received_kw`` from the
+    received mass flow and reports a **negative** ``q_uncovered_kw`` to
+    signal over-delivery. This closes the energy balance at the
+    producer-responder interface for every producer including the Heat
+    Pump - which makes it the recommended choice when at least one
+    mapped responder can absorb extra mass flow (a buffer tank, a return
+    loop, a flexible heat demand).
+
+- ``'dump_proportional'``:
+    The surplus is split across all responders in proportion to their
+    original requests. If every request is zero, the surplus is split
+    equally. Use this when several responders share the over-supply
+    evenly rather than concentrating it on one.
+
+In every case, **mass and energy balances are recomputed consistently on
+both sides of the FluidMix interface**: ``producer.t_out == demand.t_in``,
+``producer.t_in == demand.t_out``, ``producer.mdot == demand.mdot``, and
+``producer.q == demand.q_received``.
+
+.. note::
+    A responder may not physically be able to absorb extra mass flow
+    (e.g. a radiator at a fixed setpoint). The ``'dump_on_last'`` /
+    ``'dump_proportional'`` strategies do not model this - they assume
+    the responder accepts whatever is pushed onto it. If you sum
+    ``q_uncovered_kw`` to compute "unmet demand", clamp it at zero or
+    that metric will be polluted by the over-delivery signal.
+
+.. note::
+    When the demand exceeds what the producer can supply
+    (``sum(requested) >= available``), the surplus is zero and the three
+    strategies behave identically (standard FIFO merit order).
+
+Implementation: the strategy is read from the producer element via
+``_get_element_param(prosumer, 'overflow_strategy')`` and forwarded to
+``BasicProsumerController._merit_order_mass_flow``.
+
 Generic Energy System Mapping
 ===================================
 Generic Energy System Mapping enables mapping between controllers that belong to different prosumer networks or producers.

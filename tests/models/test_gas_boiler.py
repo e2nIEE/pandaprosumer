@@ -33,8 +33,8 @@ class TestGasBoiler:
         create_gas_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "gas_boiler")
         assert len(prosumer.gas_boiler) == 1
-        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service"]
-        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True, np.nan, True]
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 20e3, 100, True, np.nan, True, 'cap']
 
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
 
@@ -62,8 +62,8 @@ class TestGasBoiler:
         assert gsb_idx == 4
         assert prosumer.gas_boiler.index[0] == gsb_idx
 
-        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "custom"]
-        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 90.0, False, 'test']
+        expected_columns = ["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy", "custom"]
+        expected_values = ['foo', 250, 20, 0.02, 0.03, 18e3, 75, False, 90.0, False, 'cap', 'test']
         assert sorted(prosumer.gas_boiler.columns) == sorted(expected_columns)
         assert prosumer.gas_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 

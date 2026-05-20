@@ -447,31 +447,66 @@ class MappedController(Controller):
     def set_active(self, container, in_service):
         super().set_active(container, in_service)
 
-    def _merit_order_mass_flow(self, container, mdot_out_available_kg_per_s, mdot_required_tab_kg_per_s):
+    def _merit_order_mass_flow(self, container, mdot_out_available_kg_per_s,
+                               mdot_required_tab_kg_per_s, overflow_strategy="cap"):
         """
         Implement a merit order logic: the first mapped element is served first
-        and the second one get the remaining power (if there are two mapped controllers)
+        and the second one gets the remaining power (if there are two mapped controllers).
+
+        When the available output mass flow exceeds the sum of the responder
+        requests, ``overflow_strategy`` controls what happens to the surplus:
+
+        - ``"cap"`` (default, historic behaviour): the surplus is silently
+          dropped. Mass and energy delivered to responders will be less than
+          what the producer recorded internally - producer controllers that
+          want to stay consistent must compensate (typically by raising
+          ``t_out_c`` after the call, see the gas/electric boiler).
+        - ``"dump_on_last"``: the surplus is added to the last (lowest-priority)
+          responder, which then receives more than it requested. This lets a
+          producer pushed onto a thermal floor (``min_p_kw`` / ``min_p_comp_kw``)
+          discharge the excess as extra mass flow at the producer's natural
+          ``t_out_c`` - mirrors the boiler's overshoot pattern but through
+          ``mdot`` rather than temperature.
+        - ``"dump_proportional"``: the surplus is split across all responders
+          in proportion to their original requests (or equally if every
+          request is zero).
 
         :param container: The container object
         :param mdot_out_available_kg_per_s: The total mass flow available at the element output
         :param mdot_required_tab_kg_per_s: The list of the mass flows required by the mapped controllers
+        :param overflow_strategy: How to dispatch surplus mass flow ("cap", "dump_on_last", "dump_proportional")
 
         :return mdot_res_tab_kg_per_s: The list of the mass flows delivered to the mapped controllers
         """
 
         mdot_res_tab_kg_per_s = []
         mdot_still_to_delivered_kg_per_s = mdot_out_available_kg_per_s
-        # responders = self._get_mapped_responders(container, remove_duplicate=True)
         for mdot_required_responder_i_kg_per_s in mdot_required_tab_kg_per_s:
             mdot_delivered_responder_i_kg_per_s = np.minimum(mdot_required_responder_i_kg_per_s,
                                                              mdot_still_to_delivered_kg_per_s)
             mdot_res_tab_kg_per_s.append(mdot_delivered_responder_i_kg_per_s)
             mdot_still_to_delivered_kg_per_s -= mdot_delivered_responder_i_kg_per_s
-            
-        # if mdot_still_to_delivered_kg_per_s > 1e-3:
-        #     warn(f"For element {self.name} in prosumer {container.name} at timestep {self.time}, there is still {mdot_still_to_delivered_kg_per_s} kg/s left to deliver."
-        #           "This can lead to an error in the mass or energy balance")
-            
+
+        if mdot_still_to_delivered_kg_per_s > 1e-9 and len(mdot_res_tab_kg_per_s) > 0:
+            if overflow_strategy == "dump_on_last":
+                mdot_res_tab_kg_per_s[-1] = (mdot_res_tab_kg_per_s[-1]
+                                             + mdot_still_to_delivered_kg_per_s)
+            elif overflow_strategy == "dump_proportional":
+                total_req = float(np.sum(mdot_required_tab_kg_per_s))
+                if total_req > 1e-9:
+                    for i, req in enumerate(mdot_required_tab_kg_per_s):
+                        mdot_res_tab_kg_per_s[i] = (mdot_res_tab_kg_per_s[i]
+                                                    + mdot_still_to_delivered_kg_per_s * (req / total_req))
+                else:
+                    share = mdot_still_to_delivered_kg_per_s / len(mdot_res_tab_kg_per_s)
+                    for i in range(len(mdot_res_tab_kg_per_s)):
+                        mdot_res_tab_kg_per_s[i] = mdot_res_tab_kg_per_s[i] + share
+            elif overflow_strategy != "cap":
+                raise ValueError(
+                    f"Unknown overflow_strategy '{overflow_strategy}'. "
+                    "Expected one of: 'cap', 'dump_on_last', 'dump_proportional'."
+                )
+
         return mdot_res_tab_kg_per_s
 
     def finalize(self, container, result, result_fluid_mix=None):

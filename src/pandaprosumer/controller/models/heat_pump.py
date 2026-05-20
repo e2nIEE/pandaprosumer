@@ -462,9 +462,13 @@ class HeatPumpController(BasicProsumerController):
                     t_evap_out_c = (t_bypass_c * mdot_bypass_kg_per_s + t_evap_out_c * mdot_evap_kg_per_s) / self._mdot_evap_in_kg_per_s
                     mdot_evap_kg_per_s = self._mdot_evap_in_kg_per_s
 
+            overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
+            if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
+                overflow_strategy = "cap"
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_cond_kg_per_s,
-                                                                   mdot_tab_required_kg_per_s)
+                                                                   mdot_tab_required_kg_per_s,
+                                                                   overflow_strategy=overflow_strategy)
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_cond_required_kg_per_s:

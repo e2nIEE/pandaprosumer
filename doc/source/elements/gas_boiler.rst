@@ -48,6 +48,7 @@ These are the physical parameters required for the Gas Boiler element to enable 
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
    "allow_stop", "Whether the boiler is allowed to stop completely (reach zero power). If False, the boiler maintains minimum power even when demand is null. See :ref:`gas_boiler_edge_cases` for important interaction with temperature constraints.", "Boolean"
    "max_t_out_c", "Maximum output temperature constraint. If set, limits the boiler's output temperature to this value. See :ref:`gas_boiler_edge_cases` for important interaction with minimum power constraints.", "Degree Celsius"
+   "overflow_strategy", "How to dispatch surplus mass flow to responders when the boiler runs at ``min_q_kw`` but the demand asks for less. ``'cap'`` (default) drops the surplus and raises ``t_out_c`` to keep energy balance; ``'dump_on_last'`` pushes the surplus mass flow onto the last responder at the requested feed temperature; ``'dump_proportional'`` splits the surplus across responders in proportion to their requests. See :ref:`overflow_strategy`.", "str"
 
 
 

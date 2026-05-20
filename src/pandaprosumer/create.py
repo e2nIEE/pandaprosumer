@@ -96,6 +96,7 @@ def create_heat_pump(prosumer,
                      cond_fluid=None,
                      evap_fluid=None,
                      mode='carnot',
+                     overflow_strategy='cap',
                      name=None,
                      index=None,
                      in_service=True,
@@ -165,10 +166,10 @@ def create_heat_pump(prosumer,
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
              'min_p_comp_kw',  'max_ramp_up_kw_per_s', 'max_ramp_down_kw_per_s', 'max_t_cond_out_c',
-             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'in_service'],
+             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy', 'in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
              min_p_comp_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, max_t_cond_out_c,
-             max_cop, cond_fluid, evap_fluid, mode, in_service])
+             max_cop, cond_fluid, evap_fluid, mode, overflow_strategy, in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
@@ -525,6 +526,7 @@ def create_electric_boiler(prosumer,
                            efficiency_percent=100,
                            allow_stop=True,
                            max_t_out_c=np.nan,
+                           overflow_strategy='cap',
                            name=None,
                            index=None,
                            in_service=True,
@@ -567,8 +569,8 @@ def create_electric_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "electric_boiler", index)
 
-    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service"],
-                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, in_service]))
+    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
+                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
     return int(index)
@@ -583,6 +585,7 @@ def create_gas_boiler(prosumer,
                       efficiency_percent=100,
                       allow_stop=True,
                       max_t_out_c=np.nan,
+                      overflow_strategy='cap',
                       name=None,
                       index=None,
                       in_service=True,
@@ -627,8 +630,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service"],
-                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)

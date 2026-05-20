@@ -38,8 +38,10 @@ class TestHeatPump:
         assert len(prosumer.heat_pump) == 1
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
                             "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
-                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode", "in_service"]
-        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, 'water', 'water', 'carnot', True]
+                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
+                            "in_service", "overflow_strategy"]
+        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
+                           'water', 'water', 'carnot', True, 'cap']
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -71,9 +73,11 @@ class TestHeatPump:
         assert prosumer.heat_pump.index[0] == hp_idx
 
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
-                            "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", 
-                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode", "in_service", "custom"]
-        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'carnot', False, 'test']
+                            "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
+                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
+                            "in_service", "overflow_strategy", "custom"]
+        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'carnot',
+                           False, 'cap', 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
 

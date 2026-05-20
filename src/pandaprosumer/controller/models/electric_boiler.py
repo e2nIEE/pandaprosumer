@@ -206,9 +206,13 @@ class ElectricBoilerController(BasicProsumerController):
                                                                                                    t_out_required_c,
                                                                                                    t_in_required_c)
 
+            overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
+            if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
+                overflow_strategy = "cap"
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_delivered_kg_per_s,
-                                                                   mdot_tab_required_kg_per_s)
+                                                                   mdot_tab_required_kg_per_s,
+                                                                   overflow_strategy=overflow_strategy)
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
                 # If the electric boiler is not able to deliver the required mass flow,

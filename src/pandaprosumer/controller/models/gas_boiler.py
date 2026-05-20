@@ -243,10 +243,14 @@ class GasBoilerController(BasicProsumerController):
                 t_in_required_c,
             )
 
+            overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
+            if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
+                overflow_strategy = "cap"
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(
                 prosumer,
                 mdot_delivered_kg_per_s,
                 mdot_tab_required_kg_per_s,
+                overflow_strategy=overflow_strategy,
             )
 
             rerun = False
