@@ -200,10 +200,10 @@ def test_shs_hp_demand_chain_converges():
     # ---- SHS: stays physically reasonable on every step ------------------
     # The SHS records the discharge-side temperature (top layer feeding the
     # demand). It must stay between the return setpoint and a sanity ceiling.
-    assert (shs_df.t_discharge_c.values > 0).all(), \
-        f"SHS discharge temp went non-positive: {shs_df.t_discharge_c.values}"
-    assert (shs_df.t_discharge_c.values < 200).all(), \
-        f"SHS discharge temp unphysical (>200C): {shs_df.t_discharge_c.values}"
+    assert (shs_df.t_discharge_out_c.values > 0).all(), \
+        f"SHS discharge temp went non-positive: {shs_df.t_discharge_out_c.values}"
+    assert (shs_df.t_discharge_out_c.values < 200).all(), \
+        f"SHS discharge temp unphysical (>200C): {shs_df.t_discharge_out_c.values}"
 
     # ---- HP: respects min_p_comp_kw whenever it runs ---------------------
     running = hp_df.p_comp_kw.values > 1e-6

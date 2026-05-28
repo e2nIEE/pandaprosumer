@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
-from typing import List, Callable
+from typing import List
 
 from pandaprosumer.element.element_toolbox import enforce_types
 

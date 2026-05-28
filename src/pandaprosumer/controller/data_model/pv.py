@@ -2,8 +2,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import List
 
-from numpy import dtype
-
 from pandaprosumer.element.element_toolbox import enforce_types
 
 

@@ -8,6 +8,15 @@ def _default_argument():
     return {'tank_height_m': 12, 'tank_internal_radius_m': 4.}
 
 
+def _key_results(shs_controller):
+    """Slice the four legacy result columns from the full SHS step_results array."""
+    cols = shs_controller.result_columns
+    return [shs_controller.step_results[0, cols.index("mdot_discharge_kg_per_s")],
+            shs_controller.step_results[0, cols.index("t_discharge_out_c")],
+            shs_controller.step_results[0, cols.index("q_delivered_kw")],
+            shs_controller.step_results[0, cols.index("e_stored_kwh")]]
+
+
 def _default_period(prosumer):
     return create_period(prosumer, 1,
                          name="foo",
@@ -196,7 +205,13 @@ class TestStratifiedHeatStorage:
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
         input_columns_expected = []
-        result_columns_expected = ["mdot_discharge_kg_per_s", "t_discharge_c", "q_delivered_kw", "e_stored_kwh"]
+        result_columns_expected = [
+            "mdot_received_kg_per_s", "t_received_in_c", "t_received_out_c", "q_received_kw",
+            "mdot_charge_kg_per_s", "t_charge_in_c", "t_charge_out_c", "q_charge_kw",
+            "mdot_discharge_kg_per_s", "t_discharge_in_c", "t_discharge_out_c", "q_discharge_kw",
+            "mdot_delivered_kg_per_s", "t_delivered_in_c", "t_delivered_out_c", "q_delivered_kw",
+            "e_stored_kwh",
+        ]
 
         assert shs_controller.input_columns == input_columns_expected
         assert shs_controller.result_columns == result_columns_expected
@@ -218,7 +233,7 @@ class TestStratifiedHeatStorage:
         shs_controller.control_step(prosumer)
 
         expected = [0., 22.5, 0., 0.]
-        assert shs_controller.step_results == pytest.approx(np.array([expected]))
+        assert _key_results(shs_controller) == pytest.approx(expected)
 
     def test_controller_run_control_out(self):
         """
@@ -251,7 +266,7 @@ class TestStratifiedHeatStorage:
         # Check that the energy stored in the storage is equal to the input energy
         e_in_kwh = (80 - 22.5) * 1.5 * 4.186 * resol / 3600
         expected = [0., 22.5, 0., e_in_kwh]
-        assert shs_controller.step_results == pytest.approx(np.array([expected]), .03)
+        assert _key_results(shs_controller) == pytest.approx(expected, .03)
         assert shs_controller._get_stored_energy_kwh(22.5) == pytest.approx(e_in_kwh, .03)
 
     def test_controller_run_control_2_layers(self):
@@ -299,7 +314,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [0., 30., 0., 0.]
         layers_expected = t_layers_init_c
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]))
+        assert _key_results(shs_controller) == pytest.approx(res_expected)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected))
 
         # Test with filling 1m^3 (the volume of one layer) at 30°C in one time step
@@ -312,7 +327,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [0., 30., 0., (30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [30., 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test with filling 1m^3 (the volume of one layer) at 30°C in 1000 time steps
@@ -327,7 +342,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [0., 30., 0., 7.3157]
         layers_expected = [26.3244, 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test charging then discharging the same amount of energy
@@ -346,7 +361,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [layer_mass_kg, 30., (30 - 20) * layer_mass_kg * 4186 / 1000, 0.]
         layers_expected = [20., 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.1)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01, 0.1)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test charging when already full
@@ -359,7 +374,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [0., 30., 0., (30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [30., 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test charging when empty
@@ -374,7 +389,7 @@ class TestStratifiedHeatStorage:
         #        res_expected = [0., 20., 0., -1.155657] should be equal to that ?
         # layers_expected = [20., 29.]
         layers_expected = [20., 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test discharging when full
@@ -389,7 +404,7 @@ class TestStratifiedHeatStorage:
         # res_expected = [layer_mass_kg, 30., (30-20)*layer_mass_kg*4186, 0.]
         # layers_expected = [19., 30.]
         layers_expected = [20., 30.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .1, 0.1)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .1, 0.1)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
         # Test discharging when already empty
@@ -402,7 +417,7 @@ class TestStratifiedHeatStorage:
 
         res_expected = [0., 20., 0., -(30 - 20) * layer_mass_kg * 4.186 * 1 / 3600]
         layers_expected = [20., 20.]
-        assert shs_controller.step_results == pytest.approx(np.array([res_expected]), .01, 0.01)
+        assert _key_results(shs_controller) == pytest.approx(res_expected, .01, 0.01)
         assert shs_controller._layer_temps_c == pytest.approx(np.array(layers_expected), .01)
 
     def test_controller_t_m_to_receive(self):

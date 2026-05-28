@@ -3,9 +3,7 @@ from pandaprosumer.controller.base import BasicProsumerController
 import json
 import pandas as pd
 from pandaprosumer.library import lib_dir
-import os
-import sys
-import logging  
+import logging
 logging.basicConfig(handlers=[logging.NullHandler()], force=True)              #prevents printing warnings to the console                                                             
 logger = logging.getLogger("ice_chp_logger")
 
@@ -259,7 +257,11 @@ class IceChpController(BasicProsumerController):
         #Check if the size is greater than the maximum value in the map:
         size_nominal_max_kw = max(ice_chp_sizes_nominal)
         if size_kw > size_nominal_max_kw:
-            sys.exit(f"The size of the chosen ICE CHP is too large. The largest available ICE CHP size is {size_nominal_max_kw} kW. Choose a smaller size or add a new CHP map. \nTerminating the program...\n")
+            raise ValueError(
+                f"The size of the chosen ICE CHP ({size_kw} kW) is too large. The largest "
+                f"available ICE CHP size is {size_nominal_max_kw} kW. Choose a smaller size or "
+                f"add a new CHP map."
+            )
         else: 
             # Check if the size is in the map:
             if size_kw in ice_chp_sizes_nominal:

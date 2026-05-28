@@ -11,7 +11,7 @@ from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESH
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 class HeatExchangerController(BasicProsumerController):
@@ -124,17 +124,34 @@ class HeatExchangerController(BasicProsumerController):
                                                                                    t_1_in_c)
 
         if not np.isnan(self.t_previous_1_out_c):
-            # FixMe: This doesn't make sense
             mdot_previous_1_in_kg_per_s = self.mdot_previous_1_kg_per_s
-            assert mdot_previous_1_in_kg_per_s >= 0
-            assert self.t_previous_1_in_c >= self.t_previous_1_out_c
+            if mdot_previous_1_in_kg_per_s < 0:
+                raise ValueError(
+                    f"Heat Exchanger {self.name}: previous-step primary mass flow is negative "
+                    f"({mdot_previous_1_in_kg_per_s} kg/s)"
+                )
+            if self.t_previous_1_in_c < self.t_previous_1_out_c:
+                raise ValueError(
+                    f"Heat Exchanger {self.name}: previous-step t_1_in_c ({self.t_previous_1_in_c}) "
+                    f"is colder than t_1_out_c ({self.t_previous_1_out_c})"
+                )
             return self.t_previous_1_in_c, self.t_previous_1_out_c, mdot_previous_1_in_kg_per_s
 
-        assert not np.isnan(t_1_in_c)
-        assert not np.isnan(t_1_out_c)
-        assert not np.isnan(mdot_1_kg_per_s)
-        assert mdot_1_kg_per_s >= 0, f"Heat Exchanger {self.name}: Negative mass flow {mdot_1_kg_per_s} kg/s at timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_in_c >= t_1_out_c
+        if np.isnan(t_1_in_c) or np.isnan(t_1_out_c) or np.isnan(mdot_1_kg_per_s):
+            raise ValueError(
+                f"Heat Exchanger {self.name}: primary-side computation produced nan at timestep "
+                f"{self.time} (t_1_in={t_1_in_c}, t_1_out={t_1_out_c}, mdot_1={mdot_1_kg_per_s})"
+            )
+        if mdot_1_kg_per_s < 0:
+            raise ValueError(
+                f"Heat Exchanger {self.name}: Negative mass flow {mdot_1_kg_per_s} kg/s at "
+                f"timestep {self.time} in prosumer {prosumer.name}"
+            )
+        if t_1_in_c < t_1_out_c:
+            raise ValueError(
+                f"Heat Exchanger {self.name}: t_1_in_c ({t_1_in_c}) is colder than t_1_out_c "
+                f"({t_1_out_c}) at timestep {self.time}"
+            )
         return t_1_in_c, t_1_out_c, mdot_1_kg_per_s
 
     def calculate_heat_exchanger(self, prosumer, t_2_out_c, t_2_in_c, mdot_2_kg_per_s, t_1_in_c):
@@ -363,7 +380,10 @@ class HeatExchangerController(BasicProsumerController):
             while rerun:
                 nb_runs += 1
                 if nb_runs > MAX_RERUN:
-                    raise Exception(f"Heat Exchanger calculation did not converge after {MAX_RERUN} iterations", self.name, self.time, prosumer.name)
+                    raise RuntimeError(
+                        f"Heat Exchanger {self.name}: calculation did not converge after "
+                        f"{MAX_RERUN} iterations at timestep {self.time} in prosumer {prosumer.name}"
+                    )
                 (mdot_1_kg_per_s, t_1_in_c, t_1_out_c,
                  mdot_2_kg_per_s, t_2_in_c, t_2_out_c) = self.calculate_heat_exchanger(prosumer,
                                                                                        t_out_2_required_c,

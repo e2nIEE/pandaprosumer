@@ -2,7 +2,7 @@ from pandapower.control import control_initialization, control_implementation, c
     get_controller_order, check_final_convergence
 try:
     import pandaplan.core.pplog as pplog
-except:
+except ImportError:
     import logging as pplog
 
 logger = pplog.getLogger(__name__)

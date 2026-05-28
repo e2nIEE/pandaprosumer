@@ -14,7 +14,7 @@ from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def _get_wet_bulb_temperature(t_db_c, phi_air_in_percent):
@@ -118,8 +118,16 @@ class DryCoolerController(BasicProsumerController):
         mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s', prosumer)
 
         if not np.isnan(self.t_previous_out_c):
-            assert self.mdot_previous_in_kg_per_s >= 0
-            assert self.t_previous_in_c + 1e-9 >= self.t_previous_out_c
+            if self.mdot_previous_in_kg_per_s < 0:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: previous-step mass flow is negative "
+                    f"({self.mdot_previous_in_kg_per_s} kg/s)"
+                )
+            if self.t_previous_in_c + 1e-9 < self.t_previous_out_c:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: previous-step t_in_c ({self.t_previous_in_c}) is "
+                    f"colder than t_out_c ({self.t_previous_out_c})"
+                )
             if self.t_previous_in_c < self.t_previous_out_c:
                 self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
@@ -134,8 +142,16 @@ class DryCoolerController(BasicProsumerController):
                 t_return_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
             if np.isnan(mdot_required_kg_per_s):
                 mdot_required_kg_per_s = self._nominal_mdot_fluid_kg_per_s(prosumer)
-            assert mdot_required_kg_per_s >= 0
-            assert t_feed_required_c >= t_return_required_c
+            if mdot_required_kg_per_s < 0:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: required mass flow is negative "
+                    f"({mdot_required_kg_per_s} kg/s)"
+                )
+            if t_feed_required_c < t_return_required_c:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: required t_in_c ({t_feed_required_c}) is colder "
+                    f"than t_out_c ({t_return_required_c})"
+                )
             return t_feed_required_c, t_return_required_c, mdot_required_kg_per_s
 
     def _nominal_mdot_fluid_kg_per_s(self, prosumer):

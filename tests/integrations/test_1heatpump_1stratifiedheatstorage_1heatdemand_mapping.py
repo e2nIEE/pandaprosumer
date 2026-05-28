@@ -109,8 +109,8 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         shs_data = {
             'mdot_discharge_kg_per_s': [0.0, 0.0, 0.0, 0.0, 0.0, 0.71, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            't_discharge_c': [20.0] + [80] * 5 + [79.75, 79.63, 79.48, 79.31, 79.15, 78.98, 78.81],
-            'q_delivered_kw': [0., 0., 0., 0., 0., 178.95] + [0.] * 7,
+            't_discharge_out_c': [20.0] + [80] * 5 + [79.75, 79.63, 79.48, 79.31, 79.15, 78.98, 78.81],
+            'q_delivered_kw': [0., 0., 0., 0., 0., 500., 321.05, 321.05, 321., 321., 321.05, 321.05, 321.05],
             'e_stored_kwh': [169.68, 169.68, 169.68, 352.92, 352.92] + [0.] * 8,
 
         }
@@ -133,7 +133,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         assert not np.isnan(shs_res_df).any().any()
         assert not np.isnan(hd_res_df).any().any()
         assert_frame_equal(hp_res_df.sort_index(axis=1), hp_expected.sort_index(axis=1), check_dtype=False, atol=.01)
-        assert_frame_equal(shs_res_df.sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01)
+        assert_frame_equal(shs_res_df[shs_expected.columns].sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01)
         assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, atol=.01)
 
     def test_mapping_bypass(self):
@@ -243,7 +243,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         shs_data = {
             'mdot_discharge_kg_per_s': [0.0, 0.0, 0.0, 0.0, 0.0, 0.71, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            't_discharge_c': [20.0] + [80] * 5 + [79.75, 79.63, 79.48, 79.31, 79.15, 78.98, 78.81],
+            't_discharge_out_c': [20.0] + [80] * 5 + [79.75, 79.63, 79.48, 79.31, 79.15, 78.98, 78.81],
             'q_delivered_kw': [0., 0., 0., 0., 0., 178.95] + [0.] * 7,
             'e_stored_kwh': [169.68, 169.68, 169.68, 352.92, 352.92] + [0.] * 8,
 
@@ -267,5 +267,5 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         assert not np.isnan(shs_res_df).any().any()
         assert not np.isnan(hd_res_df).any().any()
         assert_frame_equal(hp_res_df.sort_index(axis=1), hp_expected.sort_index(axis=1), check_dtype=False, rtol=.2, atol=.01, check_names=False)
-        assert_frame_equal(shs_res_df.sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01, check_names=False)
+        assert_frame_equal(shs_res_df[shs_expected.columns].sort_index(axis=1), shs_expected.sort_index(axis=1), check_dtype=False, atol=.01, check_names=False)
         assert_frame_equal(hd_res_df.sort_index(axis=1), hd_expected.sort_index(axis=1), check_dtype=False, rtol=.001, atol=.01, check_names=False)

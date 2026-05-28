@@ -200,7 +200,10 @@ class ElectricBoilerController(BasicProsumerController):
         while rerun:
             nb_runs += 1
             if nb_runs > 20:
-                raise Exception("Heat Exchanger calculation did not converge after 100 iterations", self.name, self.time, prosumer.name)
+                raise RuntimeError(
+                    f"Electric Boiler {self.name}: did not converge after 20 iterations at "
+                    f"timestep {self.time} in prosumer {prosumer.name}"
+                )
             q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
                                                                                                    mdot_required_kg_per_s,
                                                                                                    t_out_required_c,

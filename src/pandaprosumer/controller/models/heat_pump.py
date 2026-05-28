@@ -96,8 +96,6 @@ class HeatPumpController(BasicProsumerController):
             return t_cond_out_required_c, t_cond_in_required_c, 0
         pinch_c = self._get_element_param(prosumer, 'pinch_c')
 
-        # FixMe: Do we need this function or use delta_t_hot_default_c in t_m_to_receive ?
-        # FixMe: cop < 0 if t_cond_out_c < t_evap_in_c (t_feed_c)
 
         (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
          mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
@@ -185,7 +183,12 @@ class HeatPumpController(BasicProsumerController):
         t_evap_out_c = t_evap_in_c - self._get_element_param(prosumer, 'delta_t_evap_c')
         cp_evap_kj_per_kgk = self.evap_fluid.get_heat_capacity(CELSIUS_TO_K + (t_evap_in_c + t_evap_out_c) / 2) / 1000
 
-        if t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c:
+        # Heat pump is off whenever the required temperature lift is non-positive:
+        # - t_cond_out_c <= t_cond_in_c: no heat added on the condenser side
+        # - t_evap_in_c <= t_evap_out_c: no heat extracted on the evaporator side
+        # - t_cond_out_c <= t_evap_in_c: would imply negative Carnot COP (denominator
+        #   of (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c) <= 0)
+        if t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c or t_cond_out_c <= t_evap_in_c:
             # If there is no demand on the condenser, the Heat Pump is not running
             # We have to take into account ramp down constraints here
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')

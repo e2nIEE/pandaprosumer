@@ -25,7 +25,7 @@ from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_de
 from pandaprosumer.prosumer_toolbox import add_new_element
 from pandaprosumer.time_series.time_series import TimeSeries
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", check_order=True):
@@ -63,8 +63,7 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", 
 
 def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, name=None, index=None):
     """
-    Creates a new period in prosumer["period"
-    # FixMe: what if start and end are None ?
+    Creates a new period in prosumer["period"]
 
     INPUT:
         **prosumer** (pandaprosumerContainer) - The prosumer within this period should be created
@@ -72,9 +71,11 @@ def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, n
         **resolution_s** (float) - The resolution of the period [s]
 
     OPTIONAL:
-        **start** (string, default None) - The start time of the period
+        **start** (string, default None) - The start time of the period. May be None
+            for element-only setup (no time-series binding); time-series runs will then
+            fail when the period is consumed.
 
-        **end** (string, default None) - The end time of the period
+        **end** (string, default None) - The end time of the period. Same caveat as `start`.
 
         **timezone** (string, default None) - The timezone of the period. If None, will default to 'utc'.
         Example: 'Europe/Paris'

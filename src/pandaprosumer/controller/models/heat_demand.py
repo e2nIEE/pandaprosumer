@@ -171,11 +171,22 @@ class HeatDemandController(BasicProsumerController):
             if t_feed_demand_c <= t_return_demand_c or mdot_demand_kg_per_s < 1e-12:
                 t_feed_demand_c = t_return_demand_c
                 mdot_demand_kg_per_s = 0
-            assert not np.isnan(t_feed_demand_c)
-            assert not np.isnan(t_return_demand_c)
-            assert not np.isnan(mdot_demand_kg_per_s)
-            assert mdot_demand_kg_per_s >= 0
-            assert t_feed_demand_c >= t_return_demand_c
+            if np.isnan(t_feed_demand_c) or np.isnan(t_return_demand_c) or np.isnan(mdot_demand_kg_per_s):
+                raise ValueError(
+                    f"Heat Demand {self.name}: under-specified demand at timestep {self.time} "
+                    f"(t_feed={t_feed_demand_c}, t_return={t_return_demand_c}, mdot={mdot_demand_kg_per_s}). "
+                    f"Provide either a time-series input or an element default for each missing field."
+                )
+            if mdot_demand_kg_per_s < 0:
+                raise ValueError(
+                    f"Heat Demand {self.name}: negative mass flow ({mdot_demand_kg_per_s} kg/s) "
+                    f"at timestep {self.time}"
+                )
+            if t_feed_demand_c < t_return_demand_c:
+                raise ValueError(
+                    f"Heat Demand {self.name}: t_feed_demand_c ({t_feed_demand_c}) is colder than "
+                    f"t_return_demand_c ({t_return_demand_c}) at timestep {self.time}"
+                )
             return t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
 
     def _save_state(self):

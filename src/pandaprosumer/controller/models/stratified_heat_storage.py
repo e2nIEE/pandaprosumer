@@ -78,7 +78,7 @@ def phi(r):
     elif limiterName == "vanleer":  # Not used
         return (r + abs(r)) / (1 + abs(r))
     else:
-        raise Exception("only superbee and van Leer are supported")
+        raise ValueError("only superbee and van Leer are supported")
 
 
 @njit
@@ -111,9 +111,7 @@ def tvd_convection_step(layer_temps_c,
     T_charge = t_charge_c
     T_amb = t_ext_c
     T_1 = T[0]
-    T_2 = T[1]
     T_N = T[-1]
-    T_N_minus_1 = T[-2]
     m_cC_p = mdot_charge_kg_per_s * cp_j_per_kgk
     m_dC_p = mdot_discharge_kg_per_s * cp_j_per_kgk
     m_eC_p = (mdot_charge_kg_per_s - mdot_discharge_kg_per_s) * cp_j_per_kgk
@@ -145,7 +143,6 @@ def tvd_convection_step(layer_temps_c,
         if den1[i] >= eps:
             theta[i] = num[i] / den[i]
 
-    scheme = "superbee"
     limiter = phi(theta)
 
     # T = np.array(T)
@@ -491,6 +488,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
             #
             # mdot_discharge_kg_per_s = np.sum(mdot_demand_tab_kg_per_s)
 
+        # FixMe: the feature of loading at intermediate layer is not working anymore with the TVD scheme
         height_charge_in_m = self._get_element_param(prosumer, 'height_charge_in_m')
         height_charge_out_m = self._get_element_param(prosumer, 'height_charge_out_m')
         height_discharge_out_m = self._get_element_param(prosumer, 'height_discharge_out_m')
@@ -504,8 +502,6 @@ class StratifiedHeatStorageController(BasicProsumerController):
         rho_kg_per_m3 = self.fluid.get_density(CELSIUS_TO_K + np.mean(self._layer_temps_c))
         t_ext_c = self._get_element_param(prosumer, 't_ext_c')
 
-        k_fluid_w_per_mk = self._get_element_param(prosumer, 'k_fluid_w_per_mk')
-        # dt_max_s = (self.dz_m ** 2 * rho_kg_per_m3 * cp_discharge_j_per_kgk) / (2 * k_fluid_w_per_mk)
         max_dt_s = self._effective_max_dt_s(prosumer,
                                             mdot_charge_kg_per_s,
                                             mdot_discharge_kg_per_s,
@@ -556,7 +552,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
         else:
             t_received_out_c = (mdot_charge_kg_per_s * t_charge_out_c + mdot_bypass_kg_per_s * t_demand_in_c) / (mdot_charge_kg_per_s + mdot_bypass_kg_per_s)
 
-        return (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
+        cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
+        q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
+
+        cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
+        q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
+
+        return (q_delivered_kw, q_bypass_kw, q_discharge_kw, q_received_kw, q_charge_kw, e_stored_kwh,
                 mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
                 mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
                 mdot_charge_kg_per_s, t_charge_out_c,
@@ -618,7 +620,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         while rerun:
             self._layer_temps_c = layer_temp_init_c.copy()
 
-            (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
+            (q_delivered_kw, q_bypass_kw, q_discharge_kw, q_received_kw, q_charge_kw, e_stored_kwh,
              mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
              mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
              mdot_charge_kg_per_s, t_charge_out_c,
@@ -651,21 +653,29 @@ class StratifiedHeatStorageController(BasicProsumerController):
                     t_demand_in_c = t_return_demand_new_c
                     rerun = True
 
-        cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
-        q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
-        cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
-        q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
-
-        # FIXME: q_delivered_kw is the discharge heat, not the total heat delivered to the downstream elements (bypass + discharge)
-        result = np.array([[mdot_discharge_kg_per_s,
-                            t_discharge_out_c,
-                            q_discharge_kw,
+        result = np.array([[mdot_received_kg_per_s, t_received_in_c, t_received_out_c, q_received_kw,
+                            mdot_charge_kg_per_s, t_received_in_c, t_charge_out_c, q_charge_kw,
+                            mdot_discharge_kg_per_s, t_demand_in_c, t_discharge_out_c, q_discharge_kw,
+                            mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c, q_delivered_kw,
                             e_stored_kwh]])
 
         self.last_result = {
+            "mdot_received_kg_per_s": mdot_received_kg_per_s,
+            "t_received_in_c": t_received_in_c,
+            "t_received_out_c": t_received_out_c,
+            "q_received_kw": q_received_kw,
+            "mdot_charge_kg_per_s": mdot_charge_kg_per_s,
+            "t_charge_in_c": t_received_in_c,
+            "t_charge_out_c": t_charge_out_c,
+            "q_charge_kw": q_charge_kw,
             "mdot_discharge_kg_per_s": mdot_discharge_kg_per_s,
+            "t_discharge_in_c": t_demand_in_c,
             "t_discharge_out_c": t_discharge_out_c,
-            "q_delivered_kw": q_discharge_kw,
+            "q_discharge_kw": q_discharge_kw,
+            "mdot_delivered_kg_per_s": mdot_delivered_kg_per_s,
+            "t_delivered_in_c": t_demand_in_c,
+            "t_delivered_out_c": t_delivered_out_c,
+            "q_delivered_kw": q_delivered_kw,
             "e_stored_kwh": e_stored_kwh,
         }
 

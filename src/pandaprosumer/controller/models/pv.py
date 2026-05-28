@@ -1,4 +1,3 @@
-import numpy as np
 from pandaprosumer.controller.base import BasicProsumerController
 
 
@@ -53,16 +52,16 @@ class PvProductionController(BasicProsumerController):
             Prosumer container
         pv_production_object : object of type PvProductionControllerData
             PV production controller data object, where PV production inputs are defined
-        order : list
-            _description_
-        level : list
-            _description_
+        order : int
+            The order of the controller within its level.
+        level : int
+            The level of the controller in the prosumer's controller stack.
         data_source : object, optional
             Optional data source (e.g. DataFrame) for PV time series
         in_service : bool, optional
-            _description_, by default True
-        index : _type_, optional
-            _description_, by default None
+            True for in_service or False for out of service, by default True
+        index : int, optional
+            Force a specified controller ID. If None, the next free index is selected.
         """
         super().__init__(
             prosumer,
@@ -128,7 +127,7 @@ class PvProductionController(BasicProsumerController):
         else:
             try:
                 return float(elem["peakpower"])
-            except Exception:
+            except (KeyError, ValueError, TypeError):
                 return 0.0
 
 

@@ -28,8 +28,14 @@ class NetworkCouplingControl(BasicProsumerController):
         self.temp_fluid_map_output_idx = temp_fluid_map_output_idx
         self.mdot_fluid_map_output_idx = mdot_fluid_map_output_idx
         if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
-            assert len(self.result_columns) > temp_fluid_map_output_idx
-            assert len(self.result_columns) > mdot_fluid_map_output_idx
+            if not (len(self.result_columns) > temp_fluid_map_output_idx
+                    and len(self.result_columns) > mdot_fluid_map_output_idx):
+                raise ValueError(
+                    f"NetworkCouplingControl {self.name}: temp_fluid_map_output_idx "
+                    f"({temp_fluid_map_output_idx}) or mdot_fluid_map_output_idx "
+                    f"({mdot_fluid_map_output_idx}) is out of range for result_columns of length "
+                    f"{len(self.result_columns)}"
+                )
 
     def _t_m_to_receive_init(self, net):
         """
@@ -38,7 +44,6 @@ class NetworkCouplingControl(BasicProsumerController):
         :param net: The network object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        # FixMe
         tfeed_required_c = np.array(net["res_" + self.element_name].loc[self.element_index, self.tfeed_required_k]) - CELSIUS_TO_K
         treturn_required_c = np.array(net["res_" + self.element_name].loc[self.element_index, self.treturn_required_k]) - CELSIUS_TO_K
         mdot_required_kg_per_s = np.array(net["res_" + self.element_name].loc[self.element_index, self.mdot_required_kg_per_s])

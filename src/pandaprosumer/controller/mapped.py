@@ -53,6 +53,7 @@ class MappedController(Controller):
 
     @classmethod
     def name(cls):
+        """Return the controller class identifier used in results and logging."""
         return "mapped_controller"
 
     def __init__(self, container, basic_prosumer_object, order=0, level=0, in_service=True, index=None,
@@ -131,7 +132,7 @@ class MappedController(Controller):
 
                     try:
                         inferred_freq = pd.infer_freq(time_series.astype("datetime64[ns]"))
-                    except Exception as e:
+                    except (ValueError, TypeError):
                         inferred_freq = None
 
                     if inferred_freq is None:
@@ -186,6 +187,7 @@ class MappedController(Controller):
         return self.applied
 
     def is_supervisor(self):
+        """Return True if this controller is a Supervisor instance (overridden by Supervisor)."""
         return False
 
     def level_reset(self, container):
