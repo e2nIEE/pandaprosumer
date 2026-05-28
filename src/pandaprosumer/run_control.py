@@ -63,6 +63,10 @@ def ctrl_variables_default(prosumer):
     ctrl_variables['check_each_level'] = True
     ctrl_variables["errors"] = ()
     ctrl_variables['converged'] = True
+    # Match pandapower's own ctrl_variables_default so that the
+    # controller_not_converged() handler in pandapower.timeseries can look up
+    # this key without raising KeyError when a chain hits ControllerNotConverged.
+    ctrl_variables['continue_on_divergence'] = False
     return ctrl_variables
 
 

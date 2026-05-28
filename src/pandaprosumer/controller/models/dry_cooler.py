@@ -124,9 +124,33 @@ class DryCoolerController(BasicProsumerController):
                 self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
+            # Boot-time fallback: when no upstream input has been mapped yet and
+            # there is no previous-step history, fall back to nominal design
+            # conditions so an upstream HX (or similar) can bootstrap a
+            # consistent first-step state instead of propagating nans.
+            if np.isnan(t_feed_required_c):
+                t_feed_required_c = self._get_element_param(prosumer, 't_fluid_in_nom_c')
+            if np.isnan(t_return_required_c):
+                t_return_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
+            if np.isnan(mdot_required_kg_per_s):
+                mdot_required_kg_per_s = self._nominal_mdot_fluid_kg_per_s(prosumer)
             assert mdot_required_kg_per_s >= 0
             assert t_feed_required_c >= t_return_required_c
             return t_feed_required_c, t_return_required_c, mdot_required_kg_per_s
+
+    def _nominal_mdot_fluid_kg_per_s(self, prosumer):
+        t_air_in_nom_c = self._get_element_param(prosumer, 't_air_in_nom_c')
+        t_air_out_nom_c = self._get_element_param(prosumer, 't_air_out_nom_c')
+        t_fluid_in_nom_c = self._get_element_param(prosumer, 't_fluid_in_nom_c')
+        t_fluid_out_nom_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
+        qair_nom_m3_per_h = self._get_element_param(prosumer, 'qair_nom_m3_per_h')
+        t_mean_air_k = CELSIUS_TO_K + (t_air_in_nom_c + t_air_out_nom_c) / 2
+        rho_air = self.cooling_fluid.get_density(t_mean_air_k)
+        cp_air = self.cooling_fluid.get_heat_capacity(t_mean_air_k)
+        mdot_air_nom_kg_per_s = qair_nom_m3_per_h * rho_air / 3600
+        q_nom_w = mdot_air_nom_kg_per_s * cp_air * (t_air_out_nom_c - t_air_in_nom_c)
+        cp_fluid = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_fluid_in_nom_c + t_fluid_out_nom_c) / 2)
+        return q_nom_w / (cp_fluid * (t_fluid_in_nom_c - t_fluid_out_nom_c))
 
     def _calculate_air_cooled_heat_exchanger(self, prosumer, t_fluid_in_c, t_fluid_out_c, mdot_fluid_kg_per_s, t_air_in_c):
         """
@@ -299,6 +323,8 @@ class DryCoolerController(BasicProsumerController):
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         t_out_required_c = self._get_input('t_out_c', prosumer)
+        if np.isnan(t_out_required_c):
+            t_out_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
 
         assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"

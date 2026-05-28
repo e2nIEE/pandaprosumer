@@ -4,10 +4,22 @@ import pandas as pd
 from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
-from pandaprosumer.element import *
-from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
-    HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
-                                   SolarThermalElementData,ConverterElementData)
+from pandaprosumer.element import (
+    BoosterHeatPumpElementData,
+    ChillerElementData,
+    ConverterElementData,
+    DryCoolerElementData,
+    ElectricBoilerElementData,
+    GasBoilerElementData,
+    HeatDemandElementData,
+    HeatExchangerElementData,
+    HeatPumpElementData,
+    HeatStorageElementData,
+    IceChpElementData,
+    PvProductionComponentData,
+    SolarThermalElementData,
+    StratifiedHeatStorageElementData,
+)
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element
@@ -182,8 +194,8 @@ def create_heat_pump(prosumer,
 
 
 def create_heat_demand(prosumer,
-                       t_in_set_c=np.nan,
-                       t_out_set_c=np.nan,
+                       t_feed_demand_c=np.nan,
+                       t_return_demand_c=np.nan,
                        name=None,
                        index=None,
                        in_service=True,
@@ -195,11 +207,11 @@ def create_heat_demand(prosumer,
         **prosumer** - The prosumer within this heat demand should be created
 
     OPTIONAL:
-        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
+        **t_feed_demand_c** (float, default nan) - Default feed temperature [C]. Used as a fallback
+            when no `t_feed_demand_c` time-series input is mapped to the controller.
 
-        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
-
-        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
+        **t_return_demand_c** (float, default nan) - Default return temperature [C]. Used as a
+            fallback when no `t_return_demand_c` time-series input is mapped to the controller.
 
         **name** (string, default None) - A custom name for this heat demand
 
@@ -218,13 +230,10 @@ def create_heat_demand(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_demand", index)
 
-    entries = dict(zip(["name", "t_in_set_c", "t_out_set_c", "in_service"],
-                       [name, t_in_set_c, t_out_set_c, in_service]))
+    entries = dict(zip(["name", "t_feed_demand_c", "t_return_demand_c", "in_service"],
+                       [name, t_feed_demand_c, t_return_demand_c, in_service]))
 
     _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
-
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
 
     return int(index)
 
@@ -244,6 +253,7 @@ def create_stratified_heat_storage(prosumer,
                                    max_remaining_capacity_kwh=1,
                                    t_discharge_out_tol_c=1e-3,
                                    max_dt_s=None,
+                                   max_charge_mdot_kg_per_s=np.nan,
                                    height_charge_in_m=None,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
@@ -293,8 +303,16 @@ def create_stratified_heat_storage(prosumer,
         **t_discharge_out_tol_c** (float, default 0.001) - The maximum allowed difference between the demand \
         temperature and the temperature of the top layer in the storage to allow supplying the demand [C]
 
-        **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
-        Default to the period resolution. May cause divergence of the model if too high. [s]
+        **max_dt_s** (float, default None) - The temporal resolution of the storage calculation. \
+        When left as None / NaN, the controller derives a CFL-safe value at each step from the \
+        actual mass flow and the layer geometry; pin an explicit value if you want a fixed \
+        sub-stepping behaviour. May cause divergence of the model if too high. [s]
+
+        **max_charge_mdot_kg_per_s** (float, default NaN) - Optional cap on the mass flow the \
+        storage will request from its upstream initiator (e.g. a heat pump) while charging. When \
+        unset (default NaN), the storage requests the full "fill all cold layers per timestep" \
+        rate, which can exceed what the upstream producer can supply and trigger non-convergence. \
+        Set this to a value within the upstream's capacity to keep the reapply loop bounded. [kg/s]
 
         **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
 
@@ -341,12 +359,12 @@ def create_stratified_heat_storage(prosumer,
     entries = dict(zip(['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
                         'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
                         'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
-                        't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
+                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 'height_charge_in_m',
                         'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
                         k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
-                        t_discharge_out_tol_c, max_dt_s, height_charge_in_m,
+                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
@@ -639,7 +657,7 @@ def create_gas_boiler(prosumer,
 
 def create_booster_heat_pump(
     prosumer,
-    hp_type,
+    bhp_type,
     q_max_kw = None,
     in_service=True,
     name=None,
@@ -650,7 +668,7 @@ def create_booster_heat_pump(
     Creates a booster heat pump element in prosumer["booster_heat_pump"].
 
     :param prosumer: The prosumer container
-    :param hp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
+    :param bhp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
     :param q_max_kw: Maximum thermal power [kW], default None
     :param in_service: True for in_service or False for out of service, default True
     :param name: Name of the BHP instance, default None
@@ -664,13 +682,13 @@ def create_booster_heat_pump(
         zip(
             [
                 "name",
-                "hp_type",
+                "bhp_type",
                 "q_max_kw",
                 "in_service",
             ],
             [
                 name,
-                hp_type,
+                bhp_type,
                 q_max_kw,
                 in_service,
             ],
@@ -985,9 +1003,6 @@ def create_converter(prosumer,
                        [name, cp_water, in_service]))
 
     _set_entries(prosumer, "converter", index, **entries, **kwargs)
-
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
 
     return int(index)
 

@@ -39,9 +39,10 @@ class TestStratifiedHeatStorage:
                             'insulation_thickness_m', 'n_layers', 'min_useful_temp_c', 'k_fluid_w_per_mk',
                             'k_insu_w_per_mk', 'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c',
                             'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
-                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service']
+                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service',
+                            'max_charge_mdot_kg_per_s']
         expected_values = [None, 12., 4., 4.1, .15, 100, 65., .598, .028, 45., 12.5, 22.5,
-                           1, 1e-3, np.nan, np.nan, 0, np.nan, 0, True]
+                           1, 1e-3, np.nan, np.nan, 0, np.nan, 0, True, np.nan]
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
         assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -83,12 +84,12 @@ class TestStratifiedHeatStorage:
                             'n_layers', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 't_ext_c',
                             'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s',
                             'height_charge_in_m', 'height_charge_out_m', 'height_discharge_out_m',
-                            'height_discharge_in_m', 'in_service', 'custom']
+                            'height_discharge_in_m', 'in_service', 'max_charge_mdot_kg_per_s', 'custom']
         expected_values = ['foo', 12., 4., 5., .15, 100, 22.5, .598, .028, 45., 12.5, 22.5,
-                           5, 1, 1, 10, 2, 11, 1, False, 'test']
+                           5, 1, 1, 10, 2, 11, 1, False, np.nan, 'test']
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
-        assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values)
+        assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
     def test_define_element_param_fail(self):
         """

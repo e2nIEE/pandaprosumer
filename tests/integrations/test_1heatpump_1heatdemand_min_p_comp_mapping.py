@@ -80,7 +80,7 @@ class Test1HeatPump1HeatDemandMinPCompMapping:
             # hd_df.q_received_kw at the min-p hysteresis step.
             'overflow_strategy': 'cap',
         }
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         cp_idx = create_controlled_const_profile(
             prosumer, cp_input_columns, cp_result_columns, data_source, period, level=0, order=0)

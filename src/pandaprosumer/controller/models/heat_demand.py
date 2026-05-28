@@ -4,7 +4,6 @@ Module containing the HeatDemandController class.
 
 import numpy as np
 import logging
-import sys
 
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
@@ -95,76 +94,67 @@ class HeatDemandController(BasicProsumerController):
         return q_to_receive_kw
 
     def _demand_q_tf_tr_m(self, prosumer):
-        if not (np.isnan(self._t_feed_demand_c(prosumer)) or np.isnan(self._t_return_demand_c)
-                or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s)):
+        # Time-series-only reads (no element fallback) to enforce the "3 of 4" rule on
+        # explicitly-mapped inputs. Element defaults are silent fallbacks and shouldn't
+        # count toward the "all four specified" error.
+        t_feed_ts = self._get_input('t_feed_demand_c')
+        t_return_ts = self._get_input('t_return_demand_c')
+        q_ts = self._q_demand_kw
+        mdot_ts = self._mdot_demand_kg_per_s
+
+        if not (np.isnan(t_feed_ts) or np.isnan(t_return_ts) or np.isnan(q_ts) or np.isnan(mdot_ts)):
             raise ValueError("Should not provide a value for all Heat Demand inputs")
 
-        # Initialize effective_q_demand_kw with default value
-        effective_q_demand_kw = self._q_demand_kw
+        # Effective values (time-series input → element default fallback via _get_input).
+        t_feed_demand_c = self._get_input('t_feed_demand_c', prosumer)
+        t_return_demand_c = self._get_input('t_return_demand_c', prosumer)
+        mdot_demand_kg_per_s = mdot_ts
+        effective_q_demand_kw = q_ts
 
-        if np.isnan(self._t_feed_demand_c(prosumer)):
-            if np.isnan(self._t_return_demand_c) or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                # TODO : error if t_in_set_c do not exists
-                t_feed_demand_c = self.element_instance.t_in_set_c[self.element_index[0]]
-            else:
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + self._t_return_demand_c)) / 1000
-                t_feed_demand_c = self._t_return_demand_c + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
-        else:
-            t_feed_demand_c = self._t_feed_demand_c(prosumer)
-        if np.isnan(self._t_return_demand_c):
-            if np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                # TODO : error if t_out_set_c do not exists
-                t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
-            else:
-                # Handle division by zero case when mass flow is zero or very small
-                if abs(self._mdot_demand_kg_per_s) < 1e-12:
-                    # When mass flow is zero, no heat can be transferred, so return temperature equals feed temperature
-                    # and effective heat demand becomes zero
-                    if not np.isnan(self._q_demand_kw) and abs(self._q_demand_kw) > 1e-12:
-                        warning_msg = (
-                            f"Heat Demand {self.name}: Mass flow is zero but heat demand is {self._q_demand_kw} kW. "
-                            f"Effective heat demand will be set to 0 kW since no mass flow means no heat transfer. "
-                            f"Timestep: {self.time}"
-                        )
-                        logger.warning(warning_msg)
-                    t_return_demand_c = t_feed_demand_c
-                    effective_q_demand_kw = 0.0
-                else:
-                    cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
-                    t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
-        else:
-            t_return_demand_c = self._t_return_demand_c
-            # Handle case where mass flow is zero even when return temperature is provided
-            if abs(self._mdot_demand_kg_per_s) < 1e-12:
-                if not np.isnan(self._q_demand_kw) and abs(self._q_demand_kw) > 1e-12:
-                    warning_msg = (
-                        f"Heat Demand {self.name}: Mass flow is zero but heat demand is {self._q_demand_kw} kW. "
+        # Derive any temperature still missing from {t_return, q, mdot} or {t_feed, q, mdot}.
+        if np.isnan(t_feed_demand_c) and not (np.isnan(t_return_demand_c) or np.isnan(q_ts) or np.isnan(mdot_ts)):
+            cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_return_demand_c)) / 1000
+            t_feed_demand_c = t_return_demand_c + q_ts / (mdot_ts * cp)
+
+        if np.isnan(t_return_demand_c) and not (np.isnan(q_ts) or np.isnan(mdot_ts)):
+            if abs(mdot_ts) < 1e-12:
+                if not np.isnan(q_ts) and abs(q_ts) > 1e-12:
+                    logger.warning(
+                        f"Heat Demand {self.name}: Mass flow is zero but heat demand is {q_ts} kW. "
                         f"Effective heat demand will be set to 0 kW since no mass flow means no heat transfer. "
                         f"Timestep: {self.time}"
                     )
-                    logger.warning(warning_msg)
+                t_return_demand_c = t_feed_demand_c
                 effective_q_demand_kw = 0.0
-        if np.isnan(self._mdot_demand_kg_per_s):
-            if np.isnan(self._q_demand_kw):
-                raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
             else:
-                t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
-                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
-                if abs(t_feed_demand_c - t_return_demand_c) < 1e-12:
-                    mdot_demand_kg_per_s = 0
-                else:
-                    mdot_demand_kg_per_s = self._q_demand_kw / (cp * (t_feed_demand_c - t_return_demand_c))
-        else:
-            mdot_demand_kg_per_s = self._mdot_demand_kg_per_s
-        if np.isnan(self._q_demand_kw):
+                cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_feed_demand_c)) / 1000
+                t_return_demand_c = t_feed_demand_c - q_ts / (mdot_ts * cp)
+        elif not np.isnan(mdot_ts) and abs(mdot_ts) < 1e-12:
+            if not np.isnan(q_ts) and abs(q_ts) > 1e-12:
+                logger.warning(
+                    f"Heat Demand {self.name}: Mass flow is zero but heat demand is {q_ts} kW. "
+                    f"Effective heat demand will be set to 0 kW since no mass flow means no heat transfer. "
+                    f"Timestep: {self.time}"
+                )
+            effective_q_demand_kw = 0.0
+
+        if np.isnan(mdot_demand_kg_per_s):
+            if np.isnan(q_ts):
+                raise ValueError("Should provide at least mdot_demand_kg_per_s or q_demand_kw as Heat Demand input")
+            t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
+            cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
+            if abs(t_feed_demand_c - t_return_demand_c) < 1e-12:
+                mdot_demand_kg_per_s = 0
+            else:
+                mdot_demand_kg_per_s = q_ts / (cp * (t_feed_demand_c - t_return_demand_c))
+
+        if np.isnan(q_ts):
             t_mean_c = (t_feed_demand_c + t_return_demand_c) / 2
             cp = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
             q_demand_kw = mdot_demand_kg_per_s * cp * (t_feed_demand_c - t_return_demand_c)
         else:
             q_demand_kw = effective_q_demand_kw
-        # if mdot_demand_kg_per_s < 1e-3:
-        #     mdot_demand_kg_per_s = 0
-        #     t_return_demand_c = t_feed_demand_c
+
         return q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s
 
     def _t_m_to_receive_init(self, prosumer):

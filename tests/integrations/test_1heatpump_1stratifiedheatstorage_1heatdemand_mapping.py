@@ -53,7 +53,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                       "t_ext_c": 20,
                       "max_dt_s": 10}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                               data_source, period, 0, 0)
@@ -182,7 +182,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
                       "t_ext_c": 20,
                       "max_dt_s": 10}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                               data_source, period, 0, 0)

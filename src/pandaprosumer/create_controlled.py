@@ -1,8 +1,56 @@
 import numpy as np
 
-from pandaprosumer.create import *
-from pandaprosumer.controller import *
-from pandaprosumer.supervisor import *
+from pandaprosumer.create import (
+    create_booster_heat_pump,
+    create_chiller,
+    create_converter,
+    create_dry_cooler,
+    create_electric_boiler,
+    create_empty_prosumer_container,
+    create_gas_boiler,
+    create_heat_demand,
+    create_heat_exchanger,
+    create_heat_pump,
+    create_heat_storage,
+    create_ice_chp,
+    create_period,
+    create_pv_production,
+    create_solar_thermal,
+    create_stratified_heat_storage,
+)
+from pandaprosumer.controller import (
+    BoosterHeatPumpController,
+    BoosterHeatPumpControllerData,
+    ChillerController,
+    ChillerControllerData,
+    ConstProfileController,
+    ConstProfileControllerData,
+    ConverterControllerData,
+    DryCoolerController,
+    DryCoolerControllerData,
+    ElectricBoilerController,
+    ElectricBoilerControllerData,
+    GasBoilerController,
+    GasBoilerControllerData,
+    GenericToFluidMixController,
+    HeatDemandController,
+    HeatDemandControllerData,
+    HeatExchangerController,
+    HeatExchangerControllerData,
+    HeatPumpController,
+    HeatPumpControllerData,
+    HeatStorageController,
+    HeatStorageControllerData,
+    IceChpController,
+    IceChpControllerData,
+    PvProductionComponentData,
+    PvProductionController,
+    SolarThermalController,
+    SolarThermalControllerData,
+    StratifiedHeatStorageController,
+    StratifiedHeatStorageControllerData,
+)
+from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
@@ -208,8 +256,8 @@ def create_controlled_heat_pump(prosumer,
 
 
 def create_controlled_heat_demand(prosumer,
-                                  t_in_set_c=np.nan,
-                                  t_out_set_c=np.nan,
+                                  t_feed_demand_c=np.nan,
+                                  t_return_demand_c=np.nan,
                                   name=None,
                                   index=None,
                                   in_service=True,
@@ -224,9 +272,11 @@ def create_controlled_heat_demand(prosumer,
             **prosumer** - The prosumer within this heat demand should be created
 
         OPTIONAL:
-            **t_in_set_c** (float, default nan) - The default required input temperature level [C]
+            **t_feed_demand_c** (float, default nan) - Default feed temperature [C]. Used as a
+                fallback when no `t_feed_demand_c` time-series input is mapped to the controller.
 
-            **t_out_set_c** (float, default nan) - The default required output temperature level [C]
+            **t_return_demand_c** (float, default nan) - Default return temperature [C]. Used as a
+                fallback when no `t_return_demand_c` time-series input is mapped to the controller.
 
             **name** (string, default None) - A custom name for this heat demand
 
@@ -715,14 +765,14 @@ def create_controlled_dry_cooler(prosumer,
     return dry_cooler_controller.index
 
 
-def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
+def create_controlled_booster_heat_pump(prosumer, bhp_type, name=None, q_max_kw=None, index=None, in_service=True, level=0, order=0, period=0, **kwargs):
     """
     Creates a BHP element in prosumer["booster_heat_pump"] and a BHP controller.
 
     INPUT:
         **prosumer** - The prosumer within this booster_heat_pump should be created
 
-        **hp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
+        **bhp_type** (string) - BHP's type. Possible values are "water-water1", "water-water2", "air-water"
 
     OPTIONAL:
         **q_max_kw** (float, default None) - Maximum thermal power BHP [kW]
@@ -746,7 +796,7 @@ def create_controlled_booster_heat_pump(prosumer, hp_type, name=None, q_max_kw=N
     EXAMPLE:
         create_controlled_booster_heat_pump(prosumer, 'water-water1', name='example_bhp')
     """
-    bhp_index = create_booster_heat_pump(prosumer, hp_type, q_max_kw, in_service, name, index, **kwargs)
+    bhp_index = create_booster_heat_pump(prosumer, bhp_type, q_max_kw, in_service, name, index, **kwargs)
     bhp_controller_data = BoosterHeatPumpControllerData(element_name='booster_heat_pump',
         element_index=[bhp_index],
         period_index=period

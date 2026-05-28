@@ -89,8 +89,8 @@ class TestPvHeatDemandIntegration:
             prosumer,
             level=1,
             order=1,
-            t_in_set_c=30,
-            t_out_set_c=25
+            t_feed_demand_c=30,
+            t_return_demand_c=25
         )
 
         GenericMapping(

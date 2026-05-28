@@ -33,7 +33,7 @@ class TestHeatDemand:
         assert hasattr(prosumer, "heat_demand")
         assert len(prosumer.heat_demand) == 1
 
-        expected_columns = ["name", "t_in_set_c", "t_out_set_c", "in_service"]
+        expected_columns = ["name", "t_feed_demand_c", "t_return_demand_c", "in_service"]
         expected_values = [None, np.nan, np.nan, True]
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
@@ -46,8 +46,8 @@ class TestHeatDemand:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        hd_params = {"t_in_set_c": 63,
-                     "t_out_set_c": 35}
+        hd_params = {"t_feed_demand_c": 63,
+                     "t_return_demand_c": 35}
 
         hd_idx = create_heat_demand(prosumer, name='foo', in_service=False, index=4, custom='test', **hd_params)
         assert hasattr(prosumer, "heat_demand")
@@ -55,7 +55,7 @@ class TestHeatDemand:
         assert hd_idx == 4
         assert prosumer.heat_demand.index[0] == hd_idx
 
-        expected_columns = ["name", "t_in_set_c", "t_out_set_c", "in_service", "custom"]
+        expected_columns = ["name", "t_feed_demand_c", "t_return_demand_c", "in_service", "custom"]
         expected_values = ['foo', 63, 35, False, 'test']
 
         assert sorted(prosumer.heat_demand.columns) == sorted(expected_columns)
@@ -93,8 +93,8 @@ class TestHeatDemand:
           the method returns the expected values
         """
         params = {"scaling": 1,
-                  "t_in_set_c": 76.85,
-                  "t_out_set_c": 30}
+                  "t_feed_demand_c": 76.85,
+                  "t_return_demand_c": 30}
         prosumer = create_empty_prosumer_container()
         hd_controller_idx = create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer),
                                                           **params)
@@ -122,11 +122,13 @@ class TestHeatDemand:
         hd_controller.inputs = np.array([[100, np.nan, 80, 35]])
         assert hd_controller.t_m_to_receive(prosumer) == pytest.approx((80, 35., 0.53109161))
 
+        # With the element-default fallback, an explicit t_feed_demand_c / t_return_demand_c
+        # element value takes priority over deriving the missing temperature from q + mdot.
         hd_controller.inputs = np.array([[100, 0.8, np.nan, 35]])
-        assert hd_controller.t_m_to_receive(prosumer) == pytest.approx((64.905433, 35., 0.8))
+        assert hd_controller.t_m_to_receive(prosumer) == pytest.approx((76.85, 35., 0.8))
 
         hd_controller.inputs = np.array([[100, 0.8, 80, np.nan]])
-        assert hd_controller.t_m_to_receive(prosumer) == pytest.approx((80, 50.217, .8))
+        assert hd_controller.t_m_to_receive(prosumer) == pytest.approx((80, 30., 0.8))
 
         with pytest.raises(ValueError):
             hd_controller.inputs = np.array([[100, 0.8, 80, 35]])
@@ -136,14 +138,14 @@ class TestHeatDemand:
         """
         Test the control step of the heat demand controller with different inputs
         """
-        params = {'t_in_set_c': 76.85,
-                  't_out_set_c': 30}
+        params = {'t_feed_demand_c': 76.85,
+                  't_return_demand_c': 30}
         prosumer = create_empty_prosumer_container()
         hd_controller_idx = create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer),
                                                           **params)
         hd_controller = prosumer.controller.iloc[hd_controller_idx].object
         # Provide the exact amount of energy required
-        # For the default value of t_out_set_c (30°C),
+        # For the default value of t_return_demand_c (30°C),
         # For a heat demand of 104.58385 kW at 80°C and 0.5 kg/s
         # Q = m * cp * dT = 0.5 * 4.186 * (80-30) = 104.6 kW
         # FixMe: Not exactly the good value, because of the cp value dependant on the temperature
@@ -230,14 +232,14 @@ class TestHeatDemand:
         """
         Test the control step of the heat demand controller with different inputs
         """
-        params = {'t_in_set_c': 76.85,
-                  't_out_set_c': 30}
+        params = {'t_feed_demand_c': 76.85,
+                  't_return_demand_c': 30}
         prosumer = create_empty_prosumer_container()
         hd_controller_idx = create_controlled_heat_demand(prosumer, order=0, period=_default_period(prosumer),
                                                           **params)
         hd_controller = prosumer.controller.iloc[hd_controller_idx].object
         # Provide the exact amount of energy required
-        # For the default value of t_out_set_c (30°C),
+        # For the default value of t_return_demand_c (30°C),
         # For a heat demand of 104.58385 kW at 80°C and 0.5 kg/s
         # Q = m * cp * dT = 0.5 * 4.186 * (80-30) = 104.6 kW
         hd_controller.inputs = np.array([[104.58385, .5, 80, np.nan, np.nan]])
@@ -395,7 +397,7 @@ class TestHeatDemand:
                 hd_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_feed
             else:
                 # Use element's set temperature when input temperature is NaN
-                hd_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = hd_controller.element_instance.t_in_set_c[hd_controller.element_index[0]]
+                hd_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = hd_controller.element_instance.t_feed_demand_c[hd_controller.element_index[0]]
                 
             hd_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = mdot
             hd_controller.time_step(prosumer, "2020-01-01 00:00:00")

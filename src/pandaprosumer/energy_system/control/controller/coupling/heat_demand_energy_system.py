@@ -83,7 +83,7 @@ class HeatDemandEnergySystemController(BasicProsumerController):
 
         if np.isnan(self._t_feed_demand_c):
             if np.isnan(self._t_return_demand_c) or np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                t_feed_demand_c = self.element_instance.t_in_set_c[self.element_index[0]]
+                t_feed_demand_c = self.element_instance.t_feed_demand_c[self.element_index[0]]
             else:
                 cp = float(prosumer.fluid.get_heat_capacity(273.15 + self._t_return_demand_c)) / 1000
                 t_feed_demand_c = self._t_return_demand_c + self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)
@@ -91,7 +91,7 @@ class HeatDemandEnergySystemController(BasicProsumerController):
             t_feed_demand_c = self._t_feed_demand_c
         if np.isnan(self._t_return_demand_c):
             if np.isnan(self._q_demand_kw) or np.isnan(self._mdot_demand_kg_per_s):
-                t_return_demand_c = self.element_instance.t_out_set_c[self.element_index[0]]
+                t_return_demand_c = self.element_instance.t_return_demand_c[self.element_index[0]]
             else:
                 cp = float(prosumer.fluid.get_heat_capacity(273.15 + t_feed_demand_c)) / 1000
                 t_return_demand_c = t_feed_demand_c - self._q_demand_kw / (self._mdot_demand_kg_per_s * cp)

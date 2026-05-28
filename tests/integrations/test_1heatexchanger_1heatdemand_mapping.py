@@ -47,7 +47,7 @@ class Test1HeatExchanger1HeatDemandMapping:
 
         hx_controller_index = create_controlled_heat_exchanger(prosumer, level=1, order=0, period=period, **hx_params)
         hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1,
-                                                            t_in_set_c=76.85, t_out_set_c=30, period=period)
+                                                            t_feed_demand_c=76.85, t_return_demand_c=30, period=period)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,

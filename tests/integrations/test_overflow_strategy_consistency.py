@@ -81,7 +81,7 @@ class TestGasBoilerOverflowStrategyDumpOnLast:
                                           heating_value_kj_per_kg=20e3,
                                           overflow_strategy=overflow_strategy)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=gb, responder_id=hd, order=0)
@@ -144,7 +144,7 @@ class TestElectricBoilerOverflowStrategyDumpOnLast:
                                                max_p_kw=100, min_p_kw=20, efficiency_percent=100,
                                                overflow_strategy=overflow_strategy)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
@@ -218,7 +218,7 @@ class TestHeatPumpOverflowStrategyDumpOnLast:
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=overflow_strategy)
         hd = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="t_evap_in_c",
                        responder_id=hp, responder_column="t_evap_in_c", order=0)
         GenericMapping(container=prosumer, initiator_id=cp,
@@ -295,7 +295,7 @@ class TestMeritOrderOverflowStrategyValidation:
                                                max_p_kw=100, min_p_kw=20,
                                                overflow_strategy="not_a_real_strategy")
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
@@ -364,7 +364,7 @@ class TestPhysicsInvariantsDumpOnLast:
                                                efficiency_percent=100,
                                                overflow_strategy=strategy)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
@@ -396,7 +396,7 @@ class TestPhysicsInvariantsDumpOnLast:
                                           heating_value_kj_per_kg=20e3,
                                           overflow_strategy=strategy)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=gb, responder_id=hd, order=0)
@@ -440,7 +440,7 @@ class TestPhysicsInvariantsDumpOnLast:
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=strategy)
         hd = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp,
                        initiator_column="t_evap_in_c", responder_id=hp,
                        responder_column="t_evap_in_c", order=0)
@@ -492,9 +492,9 @@ class TestMultipleRespondersDumpStrategies:
                                           heating_value_kj_per_kg=20e3,
                                           overflow_strategy=overflow_strategy)
         hd1 = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                            t_in_set_c=76.85, t_out_set_c=30)
+                                            t_feed_demand_c=76.85, t_return_demand_c=30)
         hd2 = create_controlled_heat_demand(prosumer, period=period, level=1, order=2,
-                                            t_in_set_c=76.85, t_out_set_c=30)
+                                            t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp,
                        initiator_column="qdemand1_kw",
                        responder_id=hd1, responder_column="q_demand_kw", order=1)
@@ -601,7 +601,7 @@ class TestNoSurplusOverflowStrategyParity:
                                               heating_value_kj_per_kg=20e3,
                                               overflow_strategy=strategy)
             hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                               t_in_set_c=76.85, t_out_set_c=30)
+                                               t_feed_demand_c=76.85, t_return_demand_c=30)
             GenericMapping(container=prosumer, initiator_id=cp,
                            initiator_column="qdemand_kw",
                            responder_id=hd, responder_column="q_demand_kw", order=1)
@@ -653,7 +653,7 @@ class TestOverflowStrategyWithMaxTOut:
                                                max_t_out_c=max_t_out_c,
                                                overflow_strategy=overflow_strategy)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
@@ -719,7 +719,7 @@ class TestMassBalanceAtFluidMixInterface:
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=strategy)
         hd = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp,
                        initiator_column="t_evap_in_c", responder_id=hp,
                        responder_column="t_evap_in_c", order=0)
@@ -785,7 +785,7 @@ def _run_hp_min_p_scenario(overflow_strategy):
                                      max_p_comp_kw=100, min_p_comp_kw=15,
                                      overflow_strategy=overflow_strategy)
     hd = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
-                                       t_in_set_c=76.85, t_out_set_c=30)
+                                       t_feed_demand_c=76.85, t_return_demand_c=30)
     GenericMapping(container=prosumer, initiator_id=cp,
                    initiator_column="t_evap_in_c", responder_id=hp,
                    responder_column="t_evap_in_c", order=0)
@@ -814,7 +814,7 @@ def _run_eb_min_p_scenario(overflow_strategy):
                                            efficiency_percent=100,
                                            overflow_strategy=overflow_strategy)
     hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                       t_in_set_c=76.85, t_out_set_c=30)
+                                       t_feed_demand_c=76.85, t_return_demand_c=30)
     GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                    responder_id=hd, responder_column="q_demand_kw", order=1)
     FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
@@ -893,7 +893,7 @@ class TestEnergyLeakWarning:
                                           efficiency_percent=100,
                                           heating_value_kj_per_kg=20e3)
         hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
-                                           t_in_set_c=76.85, t_out_set_c=30)
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
         GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
                        responder_id=hd, responder_column="q_demand_kw", order=1)
         FluidMixMapping(container=prosumer, initiator_id=gb, responder_id=hd, order=0)

@@ -49,7 +49,7 @@ class Test1ElectricBoiler1HeatDemandMapping:
             'overflow_strategy': 'cap',
         }
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         cp_controller_index = create_controlled_const_profile(
             prosumer, cp_input_columns, cp_result_columns, data_source, period, 0, 0)
@@ -106,9 +106,9 @@ class Test1ElectricBoiler1HeatDemandMapping:
         below_min_running = (data["demand_1"].values > 0) & (data["demand_1"].values < min_p_kw)
         # delivered > demanded
         assert (eb_df.q_kw.values[below_min_running] > data["demand_1"].values[below_min_running]).all()
-        # the EB raises t_out_c above the demand's t_in_set_c (76.85) to dump
+        # the EB raises t_out_c above the demand's t_feed_demand_c (76.85) to dump
         # the extra power into the demanded mass flow
-        assert (eb_df.t_out_c.values[below_min_running] > hd_params['t_in_set_c']).all(), \
+        assert (eb_df.t_out_c.values[below_min_running] > hd_params['t_feed_demand_c']).all(), \
             "Below-min-power overshoot must manifest as elevated t_out_c."
 
         # --- Energy / mass balance at the boiler-demand interface ------------
