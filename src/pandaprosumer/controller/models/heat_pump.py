@@ -192,8 +192,10 @@ class HeatPumpController(BasicProsumerController):
             # If there is no demand on the condenser, the Heat Pump is not running
             # We have to take into account ramp down constraints here
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
+            if np.isnan(max_ramp_down_kw_per_s):
+                max_ramp_down_kw_per_s = None
 
-            if not np.isnan(self.p_comp_previous_kw) and self.p_comp_previous_kw > 0 and max_ramp_down_kw_per_s:
+            if not np.isnan(self.p_comp_previous_kw) and self.p_comp_previous_kw > 0 and max_ramp_down_kw_per_s is not None:
                 time_step_s = self.resol
                 max_decrease = max_ramp_down_kw_per_s * time_step_s
                 delta_p = 0 - self.p_comp_previous_kw
@@ -242,7 +244,9 @@ class HeatPumpController(BasicProsumerController):
 
         # 8. Check parameters
         max_cop = self._get_element_param(prosumer, 'max_cop')
-        if max_cop and cop_hp > max_cop + 1e-3:
+        if np.isnan(max_cop):
+            max_cop = None
+        if max_cop is not None and cop_hp > max_cop + 1e-3:
             # If the cop is too high, consider calculate which condenser output temperature the HP can reach
             # with the max cop
             t_cond_out_c = (max_cop * (t_evap_in_c + CELSIUS_TO_K) / (max_cop - carnot_efficiency)) - CELSIUS_TO_K
@@ -255,7 +259,9 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_evap_in_c,
                                                                                         pinch_c)
         max_t_cond_out_c = self._get_element_param(prosumer, 'max_t_cond_out_c')
-        if max_t_cond_out_c and t_cond_out_c > max_t_cond_out_c + 1e-3:
+        if np.isnan(max_t_cond_out_c):
+            max_t_cond_out_c = None
+        if max_t_cond_out_c is not None and t_cond_out_c > max_t_cond_out_c + 1e-3:
             # If the condenser output temperature is too high, recalculate everything with the max temperature
             t_cond_out_c = max_t_cond_out_c
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
@@ -267,7 +273,9 @@ class HeatPumpController(BasicProsumerController):
                                                                                         t_evap_in_c,
                                                                                         pinch_c)
         min_p_comp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
-        if min_p_comp_kw and p_comp_kw < min_p_comp_kw - 1e-3:
+        if np.isnan(min_p_comp_kw):
+            min_p_comp_kw = None
+        if min_p_comp_kw is not None and p_comp_kw < min_p_comp_kw - 1e-3:
             # If the compressor power is too low, the Heat Pump cannot run
             if self.p_comp_previous_kw < p_comp_kw:
                 # If it was off before, it stays off
@@ -287,7 +295,9 @@ class HeatPumpController(BasicProsumerController):
                 
 
         max_p_comp_kw = self._get_element_param(prosumer, 'max_p_comp_kw')
-        if max_p_comp_kw and p_comp_kw > max_p_comp_kw + 1e-3:
+        if np.isnan(max_p_comp_kw):
+            max_p_comp_kw = None
+        if max_p_comp_kw is not None and p_comp_kw > max_p_comp_kw + 1e-3:
             # If the compressor power is too high, consider that only the condenser mass flow will be affected
             # (not the temperatures) and recalculate everything
             mdot_cond_kg_per_s = max_p_comp_kw * cop_hp / (cp_cond_kj_per_kgk * (t_cond_out_c - t_cond_in_c))
@@ -303,10 +313,14 @@ class HeatPumpController(BasicProsumerController):
         # 9. Apply ramp up/down constraints
         if not np.isnan(self.p_comp_previous_kw):  # No constraint for the first timestep
             max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
+            if np.isnan(max_ramp_up_kw_per_s):
+                max_ramp_up_kw_per_s = None
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
+            if np.isnan(max_ramp_down_kw_per_s):
+                max_ramp_down_kw_per_s = None
             delta_p = (p_comp_kw - self.p_comp_previous_kw)
             delta_t_cond_previous_c = self.last_result.get('t_cond_out_c', np.nan) - self.last_result.get('t_cond_in_c', np.nan)
-            if max_ramp_up_kw_per_s and delta_p > max_ramp_up_kw_per_s * self.resol:
+            if max_ramp_up_kw_per_s is not None and delta_p > max_ramp_up_kw_per_s * self.resol:
                 # Limit ramp up
                 p_comp_kw = self.p_comp_previous_kw + max_ramp_up_kw_per_s * self.resol
                 # Recalculate only the affected outputs
@@ -327,7 +341,7 @@ class HeatPumpController(BasicProsumerController):
                                                                                                 t_evap_in_c,
                                                                                                 pinch_c)
 
-            elif max_ramp_down_kw_per_s and delta_p < -1 * max_ramp_down_kw_per_s * self.resol:
+            elif max_ramp_down_kw_per_s is not None and delta_p < -1 * max_ramp_down_kw_per_s * self.resol:
                 # Limit ramp down
                 p_comp_kw = self.p_comp_previous_kw - max_ramp_down_kw_per_s * self.resol
                 # Recalculate only the affected outputs

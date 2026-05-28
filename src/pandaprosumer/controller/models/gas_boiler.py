@@ -37,23 +37,23 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
             
             # If allow_stop is False and power would drop below min_q_kw due to temperature constraint,
             # increase mass flow to maintain minimum power
-            if (min_q_kw and allow_stop == False and 
+            if (min_q_kw is not None and allow_stop == False and
                 q_fluid_kw > 1e-3 and q_fluid_kw < min_q_kw - 1e-3):
                 q_fluid_kw = min_q_kw
                 mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
                 # Recalculate mass flow to achieve min power at constrained temperature
                 if t_out_c - t_in_c > 1e-3:
                     mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-        
+
         # Apply ramp up/down constraints
         if not np.isnan(q_previous_kw):  # Constraint not applicable for the first timestep
             delta_q = (q_fluid_kw - q_previous_kw)
-            if max_ramp_up_kw_per_s and delta_q > max_ramp_up_kw_per_s * time_step_s:
+            if max_ramp_up_kw_per_s is not None and delta_q > max_ramp_up_kw_per_s * time_step_s:
                 # Limit ramp up speed
                 q_fluid_kw = q_previous_kw + max_ramp_up_kw_per_s * time_step_s
                 # Recalculate the affected outputs
                 mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-            if max_ramp_down_kw_per_s and delta_q < -1 * max_ramp_down_kw_per_s * time_step_s:
+            if max_ramp_down_kw_per_s is not None and delta_q < -1 * max_ramp_down_kw_per_s * time_step_s:
                 # Limit ramp down speed
                 q_fluid_kw = q_previous_kw - max_ramp_down_kw_per_s * time_step_s
                 # Recalculate the affected outputs
@@ -76,7 +76,7 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
 
         # Check parameters
-        if max_q_kw and q_fluid_kw > max_q_kw + 1e-3:
+        if max_q_kw is not None and q_fluid_kw > max_q_kw + 1e-3:
             # If the thermal power is too high, recalculate the output mass flow rate
             q_fluid_kw = max_q_kw
             mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
@@ -105,15 +105,15 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
             
             # If allow_stop is False and power would drop below min_q_kw due to temperature constraint,
             # increase mass flow to maintain minimum power
-            if (min_q_kw and allow_stop == False and 
+            if (min_q_kw is not None and allow_stop == False and
                 q_fluid_kw > 1e-3 and q_fluid_kw < min_q_kw - 1e-3):
                 q_fluid_kw = min_q_kw
                 mdot_fuel_kg_per_s = q_fluid_kw / (efficiency_percent / 100) / heating_value_kj_per_kg
                 # Recalculate mass flow to achieve min power at constrained temperature
                 if t_out_c - t_in_c > 1e-3:
                     mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-            
-        if min_q_kw :
+
+        if min_q_kw is not None:
             if 1e-3 < q_fluid_kw < min_q_kw - 1e-3:
                 # If the thermal power is too low but not null, apply min power constraint
                 q_fluid_kw = min_q_kw
@@ -181,11 +181,19 @@ class GasBoilerController(BasicProsumerController):
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         max_q_kw = self._get_element_param(prosumer, 'max_q_kw')
+        if np.isnan(max_q_kw):
+            max_q_kw = None
         min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
+        if np.isnan(min_q_kw):
+            min_q_kw = None
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
         heating_value_kj_per_kg = self._get_element_param(prosumer, 'heating_value_kj_per_kg')
         max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
+        if np.isnan(max_ramp_up_kw_per_s):
+            max_ramp_up_kw_per_s = None
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
+        if np.isnan(max_ramp_down_kw_per_s):
+            max_ramp_down_kw_per_s = None
         q_previous_kw = self.last_result.get('q_kw', np.nan)
         delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
         allow_stop = self._get_element_param(prosumer, 'allow_stop')

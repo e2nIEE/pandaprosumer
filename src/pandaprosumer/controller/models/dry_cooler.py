@@ -212,13 +212,20 @@ class DryCoolerController(BasicProsumerController):
         a_cold = delta_t_cold_c / (q_ratio * lmtd_nom)
 
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
-        min_t_air_out_c = t_air_in_c + min_delta_t_air_c
-        max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
-        if max_x <= -1:
-            max_x = -0.999
-        min_a = np.log(1 + max_x) / max_x
+        if np.isnan(min_delta_t_air_c):
+            min_delta_t_air_c = None
 
-        if min_delta_t_air_c and a_cold < min_a:
+        if min_delta_t_air_c is not None:
+            min_t_air_out_c = t_air_in_c + min_delta_t_air_c
+            max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
+            if max_x <= -1:
+                max_x = -0.999
+            min_a = np.log(1 + max_x) / max_x
+            apply_min_delta_t_constraint = a_cold < min_a
+        else:
+            apply_min_delta_t_constraint = False
+
+        if apply_min_delta_t_constraint:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_fluid_kg_per_s
             # else t_air_out_c would be colder than t_air_in_c
             a_cold = min_a
