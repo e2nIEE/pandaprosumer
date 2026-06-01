@@ -1,24 +1,15 @@
 """
 Boot-time robustness check for the dry-cooler + heat-exchanger chain.
 
-Setup mirrors the Paris BET demo site's `dry_cooler_prosumer`:
-
-    ConstProfile  (BET-side fluid: t=36.4 °C, mdot=80 kg/s)
-       │ FluidMix ───────────────────────────► hx_dc (heat_exchanger)
-    ConstProfile  (air-side: t_air_in_c, phi_air_in_percent)
-       │ Generic ────────────────────────────► dc_dc (dry_cooler)
-                                                  │
-       hx_dc  ── FluidMix order=0 ─────────────►  dc_dc
-
-The HX is the bridge between the BET water loop (primary) and the BDRY
-glycol-water loop (secondary). The dry cooler dissipates the BDRY heat to
+The HX is the bridge between the main water loop (primary) and the dry cooler
+loop (secondary). The dry cooler dissipates the secondary heat to
 ambient via fans. With `dry_cooler.in_service=True` from t=0 this used to
 crash on the very first timestep: heat_exchanger.control_step called
 t_m_to_deliver, which propagated down to dry_cooler._t_m_to_receive_init
 and tripped `assert mdot_required_kg_per_s >= 0` because no upstream had
 mapped a fluid input yet (all three reads were nan). One revision later
 the same root cause surfaced one level up as a negative t_2_in_c in the HX
-(observed as `t_2_in_c is negative (-101.7)` on the Paris demo site).
+(observed as `t_2_in_c is negative (-101.7)` previously).
 
 The dry-cooler controller now falls back to its nominal design point when
 no upstream input or previous-step history is available, which lets the
@@ -184,4 +175,48 @@ def test_dry_cooler_hx_chain_boots_into_steady_state():
     np.testing.assert_allclose(
         hx_df["mdot_2_kg_per_s"].to_numpy(), dc_df["mdot_fluid_kg_per_s"].to_numpy(), rtol=0.01,
         err_msg="HX secondary mass flow should match dry-cooler fluid mass flow",
+    )
+
+
+def test_hx_stalls_when_secondary_cold_side_too_warm_for_primary():
+    """When the secondary cold-side temperature is too close to the primary inlet
+    (the HX can't physically cool the primary), calculate_heat_exchanger must stall
+    rather than produce ``t_1_out_c > t_1_in_c`` and trip the downstream assertion.
+
+    Scenario example:
+    The heat exchanger is flipped on, but the secondary loop has been idle for an
+    hour so its cold-side (``t_2_in_c``) sits at ~28.66 °C while the primary loop supply has
+    cooled to ~30.11 °C. The HX's ``min_delta_t_1_c`` constraint (5 °C) would force
+    ``t_1_out_c = t_2_in_c + 3 = 31.66 °C > t_1_in_c = 30.11 °C`` — physically
+    nonsensical. The controller must instead return a no-flow stalled result.
+    """
+    prosumer, period = _build_prosumer()
+    # Pull out the HX controller directly to drive it with the stall-triggering
+    # combination. We bypass the full time-series here because reproducing the
+    # exact upstream state at unit-test scope is fragile; the controller-level 
+    # check is what we want to pin.
+    hx_controller = prosumer.controller.loc[2].object  # cp_bet=0, cp_air=1, hx=2
+
+    mdot_1, t_1_in_out, t_1_out, mdot_2, t_2_in_out, t_2_out = (
+        hx_controller.calculate_heat_exchanger(
+            prosumer,
+            t_2_out_c=29.66,    # secondary hot side, only marginally above t_2_in
+            t_2_in_c=28.66,     # secondary cold side — too close to t_1_in_c
+            mdot_2_kg_per_s=10.0,
+            t_1_in_c=30.11,     # primary cooled below nominal
+        )
+    )
+
+    assert t_1_out <= t_1_in_out, (
+        f"calculate_heat_exchanger should stall (return t_1_out <= t_1_in) when the "
+        f"secondary cold side is too warm to cool the primary; got "
+        f"t_1_in_c={t_1_in_out}, t_1_out_c={t_1_out}"
+    )
+    assert mdot_1 == 0.0 and mdot_2 == 0.0, (
+        f"Stalled HX should have zero flow on both sides; got mdot_1={mdot_1}, "
+        f"mdot_2={mdot_2}"
+    )
+    assert t_2_out >= t_2_in_out, (
+        f"Stalled HX should preserve secondary energy balance (t_2_out >= t_2_in); "
+        f"got t_2_in_c={t_2_in_out}, t_2_out_c={t_2_out}"
     )

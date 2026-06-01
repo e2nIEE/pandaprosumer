@@ -212,13 +212,26 @@ class HeatExchangerController(BasicProsumerController):
             # a higher t_1_out_c
             # ToDo: create test for this case
             min_delta_t_cold_c = 3  # ToDo: constant
+            # Stall the HX when the secondary cold-side is so warm that even a
+            # minimal `min_delta_t_cold_c` approach drives t_1_out_c above t_1_in_c.
+            # Physically the exchanger cannot cool the primary in this regime — pretend
+            # there is no flow, no exchange.
+            # Stall when the cold-approach floor pushes t_1_out_c above t_1_in_c, OR
+            # when the hot-side approach (delta_t_hot_c) is smaller than the cold-
+            # approach floor — both regimes are physically infeasible (the HX cannot
+            # transfer the required heat with these temperature constraints) and the
+            # downstream LMTD math degenerates (x outside (0, 1)).
+            if t_2_in_c + min_delta_t_cold_c > t_1_in_c or delta_t_hot_c <= min_delta_t_cold_c:
+                return 0.0, t_1_in_c, t_1_in_c, 0.0, t_2_in_c, t_2_in_c
             t_1_out_c = t_2_in_c + min_delta_t_cold_c
-            assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name}: t_1_out_c ({t_1_out_c}) is greater than t_1_in_c ({t_1_in_c})"
             x = 1 - min_delta_t_cold_c / delta_t_hot_c
             if x > 0 and x < 1:
                 a = -np.log(1 - x) / x
             else:
-                raise ValueError(f"In prosumer {prosumer.name} a timestep {self.time}: Heat Exchanger {self.name}: Invalid value of x ({x}) calculated from min_delta_t_cold_c ({min_delta_t_cold_c}) and delta_t_hot_c ({delta_t_hot_c})")
+                # Same physically infeasible regime, caught by the math instead of the
+                # geometric check above (e.g. floating-point edges). Stall rather than
+                # propagate a ValueError that kills the whole timeseries.
+                return 0.0, t_1_in_c, t_1_in_c, 0.0, t_2_in_c, t_2_in_c
             q_exchanged_w = (delta_t_hot_c * q_exchanged_nom_w) / (a * lmtd_nom)
             mdot_2_kg_per_s = q_exchanged_w / (cp_2_j_per_kgk * delta_t_2_c)
             t_mean_1_c = CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2
@@ -464,6 +477,15 @@ class HeatExchangerController(BasicProsumerController):
                 (f"Heat Exchanger {self.name} mdot_2_kg_per_s != sum(result_mdot_tab_kg_per_s) "
                  f"({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)}) for"
                  f" timestep {self.time} in prosumer {prosumer.name}")
+
+        # Snap to t_1_in_c when t_1_out_c overshoots it by float-rounding noise.
+        # The LMTD math involves divisions/log so the last ULP of t_1_out_c can sit a
+        # few 1e-15 above t_1_in_c when the operating point is right at the limit of
+        # the achievable approach (e.g. coupled-sim transients where the secondary
+        # cold-side has just barely cooled below t_1_in_c). Without this snap the
+        # strict `t_1_out_c <= t_1_in_c` assertion below trips on pure rounding.
+        if t_1_out_c > t_1_in_c and (t_1_out_c - t_1_in_c) < 1e-9:
+            t_1_out_c = t_1_in_c
 
         cp_1_kj_per_kg_k = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_1_in_c + t_1_out_c) / 2) / 1000
         q_exchanged_kw = mdot_1_kg_per_s * cp_1_kj_per_kg_k * (t_1_in_c - t_1_out_c)

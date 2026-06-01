@@ -1,8 +1,7 @@
 """
-Integration test for the HP → StratifiedHeatStorage → HeatDemand chain
-under the Paris BET demo site sizing (VolECS = 70.24 m³ tank, h = 10 m,
-r_int = 1.495 m). The HP's ``min_p_comp_kw`` forces it to overproduce vs
-the small DHW demand, so the SHS sits in the loop as a buffer absorbing
+Integration test for the HP → StratifiedHeatStorage → HeatDemand chain.
+The HP's ``min_p_comp_kw`` forces it to overproduce vs
+the small DHW demand, so the SHS sits in the loop as a buffer absorbing 
 the surplus.
 
 Historically this scenario raised one of:
@@ -26,8 +25,8 @@ It now runs to completion thanks to three changes:
      (``t_received_out_c`` unchanged across consecutive iterations) and
      accepts the result rather than exhausting the outer ``max_iter``.
 
-The test asserts physically-reasonable behaviour at every step of the
-12-step Paris demo profile.
+The test asserts physically-reasonable behaviour at every step of the 
+12-steps profile.
 """
 
 import numpy as np
@@ -46,8 +45,7 @@ from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 from pandaprosumer.run_time_series import run_timeseries
 
 
-# --- Sizing taken from DEMix v0.3 parameters.yaml (Paris BET demo site) ----
-# VolECS = 70.24 m³ → tank h=10 m, r_int=1.495 m → V = π·r²·h ≈ 70.24 m³
+# --- Sizing ----
 ECS_SHS_TANK_HEIGHT_M = 10.0
 ECS_SHS_TANK_INTERNAL_RADIUS_M = 1.495
 ECS_SHS_N_LAYERS = 20
@@ -56,7 +54,7 @@ ECS_SHS_MIN_USEFUL_TEMP_C = 58.0
 ECS_SHS_T_EXT_C = 22.5
 ECS_SHS_MAX_CHARGE_MDOT_KG_PER_S = 10.0  # ~ HP's deliverable side; demand needs ~3.3 kg/s.
 
-# DHW loop temperature window from the yaml.
+# DHW loop temperature window.
 T_FEED_DEMAND_C = 65.0
 T_RETURN_DEMAND_C = 58.0
 
@@ -168,8 +166,8 @@ def _build_prosumer():
 
 
 def test_shs_hp_demand_chain_converges():
-    """The HP -> SHS -> HeatDemand chain runs to completion under the Paris
-    BET sizing once the SHS opts into ``max_charge_mdot_kg_per_s`` and the
+    """The HP -> SHS -> HeatDemand chain runs to completion
+    once the SHS opts into ``max_charge_mdot_kg_per_s`` and the
     reapply loop's stagnation guard is in place.
 
     Positive assertions on every step:

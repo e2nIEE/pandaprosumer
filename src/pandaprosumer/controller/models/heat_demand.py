@@ -251,6 +251,26 @@ class HeatDemandController(BasicProsumerController):
 
         # ToDo: If t_in < t_out, return t_in, not t_out
 
+        if np.isnan(self._t_in_c):
+            # Upstream FluidMix initiator (HP, HX, etc.) didn't supply any fluid this
+            # step — typically because a source controller was off. Without an inlet temperature
+            # the heat demand can't compute mass flow. Treat the entire demand as
+            # uncovered for this step instead of crashing the whole timeseries.
+            result = np.array([[0.0, q_demand_kw, 0.0, 0.0, t_return_demand_c]])
+            self.last_result = {
+                "q_received_kw": 0.0,
+                "q_uncovered_kw": q_demand_kw,
+                "mdot_received_kg_per_s": 0.0,
+                "t_in_c": 0.0,
+                "t_out_c": t_return_demand_c,
+            }
+            self.finalize(prosumer, result)
+            self.applied = True
+            self.t_previous_out_c = np.nan
+            self.t_previous_in_c = np.nan
+            self.mdot_previous_in_kg_per_s = np.nan
+            return
+
         assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
