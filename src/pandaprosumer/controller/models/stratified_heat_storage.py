@@ -437,6 +437,32 @@ class StratifiedHeatStorageController(BasicProsumerController):
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
 
+        # NaN-to-zero guard at the contract boundary. ``_t_received_in_c`` and
+        # ``_mdot_received_kg_per_s`` are NaN whenever the upstream FluidMix
+        # initiator is off (e.g. HP_ON=0 from the optimiser). A NaN here
+        # signals "no flow contract", not "unknown value": physically the
+        # side carries no enthalpy and the temperature is irrelevant. Treat
+        # as zero so the bypass branch and the TVD solver downstream see
+        # clean values. The ``0 * NaN == NaN`` propagation in IEEE 754 would
+        # otherwise corrupt every layer of ``_layer_temps_c`` within a single
+        # sub-step. See ``tests/integrations/test_shs_nan_propagation.py``.
+        if np.isnan(mdot_received_kg_per_s):
+            mdot_received_kg_per_s = 0.0
+        if np.isnan(t_received_in_c):
+            assert mdot_received_kg_per_s == 0, (
+                f"SHS {self.name}: t_received_in_c is NaN but "
+                f"mdot_received_kg_per_s is non-zero ({mdot_received_kg_per_s}) "
+                f"-- upstream initiator contract violation at timestep {self.time}."
+            )
+            t_received_in_c = float(self._layer_temps_c[-1])
+        if np.isnan(t_demand_in_c):
+            assert mdot_demand_kg_per_s == 0, (
+                f"SHS {self.name}: t_demand_in_c is NaN but "
+                f"mdot_demand_kg_per_s is non-zero ({mdot_demand_kg_per_s}) "
+                f"-- downstream demand contract violation at timestep {self.time}."
+            )
+            t_demand_in_c = float(self._layer_temps_c[0])
+
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
             mdot_discharge_kg_per_s = mdot_demand_kg_per_s
@@ -506,6 +532,17 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                             mdot_charge_kg_per_s,
                                             mdot_discharge_kg_per_s,
                                             rho_kg_per_m3)
+
+        # Secondary NaN guard: ``mdot_charge_kg_per_s`` / ``mdot_discharge_kg_per_s``
+        # are derived above from the (now NaN-cleaned) received/demand values, so
+        # they should already be finite. Defend against a future refactor of the
+        # bypass arithmetic introducing a fresh NaN path -- a NaN mdot reaching
+        # the @njit TVD solver would corrupt every layer silently.
+        if np.isnan(mdot_charge_kg_per_s):
+            mdot_charge_kg_per_s = 0.0
+        if np.isnan(mdot_discharge_kg_per_s):
+            mdot_discharge_kg_per_s = 0.0
+
         self._layer_temps_c = tvd_resolution_in_time(layer_temps_c=np.array(self._layer_temps_c),
                                                      mdot_charge_kg_per_s=mdot_charge_kg_per_s,
                                                      t_charge_c=t_received_in_c,
@@ -548,7 +585,12 @@ class StratifiedHeatStorageController(BasicProsumerController):
             t_delivered_out_c = t_discharge_out_c
 
         if abs(mdot_charge_kg_per_s + mdot_bypass_kg_per_s) < 1e-3:
-            t_received_out_c = self._t_received_in_c
+            # Idle storage (no charge / no bypass): return ``t_received_in_c``
+            # as a pass-through so downstream q_received_kw resolves to zero.
+            # Note we use the NaN-cleaned ``t_received_in_c`` from above, not
+            # the raw ``self._t_received_in_c`` property which still reports
+            # NaN whenever upstream is off and would re-poison the result tuple.
+            t_received_out_c = t_received_in_c
         else:
             t_received_out_c = (mdot_charge_kg_per_s * t_charge_out_c + mdot_bypass_kg_per_s * t_demand_in_c) / (mdot_charge_kg_per_s + mdot_bypass_kg_per_s)
 
