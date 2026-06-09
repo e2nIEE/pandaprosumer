@@ -253,15 +253,20 @@ class HeatDemandController(BasicProsumerController):
 
         if np.isnan(self._t_in_c):
             # Upstream FluidMix initiator (HP, HX, etc.) didn't supply any fluid this
-            # step — typically because a source controller was off. Without an inlet temperature
-            # the heat demand can't compute mass flow. Treat the entire demand as
-            # uncovered for this step instead of crashing the whole timeseries.
-            result = np.array([[0.0, q_demand_kw, 0.0, 0.0, t_return_demand_c]])
+            # step — typically because a source controller was off. Without an inlet
+            # temperature the heat demand can't compute mass flow. Treat the entire
+            # demand as uncovered for this step instead of crashing the whole
+            # timeseries. Report `t_in_c = t_return_demand_c`: with zero flow the
+            # demand element is iso-thermal, and downstream readers (parent timeseries
+            # collectors building optimizer inputs etc.) get a physically-sensible
+            # temperature rather than a 0 that's outside every domain bound.
+            stalled_t_c = t_return_demand_c
+            result = np.array([[0.0, q_demand_kw, 0.0, stalled_t_c, t_return_demand_c]])
             self.last_result = {
                 "q_received_kw": 0.0,
                 "q_uncovered_kw": q_demand_kw,
                 "mdot_received_kg_per_s": 0.0,
-                "t_in_c": 0.0,
+                "t_in_c": stalled_t_c,
                 "t_out_c": t_return_demand_c,
             }
             self.finalize(prosumer, result)

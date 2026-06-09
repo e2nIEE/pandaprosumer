@@ -345,9 +345,30 @@ class DryCoolerController(BasicProsumerController):
 
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
-        t_out_required_c = self._get_input('t_out_c', prosumer)
-        if np.isnan(t_out_required_c):
+        t_out_required_c_input = self._get_input('t_out_c', prosumer)
+        if np.isnan(t_out_required_c_input):
+            # Nominal-fallback path: the controller is free to iterate the
+            # operating point via the reapply loop. The "infeasibility" of the
+            # nominal design point against the boot-time supplied temperature
+            # is resolved by the LMTD + bypass math producing a (physically
+            # crude but) self-consistent steady state. See
+            # ``tests/integrations/test_dry_cooler_hx_boot_crash.py``.
             t_out_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
+        else:
+            # Externally driven setpoint (e.g. DEMix ``T_OUT_DRY``): a dry
+            # cooler can only cool fluid (heat→air), never warm it. If the
+            # setpoint asks for an outlet warmer than the supplied inlet, the
+            # asset is physically saturated. Clamp here so the LMTD math
+            # falls through to the explicit no-exchange branch and downstream
+            # state stays consistent. Without this clamp the
+            # ``min_delta_t_air_c`` constraint branch produces ``mdot_fluid<0``
+            # and the bypass energy-balance code mixes it with the supplied
+            # flow, returning a "math-tidy" but physically nonsensical
+            # ``t_fluid_out_c`` (and occasionally tripping the
+            # ``t_fluid_out_c <= t_fluid_in_c`` assertion when downstream
+            # bookkeeping zero-skips the bypass cleanup).
+            # See ``tests/integrations/test_dry_cooler_infeasible_setpoint.py``.
+            t_out_required_c = min(t_out_required_c_input, t_in_supplied_c)
 
         assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
