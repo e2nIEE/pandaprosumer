@@ -13,22 +13,34 @@ from pathlib import Path
 prosumer = create_empty_prosumer_container(check_order=False)
 
 start = '2020-01-01 00:00:00'
-end = '2020-01-01 23:59:59'
-time_resolution = 900        # 15 min
-frequency = '15min'
+end = '2020-01-08 23:59:59'
+time_resolution = 3600      # 60 min
+frequency = '60min'
 
-t = np.linspace(0, 24, 96)
-L = (200 * np.exp(-((t - 8) ** 2) / (2 * 1.5 ** 2))
-     + 200 * np.exp(-((t - 18) ** 2) / (2 * 1.5 ** 2)))
-G_PV = 200 * np.maximum(0, np.sin(np.pi / 12 * (t - 6)))
-flex = L - G_PV
+t_day = np.arange(0, 24, 1)  # 24 Werte (1h Schritte)
+
+L_day = (100 * np.exp(-((t_day - 8) ** 2) / (2 * 1.5 ** 2))
+       + 100 * np.exp(-((t_day - 18) ** 2) / (2 * 1.5 ** 2)))
+
+G_PV_day = 100 * np.maximum(0, np.sin(np.pi / 12 * (t_day - 6)))
+
+flex_day = L_day - G_PV_day
+
+n_days = 8
+
+L = np.tile(L_day, n_days)
+G_PV = np.tile(G_PV_day, n_days)
+flex = np.tile(flex_day, n_days)
+
 
 
 project_root = Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials_extended"] else Path.cwd()
-data_file = project_root / "tutorials_extended" / "data" / "heat_demand_input_chp_bhp.xlsx"
+data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
 time_series_data = pd.read_excel(data_file)
 
 time_series_data["flex_demand_kw"] = flex
+time_series_data["t_sink_k"] = 350
+time_series_data["cycle"] = 1
 
 dur = pd.date_range(start=start, end=end, freq=frequency, tz='utc')
 time_series_data.index = dur
@@ -38,16 +50,16 @@ period = create_period(prosumer, time_resolution, start, end, 'utc', 'default')
 time_series_data.head()
 
 input_params = ['mode', 't_source_k', 'q_demand_kw', 'cycle', 't_intake_k',
-                    "flex_demand_kw", "p_el_bhp", "p_el_chp", "t_amb_k"]
+                    "flex_demand_kw", "p_el_bhp", "p_el_chp", "t_amb_k", "t_sink_k"]
 result_params = ['mode_cp', 't_source_cp_k', 'q_demand_cp_kw', 'cycle_cp', 't_intake_cp_k',
-                     "flex_demand_cp_kw", "p_el_bhp_cp", "p_el_chp_cp", "t_amb_k_cp"]
+                     "flex_demand_cp_kw", "p_el_bhp_cp", "p_el_chp_cp", "t_amb_k_cp", "t_sink_k_cp"]
 
 cp_index = create_controlled_const_profile(
         prosumer, input_params, result_params, time_series_input_bhp, period, level=0)
 
-bhp_type = 'water-water1'
+bhp_type = 'water-water2'
 bhp_name = 'example_bhp'
-max_thermal_power_kw = 700
+max_thermal_power_kw = 1000
 
 bhp_index = create_controlled_booster_heat_pump(prosumer,
                                                 hp_type=bhp_type,
@@ -70,7 +82,7 @@ altitude_m = 0
 
 ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
-q_capacity_kwh = 10000
+q_capacity_kwh = 200000
 
 heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, level=2, order=2)
 
@@ -80,9 +92,9 @@ optimization_index = create_controlled_optimtization(prosumer, level=1, order=1)
 
 GenericMapping(prosumer,
         initiator_id=cp_index,
-        initiator_column=["t_source_cp_k", "mode_cp","p_el_bhp_cp", "t_amb_k_cp"],
+        initiator_column=["t_source_cp_k", "mode_cp","p_el_bhp_cp", "t_amb_k_cp", "t_sink_k_cp"],
         responder_id=bhp_index,
-        responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k"],
+        responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"],
     )
 
 GenericMapping(
@@ -92,6 +104,7 @@ GenericMapping(
         responder_id=ice_chp_index,
         responder_column=["cycle", "t_intake_k", "p_requested_kw"],
     )
+
 
 
 GenericMapping(prosumer,
@@ -127,9 +140,9 @@ GenericMapping(
 
 GenericMapping(prosumer,
         initiator_id=cp_index,
-        initiator_column=["t_source_cp_k", "mode_cp","p_el_bhp_cp", "t_amb_k_cp"],
+        initiator_column=["t_source_cp_k", "mode_cp","p_el_bhp_cp", "t_amb_k_cp", "t_sink_k_cp"],
         responder_id=bhp_index_cop_calc,
-        responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k"],
+        responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"],
     )
 
 GenericMapping(prosumer,

@@ -243,7 +243,9 @@ def poly_expr(coeffs, x):
     return sum(coeffs[i] * (x ** i) for i in range(len(coeffs)))
 
 def check_results(prosumer, ts):
-    rerun = False
+    if not hasattr(prosumer, "controller_results"):
+        prosumer.controller_results = {}
+
     #select the chp_map for the optimization
     here = os.getcwd()              # aktuelles Arbeitsverzeichnis
     parent = os.path.dirname(here)  # ein Ordner zurück
@@ -286,16 +288,19 @@ def check_results(prosumer, ts):
             resol=time_resolution,
         )
 
-    if results["feasible"]:
-            #put the results of the optimization as input data for the const profile for the rerun of the timestep
-            df_data.df.loc[ts, "p_el_bhp"] = results["p_el_bhp"]
-            df_data.df.loc[ts, "p_el_chp"] = results["p_el_chp"]
+    # if results["feasible"]:
+    df_data.df["p_el_bhp"] = df_data.df["p_el_bhp"].astype(float)
+    df_data.df["p_el_chp"] = df_data.df["p_el_chp"].astype(float)
 
-            rerun = True
-    else:
-            rerun = False
+    df_data.df.loc[ts, "p_el_bhp"] = float(results["p_el_bhp"])
+    df_data.df.loc[ts, "p_el_chp"] = float(results["p_el_chp"])
 
-    return rerun
+        # rerun = True
+    # else:
+
+        # rerun = False
+
+    # return rerun
 
 
 run_timeseries(prosumer, period, check_results_fct=check_results, verbose=True)
