@@ -81,7 +81,7 @@ class OptimizationController(BasicProsumerController):
         storage_idx = []
 
         for idx, row in prosumer.controller.iterrows():
-            if row["level"] != 2:
+            if row["level"] != 2: #Todo: Make this an input (only consider Controllers of this level)
                 continue
             cname = row["object"].__class__.__name__
             if cname == "BoosterHeatPumpController":
@@ -131,16 +131,39 @@ class OptimizationController(BasicProsumerController):
 
         m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
 
-        charge_terms = [m.storage[idx].q_th_charge for idx in m.storage]
+        # charge_terms = [m.storage[idx].q_th_charge for idx in m.storage]
+
+        charge_terms = []
+        for idx in m.storage:
+            block = m.storage[idx]
+            charge_terms.append(
+                block.q_th_charge
+               # (2 * block.z_low_soc - 1) * block.q_th_charge
+            )
+
+        # m.obj = pyo.Objective(
+        #     expr=m.el_bal ** 2 - sum(charge_terms),
+        #     sense=pyo.minimize
+        # )
+
+        W_flex = 1_000.0  # sehr hoch
+        W_store = 1.0  # deutlich kleiner
+
+        m.t = pyo.Var(domain=pyo.NonNegativeReals)
+
+        m.abs1 = pyo.Constraint(expr=m.el_bal <= m.t)
+        m.abs2 = pyo.Constraint(expr=-m.el_bal <= m.t)
+
 
         m.obj = pyo.Objective(
-            expr=m.el_bal ** 2 - sum(charge_terms),
+            expr=W_flex * (m.t)
+                 + W_store * sum(charge_terms),
             sense=pyo.minimize
         )
 
         # Solver
-        solver = pyo.SolverFactory('mindtpy')
-        results = solver.solve(m, strategy='OA', mip_solver='glpk', nlp_solver='ipopt')
+        solver = pyo.SolverFactory('glpk')
+        results = solver.solve(m)#, strategy='OA', mip_solver='glpk', nlp_solver='ipopt')
 
         if (results.solver.status == SolverStatus.ok and
                 results.solver.termination_condition == TerminationCondition.optimal):
@@ -331,3 +354,19 @@ class OptimizationController(BasicProsumerController):
         block.soc_balance = pyo.Constraint(
             expr=block.soc == block.soc_prev + (block.q_th_charge - block.q_th_discharge) * block.resol / 3600 / block.Q_th_max
         )
+
+        block.z_low_soc = pyo.Var(domain=pyo.Binary)
+
+        M = 1.0
+
+        # Logik:
+        # z_low_soc = 1  => soc <= 0.5
+        # z_low_soc = 0  => soc >= 0.5
+        block.soc_low_1 = pyo.Constraint(
+            expr=block.soc <= 0.5 + M * (1 - block.z_low_soc)
+        )
+
+        block.soc_low_2 = pyo.Constraint(
+            expr=block.soc >= 0.5 - M * block.z_low_soc
+        )
+
