@@ -70,109 +70,153 @@ class OptimizationController(BasicProsumerController):
         return coefficients.tolist()
 
     def model_optimization(self, prosumer, heat_demand, flex_demand):
-        m = pyo.ConcreteModel()
+        # ── Basis-Modell aufbauen (Blöcke, Constraints) ──────────────────
+        def build_base_model():
+            m = pyo.ConcreteModel()
 
-        # Parameter
-        m.heat_demand = pyo.Param(initialize=heat_demand)
-        m.flex_demand = pyo.Param(initialize=flex_demand)
+            # Parameter
+            m.heat_demand = pyo.Param(initialize=heat_demand)
+            m.flex_demand = pyo.Param(initialize=flex_demand)
 
-        bhp_idx = []
-        chp_idx = []
-        storage_idx = []
+            bhp_idx = []
+            chp_idx = []
+            storage_idx = []
 
-        for idx, row in prosumer.controller.iterrows():
-            if row["level"] != 2: #Todo: Make this an input (only consider Controllers of this level)
-                continue
-            cname = row["object"].__class__.__name__
-            if cname == "BoosterHeatPumpController":
-                bhp_idx.append(idx)
-            elif cname == "IceChpController":
-                chp_idx.append(idx)
-            elif cname == "HeatStorageController":
-                storage_idx.append(idx)
+            for idx, row in prosumer.controller.iterrows():
+                if row["level"] != 2: #Todo: Make this an input (only consider Controllers of this level)
+                    continue
+                cname = row["object"].__class__.__name__
+                if cname == "BoosterHeatPumpController":
+                    bhp_idx.append(idx)
+                elif cname == "IceChpController":
+                    chp_idx.append(idx)
+                elif cname == "HeatStorageController":
+                    storage_idx.append(idx)
 
-        m.bhp_index = pyo.Set(initialize=bhp_idx)
-        m.chp_index = pyo.Set(initialize=chp_idx)
-        m.storage_index = pyo.Set(initialize=storage_idx)
+            m.bhp_index = pyo.Set(initialize=bhp_idx)
+            m.chp_index = pyo.Set(initialize=chp_idx)
+            m.storage_index = pyo.Set(initialize=storage_idx)
 
-        m.bhp = pyo.Block(m.bhp_index)
-        m.chp = pyo.Block(m.chp_index)
-        m.storage = pyo.Block(m.storage_index)
+            m.bhp = pyo.Block(m.bhp_index)
+            m.chp = pyo.Block(m.chp_index)
+            m.storage = pyo.Block(m.storage_index)
 
-        for idx in m.bhp_index:
-            self._add_booster_heatpump(prosumer, m.bhp[idx], idx)
+            for idx in m.bhp_index:
+                self._add_booster_heatpump(prosumer, m.bhp[idx], idx)
 
-        for idx in m.chp_index:
-            self._add_chp(prosumer, m.chp[idx], idx)
+            for idx in m.chp_index:
+                self._add_chp(prosumer, m.chp[idx], idx)
 
-        for idx in m.storage_index:
-            self._add_storage(prosumer, m.storage[idx], idx)
+            for idx in m.storage_index:
+                self._add_storage(prosumer, m.storage[idx], idx)
 
-        # balances
-        # m.heat_bal = pyo.Constraint(expr=m.q_th_bhp + m.q_th_chp + m.q_th_discharge - m.q_th_charge == m.heat_demand)
-        # m.el_bal = pyo.Expression(expr=-m.p_el_bhp + m.p_el_chp - m.flex_demand)
+            heat_terms = []
+            for idx in m.bhp:
+                heat_terms.append(m.bhp[idx].q_th)
+            for idx in m.chp:
+                heat_terms.append(m.chp[idx].q_th)
+            for idx in m.storage:
+                heat_terms.append(m.storage[idx].q_th_discharge)
+                heat_terms.append(-m.storage[idx].q_th_charge)
 
-        heat_terms = []
-        for idx in m.bhp:
-            heat_terms.append(m.bhp[idx].q_th)
-        for idx in m.chp:
-            heat_terms.append(m.chp[idx].q_th)
-        for idx in m.storage:
-            heat_terms.append(m.storage[idx].q_th_discharge)
-            heat_terms.append(-m.storage[idx].q_th_charge)
+            m.heat_bal = pyo.Constraint(expr=sum(heat_terms) == m.heat_demand)
 
-        m.heat_bal = pyo.Constraint(expr=sum(heat_terms) == m.heat_demand)
+            el_terms = []
+            for idx in m.bhp:
+                el_terms.append(-m.bhp[idx].p_el)
+            for idx in m.chp:
+                el_terms.append(m.chp[idx].p_el)
 
-        el_terms = []
-        for idx in m.bhp:
-            el_terms.append(-m.bhp[idx].p_el)
-        for idx in m.chp:
-            el_terms.append(m.chp[idx].p_el)
+            m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
 
-        m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
+            return m
 
-        # charge_terms = [m.storage[idx].q_th_charge for idx in m.storage]
+        solver = pyo.SolverFactory('appsi_highs')
+        EPS = 1e-4  # Toleranz für Constraint-Weitergabe
 
-        charge_terms = []
-        for idx in m.storage:
-            block = m.storage[idx]
-            charge_terms.append(
-                block.q_th_charge
-               # (2 * block.z_low_soc - 1) * block.q_th_charge
-            )
-
-        # m.obj = pyo.Objective(
-        #     expr=m.el_bal ** 2 - sum(charge_terms),
-        #     sense=pyo.minimize
-        # )
-
-        W_flex = 1_000.0  # sehr hoch
-        W_store = 1.0  # deutlich kleiner
+        # ── STUFE 1: Flex-Ziel ───────────────────────────────────────────
+        m = build_base_model()
 
         m.t = pyo.Var(domain=pyo.NonNegativeReals)
+        m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
+        m.abs_neg = pyo.Constraint(expr=-m.el_bal <= m.t)
 
-        m.abs1 = pyo.Constraint(expr=m.el_bal <= m.t)
-        m.abs2 = pyo.Constraint(expr=-m.el_bal <= m.t)
+        m.obj = pyo.Objective(expr=m.t, sense=pyo.minimize)
 
+        res1 = solver.solve(m, tee=False)
+        t_opt = pyo.value(m.t)
 
-        m.obj = pyo.Objective(
-            expr=W_flex * (m.t)
-                 + W_store * sum(charge_terms),
+        # ── STUFE 2: SOC-Abweichungen minimieren ──────────────────────────────────────
+        # Flex-Ergebnis einfrieren
+        m.flex_lock = pyo.Constraint(expr=m.t <= t_opt + EPS)
+
+        m.obj.deactivate()
+
+        # Stage 2: SOC-Abweichung vom Zielband minimieren
+        SOC_TARGET = 0.5  # Mitte des Hysteresebands
+        SOC_TOL = 0.1  # Abweichungen des Hyteresebands um Mitte
+
+        m.soc_dev = pyo.Var(m.storage_index, domain=pyo.NonNegativeReals)
+
+        m.soc_dev_pos = pyo.Constraint(
+            m.storage_index,
+            rule=lambda m, idx: m.soc_dev[idx] >= m.storage[idx].soc - (SOC_TARGET + SOC_TOL)
+        )
+        m.soc_dev_neg = pyo.Constraint(
+            m.storage_index,
+            rule=lambda m, idx: m.soc_dev[idx] >= (SOC_TARGET - SOC_TOL) - m.storage[idx].soc
+        )
+
+        m.obj2 = pyo.Objective(
+            expr=sum(m.soc_dev[idx] for idx in m.storage_index),
             sense=pyo.minimize
         )
 
-        # Solver
-        solver = pyo.SolverFactory('glpk')
-        results = solver.solve(m)#, strategy='OA', mip_solver='glpk', nlp_solver='ipopt')
+        res2 = solver.solve(m)
+        soc_dev_opt = sum(pyo.value(m.soc_dev[idx]) for idx in m.storage_index)
 
-        if (results.solver.status == SolverStatus.ok and
-                results.solver.termination_condition == TerminationCondition.optimal):
-            feasible = True
+        # Abweichungen des SOC vom Zielband einfrieren
+        m.soc_dev_lock = pyo.Constraint(
+            expr=sum(m.soc_dev[idx] for idx in m.storage_index) <= soc_dev_opt + EPS
+        )
+        # ── STUFE 3: CHP-Abweichung minimieren ──────────────────────────────────────
+
+        m.chp_dev = pyo.Var(m.chp_index, domain=pyo.NonNegativeReals)
+        m.chp_dev_pos = pyo.Constraint(
+            m.chp_index,
+            rule=lambda m, idx: m.chp_dev[idx] >= m.chp[idx].p_el - m.chp[idx].p_el_prev
+        )
+        m.chp_dev_neg = pyo.Constraint(
+            m.chp_index,
+            rule=lambda m, idx: m.chp_dev[idx] >= -(m.chp[idx].p_el - m.chp[idx].p_el_prev)
+        )
+
+        m.obj2.deactivate()
+        m.obj3 = pyo.Objective(
+            expr=sum(m.chp_dev[idx] for idx in m.chp_index),
+            sense=pyo.minimize
+        )
+
+        res3 = solver.solve(m, tee=False)
+
+
+        feasible = (
+                res3.solver.status == SolverStatus.ok
+                and res3.solver.termination_condition in (
+                    TerminationCondition.optimal,
+                    TerminationCondition.feasible  # ← auch akzeptieren!
+                )
+        )
+
+        if feasible:
+
+            p_bhp = pyo.value(next(m.bhp[idx].p_el for idx in m.bhp_index))
+            p_chp = pyo.value(next(m.chp[idx].p_el for idx in m.chp_index))
+
         else:
-            feasible = False
+            # ── Fallback: Vorherigen Zustand fortschreiben ─────────────────
+            p_bhp, p_chp = (0, 0)
 
-        p_bhp = next(m.bhp[idx].p_el.value for idx in m.bhp)
-        p_chp = next(m.chp[idx].p_el.value for idx in m.chp)
         return p_bhp, p_chp, feasible
 
     def poly_expr(self, coeffs, x):
@@ -304,6 +348,15 @@ class OptimizationController(BasicProsumerController):
         # Wenn aus → keine Wärme
         block.off_constr = pyo.Constraint(expr=block.q_th <= M * block.y)
 
+        # ── Vorherigen Zustand laden ──────────────────────────────────────
+        ts_prev = self.time - pd.Timedelta(seconds=self.resol)
+
+        if ts_prev in prosumer.controller_results:
+            p_el_prev_val = float(prosumer.controller_results[ts_prev][index].get(f"p_el_out_kw", 0.0))
+        else:
+            p_el_prev_val = 0.0
+
+        block.p_el_prev = pyo.Param(initialize=p_el_prev_val)
 
     def _add_storage(self, prosumer, block, index):
         """
@@ -311,6 +364,7 @@ class OptimizationController(BasicProsumerController):
         """
         ctrl = prosumer.controller.loc[index]["object"]
         storage_cap_kwh = ctrl.element_instance["q_capacity_kwh"].iloc[0]
+        # init_soc = ctrl.element_instance["init_soc"].iloc[0]
         resol = self.resol
         ts = self.time
 
@@ -321,7 +375,6 @@ class OptimizationController(BasicProsumerController):
         else:
             # first timestep → SOC = 0
             raw_soc_prev = 0.0
-
         soc_prev = self.to_scalar(raw_soc_prev)
 
         # Parameter
@@ -353,20 +406,5 @@ class OptimizationController(BasicProsumerController):
         # SOC-Bilanz
         block.soc_balance = pyo.Constraint(
             expr=block.soc == block.soc_prev + (block.q_th_charge - block.q_th_discharge) * block.resol / 3600 / block.Q_th_max
-        )
-
-        block.z_low_soc = pyo.Var(domain=pyo.Binary)
-
-        M = 1.0
-
-        # Logik:
-        # z_low_soc = 1  => soc <= 0.5
-        # z_low_soc = 0  => soc >= 0.5
-        block.soc_low_1 = pyo.Constraint(
-            expr=block.soc <= 0.5 + M * (1 - block.z_low_soc)
-        )
-
-        block.soc_low_2 = pyo.Constraint(
-            expr=block.soc >= 0.5 - M * block.z_low_soc
         )
 

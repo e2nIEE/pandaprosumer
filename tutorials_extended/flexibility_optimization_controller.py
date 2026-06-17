@@ -30,7 +30,7 @@ n_days = 8
 
 L = np.tile(L_day, n_days)
 G_PV = np.tile(G_PV_day, n_days)
-flex = np.tile(flex_day, n_days)
+flex = np.tile(flex_day, n_days) *0.5 - 100
 
 
 
@@ -41,6 +41,7 @@ time_series_data = pd.read_excel(data_file)
 time_series_data["flex_demand_kw"] = flex
 time_series_data["t_sink_k"] = 350
 time_series_data["cycle"] = 1
+# time_series_data["flex_demand_kw"] = 0
 
 dur = pd.date_range(start=start, end=end, freq=frequency, tz='utc')
 time_series_data.index = dur
@@ -59,7 +60,7 @@ cp_index = create_controlled_const_profile(
 
 bhp_type = 'water-water2'
 bhp_name = 'example_bhp'
-max_thermal_power_kw = 1000
+max_thermal_power_kw = 800
 
 bhp_index = create_controlled_booster_heat_pump(prosumer,
                                                 hp_type=bhp_type,
@@ -76,15 +77,15 @@ bhp_index_cop_calc = create_controlled_booster_heat_pump(prosumer,
                                                 order=0)
 
 name = 'example_chp'
-size_kw = 700
+size_kw = 350
 fuel = 'ng'
 altitude_m = 0
 
 ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
-q_capacity_kwh = 200000
+q_capacity_kwh = 80000
 
-heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, level=2, order=2)
+heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.0, level=2, order=2)
 
 heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
