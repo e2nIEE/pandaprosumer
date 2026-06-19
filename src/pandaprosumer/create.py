@@ -664,6 +664,7 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
 
 def create_heat_storage(prosumer,
                         q_capacity_kwh=0.,
+                        init_soc=0.,
                         in_service=True,
                         index=None,
                         name=None,
@@ -672,7 +673,7 @@ def create_heat_storage(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
 
-    entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
+    entries = dict(zip(['name', 'q_capacity_kwh', 'init_soc', 'in_service'], [name, q_capacity_kwh, init_soc, in_service]))
 
     _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
     return int(index)

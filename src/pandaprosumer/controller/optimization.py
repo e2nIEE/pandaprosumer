@@ -364,7 +364,7 @@ class OptimizationController(BasicProsumerController):
         """
         ctrl = prosumer.controller.loc[index]["object"]
         storage_cap_kwh = ctrl.element_instance["q_capacity_kwh"].iloc[0]
-        # init_soc = ctrl.element_instance["init_soc"].iloc[0]
+        init_soc = ctrl.element_instance["init_soc"].iloc[0]
         resol = self.resol
         ts = self.time
 
@@ -374,7 +374,7 @@ class OptimizationController(BasicProsumerController):
             raw_soc_prev = prosumer.controller_results[ts_prev][index]["soc"]
         else:
             # first timestep → SOC = 0
-            raw_soc_prev = 0.0
+            raw_soc_prev = init_soc
         soc_prev = self.to_scalar(raw_soc_prev)
 
         # Parameter

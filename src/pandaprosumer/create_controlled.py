@@ -856,7 +856,7 @@ def create_controlled_heat_storage(prosumer,
 
     heat_storage_index = create_heat_storage(
         prosumer,
-        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'init_soc', 'kwargs'}},
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", 'level', 'kwargs'}}, #'init_soc',
         **kwargs
     )
     heat_storage_controller_data = HeatStorageControllerData(

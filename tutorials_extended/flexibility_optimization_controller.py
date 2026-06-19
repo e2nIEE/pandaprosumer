@@ -30,7 +30,7 @@ n_days = 8
 
 L = np.tile(L_day, n_days)
 G_PV = np.tile(G_PV_day, n_days)
-flex = np.tile(flex_day, n_days) *0.5 - 100
+flex = np.tile(flex_day, n_days)
 
 
 
@@ -85,7 +85,7 @@ ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, n
 
 q_capacity_kwh = 80000
 
-heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.0, level=2, order=2)
+heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.5, level=2, order=2)
 
 heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
