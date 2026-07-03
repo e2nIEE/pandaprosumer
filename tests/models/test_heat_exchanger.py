@@ -209,6 +209,39 @@ class TestHeatExchanger:
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 70.,
                                                              FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.3410815)}]
 
+    def test_secondary_outlet_clamped_to_primary_inlet(self):
+        """Secondary outlet cannot exceed the primary inlet (thermodynamic limit).
+
+        A fixed-ΔT virtual demand may request t_2_out above the primary feed; the HX
+        must clamp t_2_out to t_1_in and derate q rather than report an above-source
+        outlet. Regression for the Paris-demo CPCU→BET overshoot (the DHN HX reported a
+        BET-side feed driving junction 10 to ~92 °C, above the 80 °C CPCU primary).
+        """
+        prosumer = create_empty_prosumer_container()
+        hx_params = {
+            "t_1_in_nom_c": 80, "t_1_out_nom_c": 40,
+            "t_2_in_nom_c": 17, "t_2_out_nom_c": 57,
+            "mdot_2_nom_kg_per_s": 1.0, "delta_t_hot_default_c": 23,
+        }
+        hx_controller_idx = create_controlled_heat_exchanger(prosumer, order=0,
+                                                             period=_default_period(prosumer), **hx_params)
+        hx_controller = prosumer.controller.iloc[hx_controller_idx].object
+        hx_controller.inputs = np.array([[80]])               # primary inlet = 80 °C
+        hx_controller.t_m_to_deliver = lambda x: (95, 17, [1.0])  # demand a 95 °C feed (> 80)
+        hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hx_controller.control_step(prosumer)
+
+        t_2_out = hx_controller.step_results[0][6]
+        # The physical guarantee: secondary outlet never exceeds the primary inlet.
+        # (The exact settled value is model-internal: the clamp caps t_2_out at the
+        # 80 °C primary, then the min-Δt contract-shift relaxes it further — 75 °C
+        # here. Pre-fix it passed the demanded 95 °C straight through.)
+        assert t_2_out <= 80 + 1e-6, f"t_2_out {t_2_out} exceeds primary inlet 80 °C"
+        assert t_2_out < 95, "demanded 95 °C feed must not pass through unclamped"
+        # q is bounded by the clamped rise, not the demanded (95-17) one.
+        q = hx_controller.step_results[0][0]
+        assert q <= 1.0 * 4.186 * (80 - 17) + 1e-6
+
     def test_controller_run_control_2demands(self):
         """
         Test the control step of a Heat Exchanger controller with two downstream demands.

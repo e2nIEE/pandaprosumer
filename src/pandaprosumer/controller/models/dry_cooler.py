@@ -294,10 +294,56 @@ class DryCoolerController(BasicProsumerController):
         n_nom_rpm = self._get_element_param(prosumer, 'n_nom_rpm')
         p_fan_nom_kw = self._get_element_param(prosumer, 'p_fan_nom_kw')
         qair_nom_m3_per_h = self._get_element_param(prosumer, 'qair_nom_m3_per_h')
+        fans_number = self._get_element_param(prosumer, 'fans_number')
         a = p_fan_nom_kw / (n_nom_rpm ** 3)
         b = qair_nom_m3_per_h / n_nom_rpm
         n_rpm = mdot_air_m3_per_h / b
-        p_fans_kw = a * n_rpm ** 3 * self._get_element_param(prosumer, 'fans_number')
+        p_fans_kw = a * n_rpm ** 3 * fans_number
+
+        # --- Fan operating-regime limits (power floor / cap) -----------------
+        # The fan affinity law P_fan ∝ n³ drives the fan power toward ~0
+        # whenever far more cooling capacity is energised than the load needs
+        # (e.g. an optimiser switching ON several units / fans_number for a
+        # small heat-rejection duty): the per-fan air flow, hence n_rpm, hence
+        # p_fans all collapse with the cube. Conversely, when the duty exceeds
+        # the design point the same law sends n_rpm above nominal and the
+        # per-fan power above its rating. A real fan bank can neither run
+        # arbitrarily slowly (variable-speed fans have a minimum speed,
+        # typically 20–30 % of nominal, and energised fans draw a minimum
+        # power) nor exceed its motor rating / a maximum speed. Optional
+        # floors and caps model both ends; all apply ONLY while the bank is
+        # actually rejecting heat (mdot_air > 0) so a genuinely idle step
+        # still reports 0 (the asset coasts / is bypassed). Mirrors the
+        # ``min_p_kw`` / ``max_p_kw`` (electric boiler) and ``min_p_comp_kw``
+        # / ``max_p_comp_kw`` (heat pump) bounds. The limits adjust the
+        # reported ``n_rpm`` / ``p_fans_kw`` (the energised fan regime) but
+        # are NOT propagated into the air-side flow / temperature outputs,
+        # which keep reflecting the thermal duty actually transferred to the
+        # fluid: a floor over-ventilates (surplus air exits at ~ambient) and a
+        # cap under-ventilates (the heat that the capped fans cannot reject is
+        # not derated here) — both are modelled as parasitic electricity only.
+        fan_active = mdot_air_kg_per_s > 1e-6
+
+        # Speed floor / cap (fraction of nominal rpm).
+        min_fan_speed_pct = self._get_element_param(prosumer, 'min_fan_speed_pct')
+        if fan_active and not np.isnan(min_fan_speed_pct):
+            n_rpm = max(n_rpm, min_fan_speed_pct / 100. * n_nom_rpm)
+        max_fan_speed_pct = self._get_element_param(prosumer, 'max_fan_speed_pct')
+        if fan_active and not np.isnan(max_fan_speed_pct):
+            n_rpm = min(n_rpm, max_fan_speed_pct / 100. * n_nom_rpm)
+
+        p_fans_kw = a * n_rpm ** 3 * fans_number
+
+        # Power floor / cap (per energised fan). The reported speed is kept
+        # consistent with the bounded per-fan power: p_fan = a · n_rpm³.
+        min_p_fan_kw = self._get_element_param(prosumer, 'min_p_fan_kw')
+        if fan_active and not np.isnan(min_p_fan_kw) and p_fans_kw < min_p_fan_kw * fans_number:
+            p_fans_kw = min_p_fan_kw * fans_number
+            n_rpm = (min_p_fan_kw / a) ** (1. / 3.)
+        max_p_fan_kw = self._get_element_param(prosumer, 'max_p_fan_kw')
+        if fan_active and not np.isnan(max_p_fan_kw) and p_fans_kw > max_p_fan_kw * fans_number:
+            p_fans_kw = max_p_fan_kw * fans_number
+            n_rpm = (max_p_fan_kw / a) ** (1. / 3.)
 
         return (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
                 mdot_air_kg_per_s, t_air_in_c, t_air_out_c,

@@ -40,6 +40,8 @@ class StratifiedHeatStorageElementData:
         ('max_remaining_capacity_kwh', 'f8'),
         ('t_discharge_out_tol_c', 'f8'),
         ('max_dt_s', 'f8'),
+        ('max_charge_mdot_kg_per_s', 'f8'),
+        ('t_charge_target_c', 'f8'),
         ('height_charge_in_m', 'f8'),
         ('height_charge_out_m', 'f8'),
         ('height_discharge_out_m', 'f8'),

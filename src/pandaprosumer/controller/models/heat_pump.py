@@ -247,17 +247,22 @@ class HeatPumpController(BasicProsumerController):
         if np.isnan(max_cop):
             max_cop = None
         if max_cop is not None and cop_hp > max_cop + 1e-3:
-            # If the cop is too high, consider calculate which condenser output temperature the HP can reach
-            # with the max cop
-            t_cond_out_c = (max_cop * (t_evap_in_c + CELSIUS_TO_K) / (max_cop - carnot_efficiency)) - CELSIUS_TO_K
-            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
-             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                        mdot_cond_kg_per_s,
-                                                                                        t_cond_out_c,
-                                                                                        t_cond_in_c,
-                                                                                        t_evap_in_c,
-                                                                                        pinch_c)
+            # max_cop is an EFFICIENCY bound: cap the COP and keep the REQUESTED
+            # condenser outlet temperature. A previous version instead RAISED
+            # t_cond_out to the temperature where capped Carnot is self-consistent
+            #   t = max_cop·(T_evap)/(max_cop − η) − 273.15
+            # — a "free temperature upgrade" that delivered far hotter fluid than
+            # the downstream demand contract asked for (e.g. a 65 °C DHW request
+            # served at 76–94 °C, tracking the evaporator-side temperature). In a
+            # coupled simulation the downstream storage then overheated above its
+            # design band and the optimiser (DEMix) saw out-of-bounds initial
+            # states every iteration. Real machines modulate at the requested
+            # setpoint with bounded efficiency — they don't overshoot delivery
+            # temperature because the source got warmer.
+            cop_hp = max_cop
+            p_comp_kw = q_cond_kw / cop_hp
+            q_evap_kw = q_cond_kw - p_comp_kw
+            mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
         max_t_cond_out_c = self._get_element_param(prosumer, 'max_t_cond_out_c')
         if np.isnan(max_t_cond_out_c):
             max_t_cond_out_c = None
@@ -379,6 +384,18 @@ class HeatPumpController(BasicProsumerController):
         # FixMe: Is it okay to use the condenser input temperature ?
         cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
         cop_hp = carnot_efficiency * cop_carnot
+
+        # max_cop is an efficiency bound and must be enforced on this evaporator-driven
+        # path too, not just in _calculate_heat_pump. q_evap is the anchored quantity
+        # here (fixed evaporator mass flow), so capping the COP raises the compressor
+        # power (and hence q_cond) for the same source heat — mirroring the forward
+        # path, which keeps q_cond fixed and raises p_comp. Without this cap, an ECS HP
+        # with a low temperature lift (warm BET source, 65 °C sink) returned COP 4-6
+        # despite max_cop=4.0, surfaced by the June coupled run.
+        max_cop = self._get_element_param(prosumer, 'max_cop')
+        if not np.isnan(max_cop) and cop_hp > max_cop + 1e-3:
+            cop_hp = max_cop
+
         p_comp_kw = q_evap_kw / (cop_hp - 1)
         q_cond_kw = q_evap_kw + p_comp_kw
 
@@ -553,6 +570,19 @@ class HeatPumpController(BasicProsumerController):
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+
+        # Clamp a small negative evaporator load to 0. When the HP is forced ON
+        # at near-zero condenser duty (e.g. ON_HP=1 overnight with the ECS tank
+        # full, warm ambient loop), the minimum compressor power exceeds the
+        # tiny q_cond, COP dips below 1 and q_evap = q_cond - p_comp goes a few
+        # kW negative. Physically the surplus electrical work is dissipated and
+        # the source draw floors at 0 — not a wiring fault. Only a *gross*
+        # negative (tens of kW) signals a real error, so keep that guard.
+        if q_evap_kw < 0.0:
+            assert q_evap_kw > -5.0, (
+                f"Heat Pump {self.name} q_evap_kw grossly negative ({q_evap_kw}) "
+                f"for timestep {self.time} in prosumer {prosumer.name}")
+            q_evap_kw = 0.0
 
         result = np.array([[q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
