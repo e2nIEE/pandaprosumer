@@ -456,6 +456,38 @@ class TestHeatPump:
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: 2.}]
 
+    def test_controller_run_control_demand_higher_mass_flow_cop_cap(self):
+        """
+        Reverse path (fixed evaporator mass flow exceeds the HP-required flow) must
+        still honour max_cop. With a low temperature lift the uncapped Carnot COP is
+        well above the bound; the cap has to fire on the _calculate_heat_pump_reverse
+        path, not only on the forward path. Regression for the June coupled run where
+        the ECS HP reported COP 4-6 despite max_cop=4.0.
+        """
+        prosumer = create_empty_prosumer_container()
+        params = dict(_default_argument())
+        params['max_cop'] = 4.0
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0,
+                                                        period=_default_period(prosumer),
+                                                        **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        # Low lift (45 -> 50) -> uncapped Carnot COP ~ 0.5 * (50+273.15)/(50-45) ~ 32.
+        # Large condenser demand with a small supplied evaporator flow forces the
+        # HP-required evaporator flow above the supplied flow -> reverse path.
+        hp_controller.inputs = np.array([[45]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 45
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 1.0
+        hp_controller.t_m_to_deliver = lambda x: (50, 45, [20])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+
+        q_cond_kw, p_comp_kw, _q_evap_kw, cop = hp_controller.step_results[0][:4]
+        assert p_comp_kw > 1e-3, "HP should be running"
+        assert cop == pytest.approx(params['max_cop'], abs=1e-3), \
+            f"reverse-path COP {cop} not capped at {params['max_cop']}"
+        assert q_cond_kw / p_comp_kw == pytest.approx(cop, rel=1e-6), \
+            "q_cond / p_comp must equal the reported (capped) COP"
+
     def test_controller_run_control_demand_lower_mass_flow(self):
         """
         Test the Heat Pump controller with a demand

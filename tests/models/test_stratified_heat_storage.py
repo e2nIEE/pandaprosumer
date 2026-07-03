@@ -47,11 +47,10 @@ class TestStratifiedHeatStorage:
         expected_columns = ['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m',
                             'insulation_thickness_m', 'n_layers', 'min_useful_temp_c', 'k_fluid_w_per_mk',
                             'k_insu_w_per_mk', 'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c',
-                            'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
-                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service',
-                            'max_charge_mdot_kg_per_s']
+                            'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c', 'height_charge_in_m',
+                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service']
         expected_values = [None, 12., 4., 4.1, .15, 100, 65., .598, .028, 45., 12.5, 22.5,
-                           1, 1e-3, np.nan, np.nan, 0, np.nan, 0, True, np.nan]
+                           1, 1e-3, np.nan, np.nan, np.nan, np.nan, 0, np.nan, 0, True]
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
         assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -91,11 +90,11 @@ class TestStratifiedHeatStorage:
         expected_columns = ['name', 'h_ext_w_per_m2k', 'insulation_thickness_m',
                             'k_fluid_w_per_mk', 'k_insu_w_per_mk', 'k_wall_w_per_mk', 'min_useful_temp_c',
                             'n_layers', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 't_ext_c',
-                            'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s',
+                            'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c',
                             'height_charge_in_m', 'height_charge_out_m', 'height_discharge_out_m',
-                            'height_discharge_in_m', 'in_service', 'max_charge_mdot_kg_per_s', 'custom']
+                            'height_discharge_in_m', 'in_service', 'custom']
         expected_values = ['foo', 12., 4., 5., .15, 100, 22.5, .598, .028, 45., 12.5, 22.5,
-                           5, 1, 1, 10, 2, 11, 1, False, np.nan, 'test']
+                           5, 1, 1, np.nan, np.nan, 10, 2, 11, 1, False, 'test']
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
         assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -268,6 +267,53 @@ class TestStratifiedHeatStorage:
         expected = [0., 22.5, 0., e_in_kwh]
         assert _key_results(shs_controller) == pytest.approx(expected, .03)
         assert shs_controller._get_stored_energy_kwh(22.5) == pytest.approx(e_in_kwh, .03)
+
+    def test_bypass_iso_energy_no_overserve(self):
+        """While charging, the bypass stream that serves the demand must carry
+        EXACTLY the demand energy, even when the received (producer) temperature
+        is hotter than the demanded feed.
+
+        Regression guard for the iso-energy bypass fix: with a received stream at
+        65 C feeding a 58/51 C demand, the bypass mass flow must be sized on the
+        actual bypass ΔT (65−51), not (65−58). The buggy denominator delivered
+        ~2x the demand energy (q_delivered ≈ 2·q_demand → negative q_uncovered /
+        over-serve). q_delivered must match the demand energy, not double it.
+        """
+        prosumer = create_empty_prosumer_container()
+        resol = 3600
+        period = create_period(prosumer, resol, name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 11:59:59", timezone="utc")
+        shs_idx = create_controlled_stratified_heat_storage(prosumer, order=0,
+                                                            h_ext_w_per_m2k=0,
+                                                            min_useful_temp_c=22.5,
+                                                            period=period,
+                                                            **_default_argument())
+        shs = prosumer.controller.iloc[shs_idx].object
+
+        t_recv_c, mdot_recv = 65.0, 1.0          # producer (e.g. HP at TcstCondOut)
+        t_feed_c, t_return_c, mdot_demand = 58.0, 51.0, 0.5
+
+        shs.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_recv_c
+        shs.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = mdot_recv
+        shs.t_m_to_deliver = lambda x: (t_feed_c, t_return_c, [mdot_demand])
+        shs.time_step(prosumer, "2020-01-01 00:00:00")
+        shs.control_step(prosumer)
+
+        cols = shs.result_columns
+        q_delivered = shs.step_results[0, cols.index("q_delivered_kw")]
+        mdot_delivered = shs.step_results[0, cols.index("mdot_delivered_kg_per_s")]
+        cp_kj = prosumer.fluid.get_heat_capacity(273.15 + (t_recv_c + t_return_c) / 2) / 1e3
+        q_demand_kw = mdot_demand * cp_kj * (t_feed_c - t_return_c)
+
+        # Iso-energy: delivered energy == demand energy (within cp variation).
+        assert q_delivered == pytest.approx(q_demand_kw, rel=0.03), \
+            f"q_delivered {q_delivered:.3f} kW != demand {q_demand_kw:.3f} kW"
+        # And explicitly NOT the old ~2x over-serve.
+        assert q_delivered < 1.5 * q_demand_kw, \
+            f"over-serve regression: q_delivered {q_delivered:.3f} kW ~ 2x demand {q_demand_kw:.3f} kW"
+        # Bypass flow halved relative to the demand flow (ΔT ratio 7/14).
+        assert mdot_delivered == pytest.approx(mdot_demand * (t_feed_c - t_return_c) / (t_recv_c - t_return_c), rel=0.03)
 
     def test_controller_run_control_2_layers(self):
         """

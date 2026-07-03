@@ -11,6 +11,7 @@ from pandapower.timeseries import DFData
 from pandapower.timeseries.run_time_series import print_progress, run_time_step, _call_output_writer
 
 from pandaprosumer.run_control import run_control, prepare_run_ctrl
+from pandaprosumer.check_connections import check_controller_connections
 
 
 
@@ -61,6 +62,7 @@ def run_timeseries(prosumer, period_index=0, verbose=True, check_results_fct=Non
     dur = pd.date_range(start, end, freq='%ss' % resol, tz=prosumer.period.at[period_index, 'timezone'])
 
     #control_diagnostic_pandaprosumer(prosumer, start, end, resol)
+    check_controller_connections(prosumer)
     ts_variables = init_time_series(prosumer, dur, verbose)
     time_series_initialization(ts_variables['controller_order'])
     run_loop(prosumer, ts_variables, output_writer_fct=output_writer_fct, evaluate_net_fct=evaluate_prosumer_fct,

@@ -689,6 +689,10 @@ def create_controlled_dry_cooler(prosumer,
                                  adiabatic_mode=False,
                                  phi_adiabatic_sat_percent=99,
                                  min_delta_t_air_c=0,
+                                 min_fan_speed_pct=np.nan,
+                                 min_p_fan_kw=np.nan,
+                                 max_fan_speed_pct=np.nan,
+                                 max_p_fan_kw=np.nan,
                                  name=None,
                                  index=None,
                                  in_service=True,
@@ -725,6 +729,29 @@ def create_controlled_dry_cooler(prosumer,
            **phi_adiabatic_sat_percent** (float, default 99) - Adiabatic Pre-Cooling saturation level [%]
 
            **min_delta_t_air_c** (float, default 0) - Minimum air temperature difference [C]
+
+           **min_fan_speed_pct** (float, default NaN) - Minimum fan speed as a percentage of the \
+               nominal rotational speed [%]. The fan affinity law makes the fan power scale with the \
+               cube of the air flow (and hence the speed), so when much more cooling capacity is \
+               engaged than the heat-rejection duty requires the computed fan power collapses toward \
+               ~0. A real fan bank cannot run arbitrarily slowly: this floors the reported speed (and \
+               therefore the power) while the fans are actually rejecting heat. NaN disables the \
+               floor. Typical value 20-30. Analogous to ``min_p_kw`` (electric boiler) and \
+               ``min_p_comp_kw`` (heat pump).
+
+           **min_p_fan_kw** (float, default NaN) - Minimum electric power per energised fan [kW]. \
+               Floors the per-fan power once the bank is actually rejecting heat. NaN disables the \
+               floor. Can be combined with ``min_fan_speed_pct`` (the larger floor wins).
+
+           **max_fan_speed_pct** (float, default NaN) - Maximum fan speed as a percentage of the \
+               nominal rotational speed [%]. When the duty exceeds the design point the affinity law \
+               sends the speed above nominal and the per-fan power above its rating; this caps the \
+               reported speed (and hence the power). NaN disables the cap. Typically 100.
+
+           **max_p_fan_kw** (float, default NaN) - Maximum electric power per energised fan [kW]. \
+               Caps the per-fan power. NaN disables the cap. Can be combined with ``max_fan_speed_pct`` \
+               (the smaller cap wins). Note the cap bounds the reported fan electricity only; it does \
+               not derate the heat actually rejected to the air.
 
            **name** (string, default None) - The name for this dry cooler
 

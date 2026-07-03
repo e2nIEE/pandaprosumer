@@ -255,6 +255,7 @@ def create_stratified_heat_storage(prosumer,
                                    t_discharge_out_tol_c=1e-3,
                                    max_dt_s=None,
                                    max_charge_mdot_kg_per_s=np.nan,
+                                   t_charge_target_c=np.nan,
                                    height_charge_in_m=None,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
@@ -315,6 +316,13 @@ def create_stratified_heat_storage(prosumer,
         rate, which can exceed what the upstream producer can supply and trigger non-convergence. \
         Set this to a value within the upstream's capacity to keep the reapply loop bounded. [kg/s]
 
+        **t_charge_target_c** (float, default NaN) - Optional target temperature the storage \
+        requests from its upstream producer while charging. When unset (default NaN), the \
+        charging request follows the downstream demand's feed temperature — which keeps the \
+        tank pinned at the demand minimum and stores no margin. Set it to the producer's design \
+        outlet (e.g. an optimiser's constant condenser setpoint) so the tank charges toward its \
+        actual design top temperature. [C]
+
         **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
 
         **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
@@ -360,12 +368,14 @@ def create_stratified_heat_storage(prosumer,
     entries = dict(zip(['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
                         'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
                         'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
-                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 'height_charge_in_m',
+                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c',
+                        'height_charge_in_m',
                         'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
                         k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
-                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, height_charge_in_m,
+                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, t_charge_target_c,
+                        height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
@@ -475,6 +485,10 @@ def create_dry_cooler(prosumer,
                       adiabatic_mode=False,
                       phi_adiabatic_sat_percent=99,
                       min_delta_t_air_c=0,
+                      min_fan_speed_pct=np.nan,
+                      min_p_fan_kw=np.nan,
+                      max_fan_speed_pct=np.nan,
+                      max_p_fan_kw=np.nan,
                       name=None,
                       index=None,
                       in_service=True,
@@ -509,6 +523,22 @@ def create_dry_cooler(prosumer,
 
         **min_delta_t_air_c** (float, default 0) - Minimum air temperature difference [C]
 
+        **min_fan_speed_pct** (float, default NaN) - Minimum fan speed as a percentage of the nominal \
+            rotational speed [%]. Floors the reported fan speed (and hence, through the cube affinity \
+            law, the fan power) whenever the fans are energised but the heat-rejection duty would \
+            otherwise drive them below this speed. NaN disables the floor. Typical value 20-30. \
+            See :func:`create_controlled_dry_cooler` for the rationale.
+
+        **min_p_fan_kw** (float, default NaN) - Minimum electric power per energised fan [kW]. \
+            Floors the per-fan power once the bank is actually rejecting heat. NaN disables the floor.
+
+        **max_fan_speed_pct** (float, default NaN) - Maximum fan speed as a percentage of the nominal \
+            rotational speed [%]. Caps the reported fan speed (and hence the fan power) when the duty \
+            would otherwise drive the fans above this speed. NaN disables the cap. Typically 100.
+
+        **max_p_fan_kw** (float, default NaN) - Maximum electric power per energised fan [kW]. \
+            Caps the per-fan power. NaN disables the cap.
+
         **name** (string, default None) - The name for this dry cooler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -528,10 +558,14 @@ def create_dry_cooler(prosumer,
 
     entries = dict(zip(["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c", "t_air_out_nom_c",
                         "t_fluid_in_nom_c", "t_fluid_out_nom_c", "fans_number",
-                        "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c", "in_service"],
+                        "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c",
+                        "min_fan_speed_pct", "min_p_fan_kw", "max_fan_speed_pct", "max_p_fan_kw",
+                        "in_service"],
                        [name, n_nom_rpm, p_fan_nom_kw, qair_nom_m3_per_h, t_air_in_nom_c, t_air_out_nom_c,
                         t_fluid_in_nom_c, t_fluid_out_nom_c, fans_number,
-                        adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c, in_service]))
+                        adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c,
+                        min_fan_speed_pct, min_p_fan_kw, max_fan_speed_pct, max_p_fan_kw,
+                        in_service]))
 
     _set_entries(prosumer, "dry_cooler", index, **entries, **kwargs)
     return int(index)

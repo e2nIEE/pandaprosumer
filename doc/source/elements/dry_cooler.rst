@@ -52,6 +52,10 @@ Input Static Data
     "adiabatic_mode ", "Whether to use the air adiabatic pre-cooling", "boolean"
     "phi_adiabatic_sat_percent ", "Adiabatic Pre-Cooling saturation level", "%"
     "min_delta_t_air_c", "Minimum air temperature difference", "Degree Celsius"
+    "min_fan_speed_pct", "Minimum fan speed (fraction of nominal rpm) while rejecting heat; NaN disables", "%"
+    "min_p_fan_kw", "Minimum electric power per energised fan; NaN disables", "kW"
+    "max_fan_speed_pct", "Maximum fan speed (fraction of nominal rpm); NaN disables", "%"
+    "max_p_fan_kw", "Maximum electric power per energised fan; NaN disables", "kW"
 
 
 Input Time Series
@@ -182,6 +186,42 @@ the air flow rate, which is proportional to the shaft speed:
         \frac{P_{\text{fan}_n}}{P_{\text{fan}}} &= \left(\frac{\dot{m}_\text{air}}{\dot{m}_{\text{air}_n}}\right)^3  \\
         P_\text{fan} &= \frac{P_{\text{fan}_n} * \dot{m}_\text{air}^3}{\dot{m}_{\text{air}_n}^3}  \\
     \end{align*}
+
+Fan operating-regime limits
+---------------------------
+
+The cubic affinity law above has a practical consequence: when far more
+cooling capacity is energised than the heat-rejection duty requires (for
+example an optimiser that switches ON several units, or a large
+``fans_number``, for a small load), the per-fan air flow — and therefore the
+speed and the power — collapse toward zero. Conversely, when the duty exceeds
+the design point the same law sends the speed above nominal and the per-fan
+power above its rating. A real fan bank can do neither. Optional floors and
+caps bound the energised-fan regime, mirroring the ``min_p_kw`` / ``max_p_kw``
+(electric boiler) and ``min_p_comp_kw`` / ``max_p_comp_kw`` (heat pump)
+bounds:
+
+* ``min_fan_speed_pct`` — a minimum fan speed as a fraction of
+  :math:`n_\text{nom}` (typically 20–30 %), which through the cube law sets a
+  minimum power of :math:`\left(\frac{\text{min\_fan\_speed\_pct}}{100}\right)^3 P_{\text{fan}_n}`
+  per fan.
+* ``min_p_fan_kw`` — a minimum electric power per energised fan, applied
+  directly.
+* ``max_fan_speed_pct`` — a maximum fan speed as a fraction of
+  :math:`n_\text{nom}` (typically 100 %), capping the power at
+  :math:`\left(\frac{\text{max\_fan\_speed\_pct}}{100}\right)^3 P_{\text{fan}_n}`
+  per fan.
+* ``max_p_fan_kw`` — a maximum electric power per energised fan, applied
+  directly.
+
+All limits apply only while the bank is actually rejecting heat
+(:math:`\dot{m}_\text{air} > 0`), so a genuinely idle step still reports a
+power of 0. When several apply, the binding one wins (the larger floor, the
+smaller cap). The limits adjust the reported ``n_rpm`` and ``p_fans_kw`` (the
+energised-fan regime); they are not propagated into the air-side flow /
+temperature outputs, which keep reflecting the thermal duty actually
+transferred to the fluid (a cap bounds the reported fan electricity but does
+not derate the heat rejected to the air).
 
 
 .. figure:: adiabatic_cooler.png

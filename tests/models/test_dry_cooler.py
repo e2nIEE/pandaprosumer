@@ -36,8 +36,11 @@ class TestDryCooler:
         assert len(prosumer.dry_cooler) == 1
         expected_columns = ["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c",
                             "t_air_out_nom_c", "t_fluid_in_nom_c", "t_fluid_out_nom_c", "fans_number",
-                            "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c", "in_service"]
-        expected_values = [None, 730, 9.38, 138200, 15, 35, 65, 40, 1, False, 99, 0, True]
+                            "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c",
+                            "min_fan_speed_pct", "min_p_fan_kw", "max_fan_speed_pct", "max_p_fan_kw",
+                            "in_service"]
+        expected_values = [None, 730, 9.38, 138200, 15, 35, 65, 40, 1, False, 99, 0,
+                           None, None, None, None, True]
 
         assert sorted(prosumer.dry_cooler.columns) == sorted(expected_columns)
 
@@ -72,10 +75,15 @@ class TestDryCooler:
 
         expected_columns = ["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c",
                             "t_air_out_nom_c", "t_fluid_in_nom_c", "t_fluid_out_nom_c", "fans_number",
-                            "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c", "in_service", "custom"]
-        expected_values = ['foo', 5, 15, 300, 20, 25, 50, 38, 3, True, 95, 5, False, 'test']
+                            "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c",
+                            "min_fan_speed_pct", "min_p_fan_kw", "max_fan_speed_pct", "max_p_fan_kw",
+                            "in_service", "custom"]
+        expected_values = ['foo', 5, 15, 300, 20, 25, 50, 38, 3, True, 95, 5,
+                           None, None, None, None, False, 'test']
         assert sorted(prosumer.dry_cooler.columns) == sorted(expected_columns)
-        assert prosumer.dry_cooler.iloc[0].values == pytest.approx(expected_values)
+        # Convert the np.nan (unset min_fan_speed_pct / min_p_fan_kw) to None before comparing
+        values = [v if not (isinstance(v, float) and np.isnan(v)) else None for v in prosumer.dry_cooler.iloc[0].values]
+        assert values == pytest.approx(expected_values)
 
     def test_define_controller(self):
         """
