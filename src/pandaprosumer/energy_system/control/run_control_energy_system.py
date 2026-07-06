@@ -88,6 +88,19 @@ def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
     :return: runs an entire control loop
     :rtype: None
     """
+    nets = getattr(energy_system, "nets", {}) or {}
+    prosumers = getattr(energy_system, "prosumer", {}) or {}
+    logger.info("Running energy system control with %d net(s) [%s] and %d prosumer(s) [%s]",
+                len(nets),
+                ", ".join("%s (%s)" % (name, type(net).__name__) for name, net in nets.items()) or "none",
+                len(prosumers),
+                ", ".join(str(name) for name in prosumers) or "none")
+    if not nets:
+        logger.warning("Energy system contains no net (no pandapipes/pandapower network): "
+                       "network-driven convergence cannot occur; the run relies solely on prosumers.")
+    if not prosumers:
+        logger.warning("Energy system contains no prosumer.")
+
     ctrl_variables = prepare_run_ctrl(energy_system, ctrl_variables)
 
     controller_order = ctrl_variables['controller_order']
@@ -97,6 +110,14 @@ def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
 
     # initial run (takes time, but is not needed for every kind of controller)
     ctrl_variables = net_initialization_multinet(energy_system, ctrl_variables, **kwargs)
+
+    if not nets:
+        # net_initialization_multinet leaves 'converged' False when there is no net to run a
+        # pipeflow/loadflow. With no net there is nothing that could fail to converge, so the
+        # network convergence flag is vacuously True. Without this, control_implementation's
+        # `while ... and converged` guard would never step the prosumer controllers and
+        # check_final_convergence would raise NetCalculationNotConverged on a prosumer-only system.
+        ctrl_variables['converged'] = True
 
     # run each controller step in given controller order
     control_implementation(energy_system, controller_order, ctrl_variables, max_iter,
