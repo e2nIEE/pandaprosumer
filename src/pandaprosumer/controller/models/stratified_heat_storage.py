@@ -417,7 +417,28 @@ class StratifiedHeatStorageController(BasicProsumerController):
             t_required_out_c = (mdot_bypass_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         if not np.isnan(self.t_previous_out_charge_c):
-            mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
+            # Reapply pass: recompute the charge mass flow consistent with the
+            # return temperature fed back from the previous pass.
+            #
+            # As the fed-back return (t_required_out_c) approaches the bottom
+            # layer (t_charge_out_c) — i.e. the tank fills up — this denominator
+            # collapses and the requested charge mass flow blows up (observed:
+            # 78 → 360 → 880 → 1140 kg/s across four reapplies at a
+            # nearly-full-tank transition step), which the upstream source then
+            # tries to deliver, wrecking the energy balance. Guard the near-zero
+            # denominator, clamp to non-negative, and apply the SAME
+            # max_charge_mdot cap as the forward path above (which this branch
+            # historically bypassed): when the tank can no longer absorb charge
+            # the request collapses to ~0 and the surplus is bypassed to the
+            # demand in _calculate_heat_storage instead.
+            denom_c = t_required_out_c - t_charge_out_c
+            if abs(denom_c) > 1e-6:
+                mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / denom_c
+            else:
+                mdot_charge_kg_per_s = 0.0
+            mdot_charge_kg_per_s = max(mdot_charge_kg_per_s, 0.0)
+            if max_charge_mdot is not None and not np.isnan(max_charge_mdot):
+                mdot_charge_kg_per_s = min(mdot_charge_kg_per_s, float(max_charge_mdot))
             return self.t_previous_in_charge_c, self.t_previous_out_charge_c, mdot_charge_kg_per_s
 
         return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
@@ -566,9 +587,47 @@ class StratifiedHeatStorageController(BasicProsumerController):
                         # discharge; the demand reports q_uncovered instead.
                         mdot_discharge_kg_per_s = 0.0
             else:
-                # If this energy can be provided, charging with the extra mass flow
-                mdot_bypass_kg_per_s = mdot_toprovide_kg_per_s
-                mdot_charge_kg_per_s = mdot_received_kg_per_s - mdot_bypass_kg_per_s
+                # Enough (or more than enough) received to serve the demand by
+                # bypass; the surplus (mdot_received − mdot_toprovide) would
+                # charge the tank. But if the tank is FULL it cannot store that
+                # surplus: charging it anyway drives the SHS's recomputed return
+                # up toward the bottom-layer temperature while the source was
+                # handed (and delivered against) the demand-return contract
+                # ``t_keep_return_c``. The two returns then diverge, the reapply
+                # loop can only stagnate, the source's return contract creeps
+                # toward the feed so a power-limited source (HP at min_p_comp)
+                # explodes its mass flow at the vanishing ΔT, and hundreds of kW
+                # silently vanish (source books its full duty, SHS books only what
+                # its inflated return implies).
+                #
+                # When full, charge nothing and BYPASS the whole received stream
+                # to the demand — over-serving it (``q_uncovered`` goes negative)
+                # rather than losing the energy. The return then collapses to the
+                # demand return (the mass-flow-weighted mean with zero charge
+                # share), coherent with the contract, and the boundary energy is
+                # conserved.
+                t_charge_ref_in_c = self._get_element_param(prosumer, 'min_useful_temp_c')
+                remaining_capacity_kwh = (
+                    self._get_max_stored_energy_kwh(t_charge_ref_in_c, t_received_in_c)
+                    - self._get_stored_energy_kwh(t_charge_ref_in_c))
+                # "Full" by the SAME energy-budget test _t_m_to_receive_init uses
+                # to stop requesting charge — the two MUST agree, otherwise the
+                # request asks the source for a large charge while the calc
+                # bypasses it, dumping the whole stream onto the demand.
+                tank_full = remaining_capacity_kwh < self._get_element_param(
+                    prosumer, "max_remaining_capacity_kwh")
+                if tank_full and mdot_demand_kg_per_s > 0:
+                    # Surplus can only be diverted if there IS a demand to
+                    # over-serve. With no demand (mdot_demand == 0) the surplus
+                    # has nowhere to go: fall through to the charge path, which
+                    # with feed ≈ bottom stores ≈0 energy and returns q ≈ 0
+                    # (rather than fabricating a bypass to a nonexistent demand
+                    # at t_demand_in = 0).
+                    mdot_charge_kg_per_s = 0.0
+                    mdot_bypass_kg_per_s = mdot_received_kg_per_s
+                else:
+                    mdot_bypass_kg_per_s = mdot_toprovide_kg_per_s
+                    mdot_charge_kg_per_s = mdot_received_kg_per_s - mdot_bypass_kg_per_s
                 mdot_discharge_kg_per_s = 0
                 t_bypass_in_c = t_received_in_c
 
@@ -746,9 +805,17 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                                                                         self._mdot_received_kg_per_s,
                                                                                         self._t_charge_out)
 
+            # ``dump_on_last`` so a surplus the full tank could not store (see the
+            # capacity-capped charge in _calculate_heat_storage) is actually
+            # pushed onto the downstream demand, over-serving it (its
+            # ``q_uncovered`` goes negative) rather than being silently dropped
+            # by the default ``cap`` — which would just move the vanished energy
+            # from the source⇄SHS boundary to the SHS⇄demand boundary. In normal
+            # operation ``mdot_delivered ≈ mdot_demand`` so this is a no-op.
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_delivered_kg_per_s,
-                                                                   mdot_demand_tab_kg_per_s)
+                                                                   mdot_demand_tab_kg_per_s,
+                                                                   overflow_strategy="dump_on_last")
 
             rerun = False
             if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
