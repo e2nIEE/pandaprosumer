@@ -144,10 +144,10 @@ Do not hesitate to invoke skills if it helps answer the user's query.
 
 | Skill | Trigger |
 |-------|---------|
-| `/models-parameters` | If the user request to edit/add/remove a parameter to any model:  must invoke the skill. |
-| `/name-variable` | If the task requires to choose a name or renaming for a variable, parameter, model input or output:  must invoke the skill. |
+| `/add-component` | If the user wants to add a brand-new component/model/element to the library (e.g. "add a new model for X"): must invoke the skill. It scaffolds all the files and the FluidMix coupling. |
+| `/models-parameters` | If the user request to edit/add/remove a parameter to any model: must invoke the skill. (Naming conventions from `units.rst` are handled inside this skill.) |
 | `/write-tests` | If the task requires to write some tests,  Adding new test cases, Modifying existing test cases, Updating test expectations or assertions:  must invoke the skill. |
-| `/analyse-model` | If the task requires to understand how a specific model is implemented, for example to be use for an other task, to explain how it works to the user, to check/update the documentation:  must invoke the skill. |
+| `/analyse-model` | If the task requires to understand how a specific model is implemented, for example to be use for an other task, to explain how it works to the user, to check/update the documentation:  must invoke the skill. It is the canonical map of a model's anatomy and covers naming conventions. |
 | `/write-documentation` | User requests to "document the model", or User asks to "update documentation", or User mentions "add to docs" or "documentation is missing:  must invoke the skill. |
 
 See `.agents/skills/` for skill implementation details.
@@ -167,19 +167,17 @@ The scenarios are just examples of what the users could ask, not actual tasks to
 ```mermaid
 flowchart TD
     A[User Request: Add safety_factor parameter] --> B[/analyse-model]
-    B --> C[/name-variable]
-    C --> D[/models-parameters]
-    D --> E[/write-tests]
-    E --> F[/write-documentation]
+    B --> C[/models-parameters]
+    C --> D[/write-tests]
+    D --> E[/write-documentation]
 ```
 
 **Step-by-Step**:
 
 1. **Analyse Model**: `/analyse-model` → Understand current gas boiler implementation
-2. **Name Parameter**: `/name-variable` → Choose `safety_factor` (follows conventions)
-3. **Add Parameter**: `/models-parameters` → Add to element, controller, and create functions
-4. **Write Tests**: `/write-tests` → Add parameter validation tests and edge cases
-5. **Document**: `/write-documentation` → Update RST docs with parameter description
+2. **Add Parameter**: `/models-parameters` → Choose the name per `units.rst`, then add to element, both create functions, and mind the positional `test_define_element*` column order
+3. **Write Tests**: `/write-tests` → Add parameter validation tests and edge cases
+4. **Document**: `/write-documentation` → Update RST docs with parameter description
 
 **Expected Output**:
 
@@ -226,22 +224,18 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[User Request: New solar collector model] --> B[Design Physics]
-    B --> C[/name-variable for all parameters]
-    C --> D[Implement Model]
-    D --> E[/models-parameters for all parameters]
-    E --> F[/write-tests for all functionality]
-    F --> G[/write-documentation complete physics]
+    A[User Request: New solar collector model] --> B[/add-component]
+    B --> C[/analyse-model closest sibling]
+    C --> D[Scaffold files + FluidMix wiring]
+    D --> E[/write-tests for all functionality]
+    E --> F[/write-documentation complete physics]
 ```
 
 **Step-by-Step**:
 
-1. **Design Physics**: Define mathematical model and parameters
-2. **Name Parameters**: `/name-variable` → Choose names for all parameters following conventions
-3. **Implement Model**: Create controller, element, and data model files
-4. **Add Parameters**: `/models-parameters` → Add all parameters to create functions
-5. **Write Tests**: `/write-tests` → Comprehensive test suite (unit, integration, edge cases)
-6. **Document**: `/write-documentation` → Complete physics description, parameters, examples
+1. **Scaffold**: `/add-component` → It drives the whole flow: read the closest sibling with `/analyse-model`, create the element/data_model/controller/create files, and wire the FluidMix coupling (`overflow_strategy` + `_check_fluid_mix_balance`) for a producer
+2. **Write Tests**: `/write-tests` → Comprehensive test suite (unit, integration asserting the interface invariants, edge cases)
+3. **Document**: `/write-documentation` → Complete physics description, parameters, examples
 
 **Expected Output**:
 
@@ -281,20 +275,19 @@ flowchart TD
 ### When to Use Multiple Skills
 
 1. **Complex Changes**: Use multiple skills in sequence for major modifications
-2. **Parameter Management**: Always use `/name-variable` before `/models-parameters`
+2. **New Components**: Use `/add-component` — it orchestrates `/analyse-model`, file scaffolding, `/write-tests`, and `/write-documentation`
 3. **Documentation**: Always use `/analyse-model` before `/write-documentation`
 4. **Testing**: Use `/write-tests` both before (reproduction) and after (validation) fixes
 
 ### Skill Dependency Rules
 
 - **Prerequisite Skills**: Some skills depend on others being completed first
-  - `/models-parameters` requires `/name-variable` for new parameters
+  - `/models-parameters` and `/add-component` build on `/analyse-model` (understand the model first); naming per `units.rst` is handled inside them
   - `/write-documentation` requires `/analyse-model` for accuracy
   - `/write-tests` benefits from `/analyse-model` for comprehensive coverage
 
 - **Independent Skills**: These can be used standalone
-  - `/analyse-model` (pure analysis)
-  - `/name-variable` (naming only)
+  - `/analyse-model` (pure analysis; also the canonical model-anatomy and naming reference)
 
 ### Error Recovery Workflows
 
