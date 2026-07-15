@@ -1,4 +1,4 @@
-﻿.. _dry_cooler_element:
+.. _dry_cooler_element:
 
 ==================
 Dry Cooler
@@ -78,6 +78,7 @@ Output Time Series
     "p_fans_kw", "Electrical power consumed by the fans", "kW"
     "n_rpm", "Fans rotational speed", "rpm"
     "mdot_air_m3_per_h", "Air mass flow through the cooler", "m3/h"
+    "mdot_water_kg_per_s", "Water consumption in adiabatic mode (evaporation for pre-cooling); 0 when not adiabatic", "kg/s"
 
 Mapping
 ----------------

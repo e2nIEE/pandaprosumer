@@ -1,4 +1,4 @@
-﻿.. _stratified_heat_storage_element:
+.. _stratified_heat_storage_element:
 
 ========================
 Stratified Heat Storage
@@ -46,7 +46,7 @@ Input Static Data
     "insulation_thickness_m  ", "insulation thickness", "m"
     "n_layers  ", " Number of layers used for the calculations", "N/A"
     "min_useful_temp_c  ", "Temperature used as a threshold to calculate the amount of stored energy", "Degree Celsius"
-    "k_fluid_w_per_mk  ", "Thermal conductivity of storage fluid (prosumer.fluid)", "Degree Celsius"
+    "k_fluid_w_per_mk  ", "Thermal conductivity of storage fluid (prosumer.fluid)", "W/(mK)"
     "k_insu_w_per_mk ", "Thermal conductivity of insulation", "W/(mK)"
     "k_wall_w_per_mk  ", "Thermal conductivity of the tank wall", "W/(mK)"
     "h_ext_w_per_m2k  ", "Heat transfer coefficient with the environment (Convection between tank and air)", "W/(m²K)"
@@ -55,7 +55,7 @@ Input Static Data
     "t_discharge_out_tol_c  ", "The maximum allowed difference between the demand temperature and the temperature of\\ the top layer in the storage to allow supplying the demand", "Degree Celsius"
     "max_dt_s  ", "The temporal resolution of the storage calculation. Default to the period resolution.\\ May cause divergence of the model if too high.", "second"
     "height_charge_in_m  ", "The height of the inlet charging point in m.", "m"
-    "height_charge_our_m  ", "The height of the outlet charging point in m.", "m"
+    "height_charge_out_m  ", "The height of the outlet charging point in m.", "m"
     "height_discharge_in_m  ", "The height of the inlet discharging point in m.", "m"
     "height_discharge_out_m  ", "The height of the outlet discharging point in m.", "m"
 
@@ -67,21 +67,9 @@ Input Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "mdot_discharge_kg_per_s", "Mass flow rate of discharge", "kg/s"
-    "t_discharge_c", "Discharge temperature", "°C"
-    "q_delivered_kw", "Delivered heat power", "kW"
-    "e_stored_kwh", "Stored energy", "kWh"
-
-
-Output Time Series
--------------------
-
-.. csv-table::
-    :header: "Parameter", "Description", "Unit"
-
     "mdot_discharge_kg_per_s ", "The storage discharge mass flow", "kg/s"
     "t_discharge_c ", "The storage discharge temperature", "Degree Celsius"
-    "q_delivered_kw ", "The storage delivered power to the downstream elements", "kW"
+    "q_delivered_kw ", "The storage delivered power to the downstream elements (including bypass)", "kW"
     "e_stored_kwh ", "The total stored heat energy in the storage above the element minimum usefully temperature compared to the initial state", "kWh"
 
 Mapping

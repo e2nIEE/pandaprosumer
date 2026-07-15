@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from CoolProp.CoolProp import PropsSI
 from pandaprosumer.controller.base import BasicProsumerController
 
@@ -8,14 +7,14 @@ class ChillerController(BasicProsumerController):
 
     def name_class(self):
         """Name of the chiller"""
-        return "sn_chiller_controller"
+        return "chiller_controller"
 
-    def __init__(self, prosumer, sn_chiller_object, order, level, data_source=None, in_service=True, index=None,
+    def __init__(self, prosumer, chiller_object, order, level, data_source=None, in_service=True, index=None,
                  name=None, **kwargs):
         """Initialise the attributes of the object"""
         super(ChillerController, self).__init__(
             prosumer,
-            basic_prosumer_object=sn_chiller_object,
+            basic_prosumer_object=chiller_object,
             order=order,
             level=level,
             data_source=data_source,
@@ -25,14 +24,13 @@ class ChillerController(BasicProsumerController):
             **kwargs,
         )
 
-        self.obj = sn_chiller_object
+        self.obj = chiller_object
         self.element = self.obj.element_name
         self.element_index = self.obj.element_index
         self.input_columns = self.obj.input_columns
         #self.element_instance = prosumer[self.element].loc[self.element_index, :]
         # After initializing element_instance
         self.element_instance = prosumer[self.element].loc[self.element_index, :]
-        print("Element Instance Shape:", self.element_instance.shape)
         self.res = np.zeros([len(self.element_index), len(self.time_index), len(self.result_columns)])
         self.step_results = np.full([len(self.element_index), len(self.obj.result_columns)], np.nan)
         self.time = None
@@ -98,11 +96,6 @@ class ChillerController(BasicProsumerController):
         # self.chill_inputs_validation()
 
         # Check the chiller is activated.
-        print(f"Chiller activation check:")
-        print(f"  _ctrl: {self._ctrl}")
-        print(f"  q_to_deliver_kw: {self.q_to_deliver_kw(prosumer)}")
-        print(f"  _t_set_pt_c: {self._t_set_pt_c}")
-        print(f"  _t_in_ev_c: {self._t_in_ev_c}")
         if self._ctrl == 0 or self.q_to_deliver_kw(prosumer) <= 0.0 or self._t_set_pt_c >= self._t_in_ev_c:
             t_out_cond_in_c = self._t_in_cond_c
             t_out_ev_in_c = self._t_in_ev_c
@@ -133,10 +126,6 @@ class ChillerController(BasicProsumerController):
                 "m_cond_kg_per_s": np.array([0.0]),
                 "q_cond_kw": np.array([0.0]),
             }
-
-            for idx, series in enumerate(result):
-                print(f"Shape of result[{idx}]: {series.shape}")
-
 
             array = np.stack(result, axis=0)
 

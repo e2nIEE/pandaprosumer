@@ -3,8 +3,12 @@
 build/
 dist/
 .cache/
+.venv
+.env
 .idea
-.cache
+.vscode
+poetry.lock
+.pytest_cache
 *__pycache__*
 *.pyproj
 *.user
@@ -14,4 +18,4 @@ dist/
 doc/.build/*
 doc/_build/*
 doc/build/*
-
+tmp/

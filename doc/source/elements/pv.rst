@@ -1,7 +1,7 @@
 .. _pv_element:
 
 =========================
-SenergyNets PV Production
+PV Production
 =========================
 
 .. seealso::
@@ -18,7 +18,7 @@ SenergyNets PV Production
 Create Controlled Function
 ===========================
 
-.. autofunction:: pandaprosumer.create_controlled_senergy_nets_pv_production
+.. autofunction:: pandaprosumer.create_controlled_pv_production
 
 
 
@@ -39,7 +39,7 @@ Input Static Data
 Input Time Series
 --------------------
 
-The SenergyNets PV controller expects the following time-series inputs,
+The PV controller expects the following time-series inputs,
 typically obtained from PVGIS / pvlib or another external PV model.
 
 .. csv-table::
@@ -92,7 +92,7 @@ Typical usage:
 Model
 =================
 
-.. autoclass:: pandaprosumer.controller.models.pv.SenergyNetsPvProductionController
+.. autoclass:: pandaprosumer.controller.models.pv.PvProductionController
     :members:
 
 

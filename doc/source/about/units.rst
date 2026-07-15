@@ -29,8 +29,8 @@ Parameters, Variables and Units
     * Avoid **_charge** , **_n**
 
 - Constraints should always be named with max or min as the prefix.
-    * Use: **t_max**
-    * Avoid: **max_t**
+    * Use: **max_t_out_c**
+    * Avoid: **t_max_out_c**
 
 - When a variable has both adjective and unit, the unit should always come last in the variable name.
     * Use: **mdot_nom_kg_per_s**
@@ -47,13 +47,11 @@ Parameters, Variables and Units
    :header: "parameter","variable","unit"
 
     "mass flow","mdot","kg_per_s"
-    "thermal energy","q","kj"
-    "thermal power","q_dot","kw"
-    "electric energy","q_el","kwh"
-    "electric power","p_el","kw"
+    "thermal energy","e","kwh"
+    "thermal power","q","kw"
+    "electric energy","e","kwh"
+    "electric power","p","kw"
     "temperature","t","k/c"
-    "drybulb temperature","t_drybulb","k/c"
-    "wetbulb temperature","t_wetbulb","k/c"
     "pressure","p","bar"
     "ratio","ratio","percent"
 
@@ -73,10 +71,6 @@ Functions
     * Use: **get_t**
     * Avoid: **get_t_k**
 
-- Avoid leading underscores in function names.
-    * Use: **calculate_dry_cooler**
-    * Avoid: **_calculate_dry_cooler**
-
 - When two separate parameters are calculated by a function,those should be separated with an "and".
     * Use: **t_and_mdot_to_deliver**
 
@@ -95,8 +89,8 @@ Functions
     * Avoid: other adjectives like **mdot_demanded_kg_per_s** or **mdot_toprovide_kg_per_s**
 
 - Function names should avoid redundancies.
-    * Use: **t_get_degc**
-    * Avoid: **t_feedin_supplied_degc**
+    * Use: **t_get_c**
+    * Avoid: **t_feedin_supplied_c**
 
 Files
 ------

@@ -54,14 +54,25 @@ class PandapipesConnectorController(BasicProsumerController):
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-        assert not np.isnan(t_in_required_c)
-        assert not np.isnan(mdot_tab_required_kg_per_s).any()
-        assert not np.isnan(t_out_required_c)
+        if np.isnan(t_in_required_c) or np.isnan(t_out_required_c) or np.isnan(mdot_tab_required_kg_per_s).any():
+            raise ValueError(
+                f"Pandapipes connector {self.name}: downstream demand is nan "
+                f"(t_in={t_in_required_c}, t_out={t_out_required_c}, mdot={mdot_tab_required_kg_per_s})"
+            )
         mdot_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
 
         if not np.isnan(self.t_previous_return_out_c):
-            assert self.mdot_previous_feed_kg_per_s >= 0
-            assert self.t_previous_feed_in_c >= self.t_previous_return_out_c
+            if self.mdot_previous_feed_kg_per_s < 0:
+                raise ValueError(
+                    f"Pandapipes connector {self.name}: previous-step feed mass flow is negative "
+                    f"({self.mdot_previous_feed_kg_per_s} kg/s)"
+                )
+            if self.t_previous_feed_in_c < self.t_previous_return_out_c:
+                raise ValueError(
+                    f"Pandapipes connector {self.name}: previous-step t_feed_in_c "
+                    f"({self.t_previous_feed_in_c}) is colder than t_return_out_c "
+                    f"({self.t_previous_return_out_c})"
+                )
             return self.t_previous_feed_in_c, self.t_previous_return_out_c, self.mdot_previous_feed_kg_per_s
 
         return t_out_required_c, t_in_required_c, mdot_required_kg_per_s

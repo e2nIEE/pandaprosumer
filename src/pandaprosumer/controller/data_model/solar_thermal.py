@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
-from typing import List, Callable
+from typing import List
 
 from pandaprosumer.element.element_toolbox import enforce_types
 
@@ -8,7 +8,7 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @dataclass
 
 class SolarThermalControllerData:
-    """Define format of I/O of a thermal controller in SenergyNets"""
+    """Define format of I/O of the solar thermal controller"""
     # come from pandapower/pandapipes
 
     # an instance of a Mapping, which is a bridge between two controllers

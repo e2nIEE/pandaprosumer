@@ -29,10 +29,13 @@ class HeatPumpElementData:
         ('delta_t_hot_default_c', 'f8'),
         ('max_p_comp_kw', 'f8'),
         ('min_p_comp_kw', 'f8'),
+        ('max_ramp_up_kw_per_s', 'f8'),
+        ('max_ramp_down_kw_per_s', 'f8'),
         ('max_t_cond_out_c', 'f8'),
         ('max_cop', 'f8'),
         ('cond_fluid', 'str'),
         ('evap_fluid', 'str'),
+        ('mode', 'str'),  # COP calculation mode: 'carnot' or 'lorenz'
 
         # ToDo: Take into account 'in_service' for every models
         ('in_service', bool)

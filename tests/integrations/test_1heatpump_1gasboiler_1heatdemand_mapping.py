@@ -40,7 +40,7 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
 
         gb_params = {'max_q_kw': 500}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                               data_source, period, 0, 0)
@@ -110,7 +110,6 @@ class Test1HeatPump1GasBoiler1HeatDemandMapping:
         }
         hd_expected = pd.DataFrame(dmd_data, index=data.index)
 
-        print(prosumer.time_series.loc[1].data_source.df)
         assert not np.isnan(prosumer.time_series.loc[0, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[1, "data_source"].df).any().any()
         assert not np.isnan(prosumer.time_series.loc[2, "data_source"].df).any().any()

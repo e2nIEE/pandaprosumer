@@ -1,7 +1,13 @@
+import numpy as np
 import pytest
-from pandaprosumer import *
+import pandas as pd
 from pandas.testing import assert_frame_equal, assert_series_equal
+from pandapower.timeseries.data_sources.frame_data import DFData
+
+from pandaprosumer import create_controlled_const_profile, create_controlled_heat_exchanger, create_controlled_heat_demand
+from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.run_time_series import run_timeseries
+from pandaprosumer.create import create_empty_prosumer_container, create_period
 from pandaprosumer.mapping import GenericMapping
 
 
@@ -9,11 +15,9 @@ class Test1HeatExchanger1HeatDemandMapping:
     """
     In this example, a single ConstProsumer is mapped to a HX, then to a Heat Demand
     """
-
-    def test_mapping(self):
+    
+    def _define_prosumer_cp_hx_hd(self, data):
         prosumer = create_empty_prosumer_container()
-        data = pd.DataFrame({"Tin_1": [80, 95, 95, 95],
-                             "demand_1": [50, 200, 1000, 0]})
 
         start = '2020-01-01 00:00:00'
         resol = 3600
@@ -43,7 +47,7 @@ class Test1HeatExchanger1HeatDemandMapping:
 
         hx_controller_index = create_controlled_heat_exchanger(prosumer, level=1, order=0, period=period, **hx_params)
         hd_controller_index = create_controlled_heat_demand(prosumer, level=1, order=1,
-                                                            t_in_set_c=76.85, t_out_set_c=30, period=period)
+                                                            t_feed_demand_c=76.85, t_return_demand_c=30, period=period)
 
         GenericMapping(container=prosumer,
                        initiator_id=cp_controller_index,
@@ -63,6 +67,13 @@ class Test1HeatExchanger1HeatDemandMapping:
                         initiator_id=hx_controller_index,
                         responder_id=hd_controller_index,
                         order=0)
+        
+        return prosumer, period, hd_controller_index, hx_controller_index
+
+    def test_mapping(self):
+        data = pd.DataFrame({"Tin_1": [80, 95, 95, 95],
+                             "demand_1": [50, 200, 1000, 0]})
+        prosumer, period, hd_controller_index, hx_controller_index = self._define_prosumer_cp_hx_hd(data)
 
         run_timeseries(prosumer, period, True)
 
@@ -103,6 +114,14 @@ class Test1HeatExchanger1HeatDemandMapping:
         # assert hp_t_2_out_c == pytest.approx([76.85]*len(hp_t_2_out_c))
         # assert hp_t_2_in_c == pytest.approx([30]*len(hp_t_2_in_c))
 
+    def test_low_temperature_feed(self):
+        """Test the heat exchanger with a feed temperature < demand temperature"""
+        data = pd.DataFrame({"Tin_1": [80, 95, 95, 95],
+                             "demand_1": [50, 200, 1000, 0]})
+        prosumer, period, hd_controller_index, hx_controller_index = self._define_prosumer_cp_hx_hd(data)
+
+        
+        # Test with a feed temperature 69.9°C < demand temperature (76.85°C)
         prosumer.controller.loc[hd_controller_index].object.t_m_to_receive = lambda p: (76.85, 30, 1.530896781)
         assert (prosumer.controller.loc[hx_controller_index].object.t_m_to_receive_for_t(prosumer, 69.9) ==
-                pytest.approx((69.9, 64.13644444505121, 12.426411451969358), .001))
+                pytest.approx((69.9, 43.59322222253029, 2.7215440864139606), .001))

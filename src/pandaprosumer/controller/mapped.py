@@ -2,6 +2,7 @@
 Module containing the MappedController class.
 """
 
+from warnings import warn
 import numpy as np
 import pandaprosumer.create
 import pandas as pd
@@ -11,6 +12,26 @@ from pandapower.control.basic_controller import Controller
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
+
+
+class EnergyLeakWarning(UserWarning):
+    """
+    Raised when a producer controller dispatches less mass flow (and thus
+    less energy) through the FluidMixMapping than it recorded as its own
+    output. This indicates an inconsistency between the producer's
+    internal state and what reaches the mapped responders - i.e. energy
+    that should be tracked has gone missing at the interface.
+
+    Typical cause: ``overflow_strategy='cap'`` (the legacy backwards-
+    compatible setting) on a heat pump clamped to ``min_p_comp_kw``.
+    The default ``overflow_strategy='dump_proportional'`` avoids the leak
+    by pushing the surplus to the responders; switch to it if the leak
+    is unintentional. See the :ref:`overflow_strategy` docs.
+
+    Filter with ``warnings.simplefilter("ignore", EnergyLeakWarning)`` if
+    the mismatch is expected and accepted by your model.
+    """
+    pass
 
 
 class MappedController(Controller):
@@ -32,6 +53,7 @@ class MappedController(Controller):
 
     @classmethod
     def name(cls):
+        """Return the controller class identifier used in results and logging."""
         return "mapped_controller"
 
     def __init__(self, container, basic_prosumer_object, order=0, level=0, in_service=True, index=None,
@@ -110,7 +132,7 @@ class MappedController(Controller):
 
                     try:
                         inferred_freq = pd.infer_freq(time_series.astype("datetime64[ns]"))
-                    except Exception as e:
+                    except (ValueError, TypeError):
                         inferred_freq = None
 
                     if inferred_freq is None:
@@ -165,6 +187,7 @@ class MappedController(Controller):
         return self.applied
 
     def is_supervisor(self):
+        """Return True if this controller is a Supervisor instance (overridden by Supervisor)."""
         return False
 
     def level_reset(self, container):
@@ -446,27 +469,124 @@ class MappedController(Controller):
     def set_active(self, container, in_service):
         super().set_active(container, in_service)
 
-    def _merit_order_mass_flow(self, container, mdot_out_available_kg_per_s, mdot_required_tab_kg_per_s):
+    def _merit_order_mass_flow(self, container, mdot_out_available_kg_per_s,
+                               mdot_required_tab_kg_per_s, overflow_strategy="cap"):
         """
         Implement a merit order logic: the first mapped element is served first
-        and the second one get the remaining power (if there are two mapped controllers)
+        and the second one gets the remaining power (if there are two mapped controllers).
+
+        When the available output mass flow exceeds the sum of the responder
+        requests, ``overflow_strategy`` controls what happens to the surplus:
+
+        - ``"cap"`` (default, historic behaviour): the surplus is silently
+          dropped. Mass and energy delivered to responders will be less than
+          what the producer recorded internally - producer controllers that
+          want to stay consistent must compensate (typically by raising
+          ``t_out_c`` after the call, see the gas/electric boiler).
+        - ``"dump_on_last"``: the surplus is added to the last (lowest-priority)
+          responder, which then receives more than it requested. This lets a
+          producer pushed onto a thermal floor (``min_p_kw`` / ``min_p_comp_kw``)
+          discharge the excess as extra mass flow at the producer's natural
+          ``t_out_c`` - mirrors the boiler's overshoot pattern but through
+          ``mdot`` rather than temperature.
+        - ``"dump_proportional"``: the surplus is split across all responders
+          in proportion to their original requests (or equally if every
+          request is zero).
 
         :param container: The container object
         :param mdot_out_available_kg_per_s: The total mass flow available at the element output
         :param mdot_required_tab_kg_per_s: The list of the mass flows required by the mapped controllers
+        :param overflow_strategy: How to dispatch surplus mass flow ("cap", "dump_on_last", "dump_proportional")
 
         :return mdot_res_tab_kg_per_s: The list of the mass flows delivered to the mapped controllers
         """
 
         mdot_res_tab_kg_per_s = []
         mdot_still_to_delivered_kg_per_s = mdot_out_available_kg_per_s
-        # responders = self._get_mapped_responders(container, remove_duplicate=True)
         for mdot_required_responder_i_kg_per_s in mdot_required_tab_kg_per_s:
             mdot_delivered_responder_i_kg_per_s = np.minimum(mdot_required_responder_i_kg_per_s,
                                                              mdot_still_to_delivered_kg_per_s)
             mdot_res_tab_kg_per_s.append(mdot_delivered_responder_i_kg_per_s)
             mdot_still_to_delivered_kg_per_s -= mdot_delivered_responder_i_kg_per_s
+
+        if mdot_still_to_delivered_kg_per_s > 1e-9 and len(mdot_res_tab_kg_per_s) > 0:
+            if overflow_strategy == "dump_on_last":
+                mdot_res_tab_kg_per_s[-1] = (mdot_res_tab_kg_per_s[-1]
+                                             + mdot_still_to_delivered_kg_per_s)
+            elif overflow_strategy == "dump_proportional":
+                total_req = float(np.sum(mdot_required_tab_kg_per_s))
+                if total_req > 1e-9:
+                    for i, req in enumerate(mdot_required_tab_kg_per_s):
+                        mdot_res_tab_kg_per_s[i] = (mdot_res_tab_kg_per_s[i]
+                                                    + mdot_still_to_delivered_kg_per_s * (req / total_req))
+                else:
+                    share = mdot_still_to_delivered_kg_per_s / len(mdot_res_tab_kg_per_s)
+                    for i in range(len(mdot_res_tab_kg_per_s)):
+                        mdot_res_tab_kg_per_s[i] = mdot_res_tab_kg_per_s[i] + share
+            elif overflow_strategy != "cap":
+                raise ValueError(
+                    f"Unknown overflow_strategy '{overflow_strategy}'. "
+                    "Expected one of: 'cap', 'dump_on_last', 'dump_proportional'."
+                )
+
         return mdot_res_tab_kg_per_s
+
+    def _check_fluid_mix_balance(self, container, q_kw, mdot_kg_per_s,
+                                 t_out_c, t_in_c, result_mdot_tab_kg_per_s,
+                                 cp_fluid_kj_per_kgk=None, tol_kw=1e-3):
+        """
+        Warn if the producer's recorded mass-flow / thermal output does not
+        match what is dispatched to the FluidMix responders, i.e. detect
+        an energy leak at the FluidMix interface.
+
+        Should be called by producer controllers at the end of their
+        ``control_step``, just before ``finalize``, with their final
+        reported state (``q_kw``, ``mdot_kg_per_s``, ``t_out_c``,
+        ``t_in_c``) and the per-responder dispatched mass flows.
+
+        Emits ``EnergyLeakWarning`` with the gap in kW and a hint about
+        ``overflow_strategy`` when the gap exceeds ``tol_kw``.
+
+        :param container: The prosumer/net/energy_system object
+        :param q_kw: Thermal power the producer claims to deliver [kW]
+        :param mdot_kg_per_s: Mass flow the producer claims to deliver [kg/s]
+        :param t_out_c: Producer outlet temperature [°C]
+        :param t_in_c: Producer inlet temperature [°C]
+        :param result_mdot_tab_kg_per_s: Per-responder mass flows actually dispatched
+        :param cp_fluid_kj_per_kgk: Heat capacity to convert mdot gap to kW;
+                                     defaults to 4.19 (water) if omitted
+        :param tol_kw: Suppress the warning when |gap| < tol_kw
+        """
+        if mdot_kg_per_s is None or mdot_kg_per_s <= 1e-9:
+            return  # Producer is off
+        dispatched_mdot = float(np.sum(result_mdot_tab_kg_per_s)) if len(result_mdot_tab_kg_per_s) else 0.0
+        mdot_gap = float(mdot_kg_per_s) - dispatched_mdot
+        if abs(mdot_gap) < 1e-9:
+            return
+
+        cp = cp_fluid_kj_per_kgk if cp_fluid_kj_per_kgk is not None else 4.19
+        delta_t = float(t_out_c) - float(t_in_c)
+        leak_kw = mdot_gap * cp * delta_t
+        if abs(leak_kw) < tol_kw:
+            return
+
+        overflow_strategy = self._get_element_param(container, 'overflow_strategy')
+        if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
+            overflow_strategy = "cap"
+        hint = ""
+        if overflow_strategy == "cap":
+            hint = (" Consider setting overflow_strategy='dump_on_last' (or "
+                    "'dump_proportional') on this producer to dispatch the surplus "
+                    "to a responder instead.")
+
+        warn(
+            (f"{self.name_class()} '{self.name}' at timestep {self.time}: "
+             f"energy leak of {leak_kw:.3f} kW at the FluidMix interface "
+             f"(producer mdot={mdot_kg_per_s:.6f} kg/s, dispatched={dispatched_mdot:.6f} kg/s, "
+             f"q_kw={q_kw:.3f} kW, overflow_strategy='{overflow_strategy}').{hint}"),
+            EnergyLeakWarning,
+            stacklevel=3,
+        )
 
     def finalize(self, container, result, result_fluid_mix=None):
         """

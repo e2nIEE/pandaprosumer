@@ -25,7 +25,7 @@ class TestChpBhpStorageDemandMapping:
         altitude = 0
         fuel = 'ng'
 
-        hp_type = "water-water1"
+        bhp_type = "water-water1"
         hp_name = 'example_hp'
 
         q_capacity_kwh = 5000
@@ -50,7 +50,7 @@ class TestChpBhpStorageDemandMapping:
         period = create_period(prosumer, time_resolution, start, end, 'utc', 'default')
 
         chp_index = create_ice_chp(prosumer, chp_size, 'ng', altitude, name=chp_name)
-        hp_index = create_booster_heat_pump(prosumer, hp_type, name=hp_name)
+        hp_index = create_booster_heat_pump(prosumer, bhp_type, name=hp_name)
         heat_storage_index = create_heat_storage(prosumer, q_capacity_kwh=q_capacity_kwh, name='hst_controller')
         create_heat_demand(prosumer, scaling=1.0, name='heat_demand_controller')
 
@@ -242,3 +242,4 @@ class TestChpBhpStorageDemandMapping:
         soc = prosumer.time_series.loc[2].data_source.df.soc
 
         assert ((1.0 >= soc) & (soc >= 0.0)).all()
+        

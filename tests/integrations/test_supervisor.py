@@ -37,7 +37,7 @@ def create_controllers(prosumer, period):
 
     gb_params = {'max_q_kw': 500}
 
-    hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+    hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
     gb_index = create_controlled_gas_boiler(prosumer, period=period, order=0, level=2, **gb_params)
     hp_index = create_controlled_heat_pump(prosumer, period=period, order=1, level=2, **hp_params)
@@ -224,7 +224,7 @@ class TestSupervisor:
 
         gb_params = {'max_q_kw': 500}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         gb_index = create_controlled_gas_boiler(prosumer, period=period, order=1, level=1, **gb_params)
         hp_index = create_controlled_heat_pump(prosumer, period=period, order=0, level=1, **hp_params)
@@ -298,7 +298,7 @@ class TestSupervisor:
 
         gb_params = {'max_q_kw': 500}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         gb_index = create_controlled_gas_boiler(prosumer, period=period, order=1, level=1, **gb_params)
         hp_index = create_controlled_heat_pump(prosumer, period=period, order=0, level=1, **hp_params)
@@ -316,7 +316,6 @@ class TestSupervisor:
         expected_rule_count = 4  # rule1, rule2, rule2_, rule3
         assert len(rules_df) == expected_rule_count
 
-        print(rules_df['controlled_columns'])
         assert set(rules_df['controlled_columns']) == {'p_comp_kw', 'price_gas', 'q_demand_kw'}
 
         combining_rule_index = rules_df[rules_df['logical_operator'] == 'AND'].index
@@ -346,7 +345,7 @@ class TestSupervisor:
 
         gb_params = {'max_q_kw': 500}
 
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
 
         gb_index = create_controlled_gas_boiler(prosumer, period=period, order=1, level=1, **gb_params)
         hp_index = create_controlled_heat_pump(prosumer, period=period, order=0, level=1, **hp_params)
@@ -429,7 +428,7 @@ class TestSupervisor:
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
-        hd_params = {'t_in_set_c': 76.85, 't_out_set_c': 30}
+        hd_params = {'t_feed_demand_c': 76.85, 't_return_demand_c': 30}
         cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                               data_source=data_source, period=period, level=0, order=0)
         supervisor_index = create_controlled_supervisor(prosumer, input_columns=['dummy_rule'], period=period, level=1, order=0)

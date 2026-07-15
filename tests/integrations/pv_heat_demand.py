@@ -12,7 +12,7 @@ class TestPvHeatDemandIntegration:
         Integration test:
 
         - ConstProfileController reads a combined PV + heat-demand profile.
-        - SenergyNetsPvProductionController receives PV inputs via GenericMapping
+        - PVProductionController receives PV inputs via GenericMapping
           and produces a PV time series
         - HeatDemandController receives:
             • q_demand_kw   from ConstProfileController
@@ -83,14 +83,14 @@ class TestPvHeatDemandIntegration:
         cp_index = create_controlled_const_profile(prosumer, input_params, result_params, data_source, period)
 
 
-        pv_index = create_controlled_senergy_nets_pv_production(prosumer, latitude=40.0, longitude=0.0, peakpower=5.0, loss=10.0, name="pv_rooftop_1", level=1, order=0, period=period)
+        pv_index = create_controlled_pv_production(prosumer, latitude=40.0, longitude=0.0, peakpower=5.0, loss=10.0, name="pv_rooftop_1", level=1, order=0, period=period)
 
         hd_index = create_controlled_heat_demand(
             prosumer,
             level=1,
             order=1,
-            t_in_set_c=30,
-            t_out_set_c=25
+            t_feed_demand_c=30,
+            t_return_demand_c=25
         )
 
         GenericMapping(

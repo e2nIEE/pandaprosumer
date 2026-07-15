@@ -9,13 +9,13 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @dataclass
 class ChillerElementData:
     """
-    Represents the parameters of a chiller in SenergyNets.
+    Represents the parameters of the chiller element.
 
     Attributes:
         name (str): The name of the chiller.
         input (List[tuple]): A list of tuples defining the necessary and instance properties.
     """
-    name: str = "sn_chiller"
+    name: str = "chiller"
     input: List[tuple] = field(default_factory=lambda: [
 
         # Necessary properties

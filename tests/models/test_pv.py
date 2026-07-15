@@ -1,14 +1,13 @@
 import pytest
 import numpy as np
-
-from pandaprosumer import *
 from pandaprosumer.create import (
     create_empty_prosumer_container,
     create_period,
-    create_senergy_nets_pv_production,
+    create_pv_production,
 )
-from pandaprosumer.controller import SenergyNetsPvProductionController
-from pandaprosumer.controller.data_model import SenergyNetsPvProductionComponentData
+from pandaprosumer.create_controlled import create_controlled_pv_production
+from pandaprosumer.controller import PvProductionController
+from pandaprosumer.controller.data_model import PvProductionComponentData
 
 
 def _default_argument():
@@ -26,9 +25,9 @@ def _default_period(prosumer):
     )
 
 
-class TestSenergyNetsPv:
+class TestPV:
     """
-    Tests the functionalities of the SenergyNets PV element and controller
+    Tests the functionalities of the PV element and controller
     """
     def test_define_element(self):
         """
@@ -38,14 +37,14 @@ class TestSenergyNetsPv:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 3600)
 
-        pv_idx = create_senergy_nets_pv_production(
+        pv_idx = create_pv_production(
             prosumer,
             latitude=40.0,
             longitude=5.0
         )
 
-        assert hasattr(prosumer, "sn_pv_production")
-        assert len(prosumer.sn_pv_production) == 1
+        assert hasattr(prosumer, "pv_production")
+        assert len(prosumer.pv_production) == 1
         assert pv_idx == 0
 
         expected_columns = [
@@ -72,7 +71,7 @@ class TestSenergyNetsPv:
         ]
 
         expected_values = [
-            f"sn_pv_production_{pv_idx}",
+            f"pv_production_{pv_idx}",
             True,  # in_service
             40.0,  # latitude
             5.0,   # longitude
@@ -91,11 +90,11 @@ class TestSenergyNetsPv:
             "json",  # outputformat
             "https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",  # url
             True,  # map_variables
-            30.0  # timeout
+            30.0   # timeout
         ]
 
-        assert sorted(prosumer.sn_pv_production.columns) == sorted(expected_columns)
-        actual_values = prosumer.sn_pv_production.iloc[0][expected_columns].values
+        assert sorted(prosumer.pv_production.columns) == sorted(expected_columns)
+        actual_values = prosumer.pv_production.iloc[0][expected_columns].values
         assert actual_values == pytest.approx(expected_values, nan_ok=True)
 
 
@@ -103,7 +102,7 @@ class TestSenergyNetsPv:
         prosumer = create_empty_prosumer_container()
         create_period(prosumer, 1)
 
-        pv_idx = create_senergy_nets_pv_production(
+        pv_idx = create_pv_production(
             prosumer,
             latitude=40.0,
             longitude=5.0,
@@ -160,11 +159,11 @@ class TestSenergyNetsPv:
             "https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",  # url (default)
             True,           # map_variables (default)
             30.0,           # timeout (default)
-            "test"         # custom
+            "test"          # custom
         ]
 
-        assert sorted(prosumer.sn_pv_production.columns) == sorted(expected_columns)
-        actual_values = prosumer.sn_pv_production.loc[pv_idx, expected_columns].values
+        assert sorted(prosumer.pv_production.columns) == sorted(expected_columns)
+        actual_values = prosumer.pv_production.loc[pv_idx, expected_columns].values
         assert actual_values == pytest.approx(expected_values, nan_ok=True)
 
 
@@ -175,19 +174,19 @@ class TestSenergyNetsPv:
         prosumer = create_empty_prosumer_container()
         period = _default_period(prosumer)
 
-        pv_idx = create_senergy_nets_pv_production(
+        pv_idx = create_pv_production(
             prosumer,
             latitude=40.0,
             longitude=5.0,
             peakpower=2.0  # 2 kW
         )
 
-        pv_data = SenergyNetsPvProductionComponentData(
+        pv_data = PvProductionComponentData(
             element_index=[pv_idx],
             period_index=period
         )
 
-        SenergyNetsPvProductionController(
+        PvProductionController(
             prosumer,
             pv_production_object=pv_data,
             order=0,
@@ -206,7 +205,7 @@ class TestSenergyNetsPv:
         prosumer = create_empty_prosumer_container()
         period = _default_period(prosumer)
 
-        pv_controller_idx = create_controlled_senergy_nets_pv_production(
+        pv_controller_idx = create_controlled_pv_production(
             prosumer,
             latitude=40.0,
             longitude=5.0,
@@ -249,19 +248,19 @@ class TestSenergyNetsPv:
         prosumer = create_empty_prosumer_container()
         period = _default_period(prosumer)
 
-        pv_idx = create_senergy_nets_pv_production(
+        pv_idx = create_pv_production(
             prosumer,
             latitude=40.0,
             longitude=5.0,
             peakpower=peakpower_kw
         )
 
-        pv_data = SenergyNetsPvProductionComponentData(
+        pv_data = PvProductionComponentData(
             element_index=[pv_idx],
             period_index=period
         )
 
-        SenergyNetsPvProductionController(
+        PvProductionController(
             prosumer,
             pv_production_object=pv_data,
             order=0,
@@ -288,7 +287,7 @@ class TestSenergyNetsPv:
             30.0,     # solar_elevation_deg (> 0)
             15.0,     # temp_air_c
             3.0,      # wind_speed_m_s
-            1.0      # solar_rad_reconstr_bool
+            1.0       # solar_rad_reconstr_bool
         ]])
 
         pv_ctrl.inputs = inputs

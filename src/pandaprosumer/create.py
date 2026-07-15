@@ -4,16 +4,28 @@ import pandas as pd
 from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
-from pandaprosumer.element import *
-from pandaprosumer.element import (HeatPumpElementData, HeatDemandElementData, \
-    HeatStorageElementData, IceChpElementData, BoosterHeatPumpElementData, ChillerElementData,
-                                   SolarThermalElementData,ConverterElementData)
+from pandaprosumer.element import (
+    BoosterHeatPumpElementData,
+    ChillerElementData,
+    ConverterElementData,
+    DryCoolerElementData,
+    ElectricBoilerElementData,
+    GasBoilerElementData,
+    HeatDemandElementData,
+    HeatExchangerElementData,
+    HeatPumpElementData,
+    HeatStorageElementData,
+    IceChpElementData,
+    PvProductionComponentData,
+    SolarThermalElementData,
+    StratifiedHeatStorageElementData,
+)
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
-from pandaprosumer.prosumer_toolbox import add_new_element, load_library_entry
+from pandaprosumer.prosumer_toolbox import add_new_element
 from pandaprosumer.time_series.time_series import TimeSeries
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", check_order=True):
@@ -51,8 +63,7 @@ def create_empty_prosumer_container(name="", add_basic_lib=True, fluid="water", 
 
 def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, name=None, index=None):
     """
-    Creates a new period in prosumer["period"
-    # FixMe: what if start and end are None ?
+    Creates a new period in prosumer["period"]
 
     INPUT:
         **prosumer** (pandaprosumerContainer) - The prosumer within this period should be created
@@ -60,9 +71,11 @@ def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, n
         **resolution_s** (float) - The resolution of the period [s]
 
     OPTIONAL:
-        **start** (string, default None) - The start time of the period
+        **start** (string, default None) - The start time of the period. May be None
+            for element-only setup (no time-series binding); time-series runs will then
+            fail when the period is consumed.
 
-        **end** (string, default None) - The end time of the period
+        **end** (string, default None) - The end time of the period. Same caveat as `start`.
 
         **timezone** (string, default None) - The timezone of the period. If None, will default to 'utc'.
         Example: 'Europe/Paris'
@@ -89,10 +102,14 @@ def create_heat_pump(prosumer,
                      delta_t_hot_default_c=5,
                      max_p_comp_kw=np.nan,
                      min_p_comp_kw=np.nan,
+                     max_ramp_up_kw_per_s=np.nan,
+                     max_ramp_down_kw_per_s=np.nan,
                      max_t_cond_out_c=np.nan,
                      max_cop=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
+                     mode='carnot',
+                     overflow_strategy='dump_proportional',
                      name=None,
                      index=None,
                      in_service=True,
@@ -122,6 +139,10 @@ def create_heat_pump(prosumer,
         **max_p_comp_kw** (float, default None) - Power of the compressor [kW]
 
         **min_p_comp_kw** (float, default None) - Minimum working power of the compressor [kW]
+        
+        **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the compressor [kW/s]
+        
+        **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the compressor [kW/s]
 
         **max_cop** (float, default None) - Maximum COP
 
@@ -130,6 +151,8 @@ def create_heat_pump(prosumer,
 
         **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
         prosumer's fluid will be used
+
+        **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
 
     OUTPUT:
         **index** (int) - The unique ID of the created heat pump
@@ -155,9 +178,11 @@ def create_heat_pump(prosumer,
 
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
-             'min_p_comp_kw', 'max_t_cond_out_c', 'max_cop', 'cond_fluid', 'evap_fluid', 'in_service'],
+             'min_p_comp_kw',  'max_ramp_up_kw_per_s', 'max_ramp_down_kw_per_s', 'max_t_cond_out_c',
+             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy', 'in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
-             min_p_comp_kw, max_t_cond_out_c, max_cop, cond_fluid, evap_fluid, in_service])
+             min_p_comp_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, max_t_cond_out_c,
+             max_cop, cond_fluid, evap_fluid, mode, overflow_strategy, in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
@@ -170,7 +195,8 @@ def create_heat_pump(prosumer,
 
 
 def create_heat_demand(prosumer,
-                       scaling=1.0,
+                       t_feed_demand_c=np.nan,
+                       t_return_demand_c=np.nan,
                        name=None,
                        index=None,
                        in_service=True,
@@ -182,12 +208,11 @@ def create_heat_demand(prosumer,
         **prosumer** - The prosumer within this heat demand should be created
 
     OPTIONAL:
-        **scaling** (float, default 1) - A scaling factor applied to the heat demand.
-        Multiply the demanded power by this factor
+        **t_feed_demand_c** (float, default nan) - Default feed temperature [C]. Used as a fallback
+            when no `t_feed_demand_c` time-series input is mapped to the controller.
 
-        **t_in_set_c** (float, default nan) - The default required input temperature level [C]
-
-        **t_out_set_c** (float, default nan) - The default required output temperature level [C]
+        **t_return_demand_c** (float, default nan) - Default return temperature [C]. Used as a
+            fallback when no `t_return_demand_c` time-series input is mapped to the controller.
 
         **name** (string, default None) - A custom name for this heat demand
 
@@ -206,13 +231,10 @@ def create_heat_demand(prosumer,
 
     index = _get_index_with_check(prosumer, "heat_demand", index)
 
-    entries = dict(zip(["name", "scaling", "in_service"],
-                       [name, scaling, in_service]))
+    entries = dict(zip(["name", "t_feed_demand_c", "t_return_demand_c", "in_service"],
+                       [name, t_feed_demand_c, t_return_demand_c, in_service]))
 
     _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
-
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
 
     return int(index)
 
@@ -232,6 +254,7 @@ def create_stratified_heat_storage(prosumer,
                                    max_remaining_capacity_kwh=1,
                                    t_discharge_out_tol_c=1e-3,
                                    max_dt_s=None,
+                                   max_charge_mdot_kg_per_s=np.nan,
                                    height_charge_in_m=None,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
@@ -281,8 +304,16 @@ def create_stratified_heat_storage(prosumer,
         **t_discharge_out_tol_c** (float, default 0.001) - The maximum allowed difference between the demand \
         temperature and the temperature of the top layer in the storage to allow supplying the demand [C]
 
-        **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
-        Default to the period resolution. May cause divergence of the model if too high. [s]
+        **max_dt_s** (float, default None) - The temporal resolution of the storage calculation. \
+        When left as None / NaN, the controller derives a CFL-safe value at each step from the \
+        actual mass flow and the layer geometry; pin an explicit value if you want a fixed \
+        sub-stepping behaviour. May cause divergence of the model if too high. [s]
+
+        **max_charge_mdot_kg_per_s** (float, default NaN) - Optional cap on the mass flow the \
+        storage will request from its upstream initiator (e.g. a heat pump) while charging. When \
+        unset (default NaN), the storage requests the full "fill all cold layers per timestep" \
+        rate, which can exceed what the upstream producer can supply and trigger non-convergence. \
+        Set this to a value within the upstream's capacity to keep the reapply loop bounded. [kg/s]
 
         **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
 
@@ -329,12 +360,12 @@ def create_stratified_heat_storage(prosumer,
     entries = dict(zip(['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
                         'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
                         'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
-                        't_discharge_out_tol_c', 'max_dt_s', 'height_charge_in_m',
+                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 'height_charge_in_m',
                         'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
                         k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
-                        t_discharge_out_tol_c, max_dt_s, height_charge_in_m,
+                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
@@ -508,7 +539,13 @@ def create_dry_cooler(prosumer,
 
 def create_electric_boiler(prosumer,
                            max_p_kw,
+                           min_p_kw=np.nan,
+                           max_ramp_up_kw_per_s=np.nan,
+                           max_ramp_down_kw_per_s=np.nan,   
                            efficiency_percent=100,
+                           allow_stop=True,
+                           max_t_out_c=np.nan,
+                           overflow_strategy='dump_proportional',
                            name=None,
                            index=None,
                            in_service=True,
@@ -522,7 +559,17 @@ def create_electric_boiler(prosumer,
         **max_p_kw** (float) - Maximal electrical power of the boiler [kW]
 
     OPTIONAL:
+        **min_p_kw** (float, default None) - Minimal electrical power of the boiler [kW]
+        
+        **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
+        
+        **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
+        
         **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
+
+        **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
+
+        **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
         **name** (string, default None) - The name for this electric boiler
 
@@ -541,8 +588,8 @@ def create_electric_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "electric_boiler", index)
 
-    entries = dict(zip(["name", "max_p_kw", "efficiency_percent", "in_service"],
-                       [name, max_p_kw, efficiency_percent, in_service]))
+    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
+                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
     return int(index)
@@ -550,8 +597,14 @@ def create_electric_boiler(prosumer,
 
 def create_gas_boiler(prosumer,
                       max_q_kw,
+                      min_q_kw=np.nan,
+                      max_ramp_up_kw_per_s=np.nan,
+                      max_ramp_down_kw_per_s=np.nan,                      
                       heating_value_kj_per_kg=50e3,
                       efficiency_percent=100,
+                      allow_stop=True,
+                      max_t_out_c=np.nan,
+                      overflow_strategy='dump_proportional',
                       name=None,
                       index=None,
                       in_service=True,
@@ -564,10 +617,20 @@ def create_gas_boiler(prosumer,
 
         **max_q_kw** (float) - Maximal heat power of the boiler [kW]
 
+    OPTIONAL:
+        **min_q_kw** (float, default None) - Minimal working heat power of the boiler [kW]
+
+        **max_ramp_up_kw_per_s** (float, default None) - Maximum ramping up speed of the boiler [kW/s]
+        
+        **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the boiler [kW/s]
+    
         **heating_value_kj_per_kg** (float, default 50e3) - Heating Value of the gas (amount of energy per kg of gas) [kJ/kg]
 
-    OPTIONAL:
         **efficiency_percent** (float, default 100) - Boiler Efficiency [%]
+
+        **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
+
+        **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
         **name** (string, default None) - The name for this gas boiler
 
@@ -586,8 +649,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "heating_value_kj_per_kg", "efficiency_percent", "in_service"],
-                       [name, max_q_kw, heating_value_kj_per_kg, efficiency_percent, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)
@@ -603,11 +666,14 @@ def create_booster_heat_pump(
     **kwargs
 ):
     """
-    :param prosumer:
-    :param in_service:  (Default value = True)
-    :param name:  (Default value = None)
-    :param index:  (Default value = None)
-    :param q_max_kw: (Default value = None):
+    Creates a booster heat pump element in prosumer["booster_heat_pump"].
+
+    :param prosumer: The prosumer container
+    :param bhp_type: BHP type. Possible values are "water-water1", "water-water2", "air-water"
+    :param q_max_kw: Maximum thermal power [kW], default None
+    :param in_service: True for in_service or False for out of service, default True
+    :param name: Name of the BHP instance, default None
+    :param index: Force a specified ID if available; if None, next free index is used, default None
     """
     add_new_element(prosumer, BoosterHeatPumpElementData)
 
@@ -635,6 +701,7 @@ def create_booster_heat_pump(
 
 
 def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None, index=None, **kwargs):
+    """Create an ICE CHP element in prosumer[\"ice_chp\"]. Parameters: size (kW), fuel, altitude (m), in_service, name, index."""
     add_new_element(prosumer, IceChpElementData)
 
     index = _get_index_with_check(prosumer, "ice_chp", index)
@@ -668,6 +735,7 @@ def create_heat_storage(prosumer,
                         index=None,
                         name=None,
                         **kwargs):
+    """Create a simple heat storage element with given thermal capacity (kWh)."""
     add_new_element(prosumer, HeatStorageElementData)
 
     index = _get_index_with_check(prosumer, "heat_storage", index)
@@ -731,7 +799,7 @@ def create_chiller(
         prosumer, ChillerElementData
     )
 
-    index = _get_index_with_check(prosumer, "sn_chiller", index)
+    index = _get_index_with_check(prosumer, "chiller", index)
 
     entries = dict(
         zip(
@@ -768,8 +836,9 @@ def create_chiller(
         )
     )
 
-    _set_entries(prosumer, "sn_chiller", index, **entries, **kwargs)
+    _set_entries(prosumer, "chiller", index, **entries, **kwargs)
     return int(index)
+
 
 def create_solar_thermal(prosumer,
                         collector_area=2.5,
@@ -781,17 +850,17 @@ def create_solar_thermal(prosumer,
                         test_specific_heat=4.18,
                         use_specific_heat=4.18,
                         number_collectors=4.0,
-                        series = 1.0,
+                        series=1.0,
                         piping_length=0.0,
                         piping_diameter=0.028,
                         piping_thickness=0.03,
                         piping_conductivity=0.04,
-                        collector_slope = 40.0,
-                        collector_azimut = 0.0,
+                        collector_slope=40.0,
+                        collector_azimut=0.0,
                         in_service=True,
                         name=None,
                         index=None,
-                         **kwargs
+                        **kwargs
                     ):
     """_summary_
 
@@ -900,7 +969,7 @@ def create_solar_thermal(prosumer,
 
 
 def create_converter(prosumer,
-                       cp_water = 4180,
+                       cp_water=4180,
                        name=None,
                        index=None,
                        in_service=True,
@@ -936,12 +1005,10 @@ def create_converter(prosumer,
 
     _set_entries(prosumer, "converter", index, **entries, **kwargs)
 
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_in_set_c", t_in_set_c)
-    # _add_to_entries_if_not_nan(prosumer, "heat_demand", entries, index, "t_out_set_c", t_out_set_c)
-
     return int(index)
 
-def create_senergy_nets_pv_production(
+
+def create_pv_production(
     prosumer,
     latitude,
     longitude,
@@ -967,7 +1034,7 @@ def create_senergy_nets_pv_production(
     **kwargs,
 ):
     """
-    Adds a new SenergyNets PV production element to the prosumer and defines its
+    Adds a new PV Production element to the prosumer and defines its
     PVGIS / pvlib input parameters.
 
     Parameters
@@ -1013,7 +1080,7 @@ def create_senergy_nets_pv_production(
     in_service : bool, optional
         Whether the element is in service, default True.
     index : int or None, optional
-        Zero-based index of the element in the sn_pv_production table. If None,
+        Zero-based index of the element in the pv_production table. If None,
         a new index is created.
     name : str or None, optional
         Name of the PV element. If None, a default name is generated.
@@ -1023,14 +1090,14 @@ def create_senergy_nets_pv_production(
     Returns
     -------
     int
-        Zero-based index position of the element in the `sn_pv_production` table.
+        Zero-based index position of the element in the `pv_production` table.
     """
 
-    add_new_element(prosumer, SenergyNetsPvProductionComponentData)
-    index = _get_index_with_check(prosumer, "sn_pv_production", index)
+    add_new_element(prosumer, PvProductionComponentData)
+    index = _get_index_with_check(prosumer, "pv_production", index)
 
     if name is None:
-        name = f"sn_pv_production_{index}"
+        name = f"pv_production_{index}"
 
     entries = dict(
         zip(
@@ -1081,195 +1148,5 @@ def create_senergy_nets_pv_production(
         )
     )
 
-    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
-    return int(index)
-
-
-def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwargs):
-    """
-    Creates an MDU CHP (Modular Data Unit Combined Heat and Power) element.
-
-    INPUT:
-        **prosumer** - The prosumer within which this MDU CHP should be created
-
-        **size** (float) - MDU CHP size defined as the nominal electrical power [kW]
-
-    OPTIONAL:
-        **name** (string, default None) - The name of the MDU CHP instance
-
-        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
-            higher than the highest already existing index is selected.
-
-        **in_service** (boolean, default True) - True for in_service or False for out of service
-
-    OUTPUT:
-        **index** (int) - The unique ID of the created MDU CHP
-
-    EXAMPLE:
-        create_mdu_chp(prosumer, 100, name="example_mdu_chp")
-    """
-    add_new_element(prosumer, MduChpElementData)
-
-    index = _get_index_with_check(prosumer, "mdu_chp", index)
-
-    entries = dict(
-        zip(
-            [
-                "name",
-                "size",
-                "in_service",
-            ],
-            [
-                name,
-                size,
-                in_service,
-            ],
-        )
-    )
-
-    _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
-    return int(index)
-  
-  
-def create_senergy_nets_pv_production(
-    prosumer,
-    latitude,
-    longitude,
-    raddatabase="PVGIS-ERA5",
-    surface_tilt=40,
-    surface_azimuth=0,
-    peakpower=1,
-    loss=0,
-    usehorizon=True,
-    userhorizon=None,
-    pvtechchoice="crystSi",
-    mountingplace="free",
-    trackingtype=0,
-    optimal_surface_tilt=False,
-    optimalangles=False,
-    outputformat="json",
-    url="https://re.jrc.ec.europa.eu/api/v5_2/seriescalc?",
-    map_variables=True,
-    timeout=30,
-    in_service=True,
-    index=None,
-    name=None,
-    **kwargs,
-):
-    """
-    Adds a new SenergyNets PV production element to the prosumer and defines its
-    PVGIS / pvlib input parameters.
-
-    Parameters
-    ----------
-    prosumer : object
-        Prosumer container.
-    latitude : float
-        Site latitude in decimal degrees (-90..90, north positive).
-    longitude : float
-        Site longitude in decimal degrees (-180..180, east positive).
-    raddatabase : str, optional
-        Radiation database name, e.g. "PVGIS-ERA5".
-    surface_tilt : float, optional
-        Tilt angle of the PV surface [deg], default 40.
-    surface_azimuth : float, optional
-        Azimuth of the PV surface [deg], 0=north, 180=south, default 0.
-    peakpower : float, optional
-        Nominal PV system power [kW], default 1.
-    loss : float, optional
-        Sum of system losses [%], default 0.
-    usehorizon : bool, optional
-        Whether to consider horizon effects computed by PVGIS.
-    userhorizon : object, optional
-        Custom horizon description or file, if used.
-    pvtechchoice : str, optional
-        PV technology, e.g. "crystSi".
-    mountingplace : str, optional
-        Mounting type, e.g. "free" or "building".
-    trackingtype : int, optional
-        Tracking type (0=fixed, other integers for tracking options).
-    optimal_surface_tilt : bool, optional
-        If True, let PVGIS determine optimal tilt.
-    optimalangles : bool, optional
-        If True, let PVGIS determine optimal angles.
-    outputformat : str, optional
-        PVGIS output format, typically "json".
-    url : str, optional
-        PVGIS API base URL.
-    map_variables : bool, optional
-        If True, pvlib should map PVGIS variable names.
-    timeout : float, optional
-        Request timeout for PVGIS [s], default 30.
-    in_service : bool, optional
-        Whether the element is in service, default True.
-    index : int or None, optional
-        Zero-based index of the element in the sn_pv_production table. If None,
-        a new index is created.
-    name : str or None, optional
-        Name of the PV element. If None, a default name is generated.
-    **kwargs :
-        Additional keyword arguments passed through to `_set_entries`.
-
-    Returns
-    -------
-    int
-        Zero-based index position of the element in the `sn_pv_production` table.
-    """
-
-    add_new_element(prosumer, SenergyNetsPvProductionComponentData)
-    index = _get_index_with_check(prosumer, "sn_pv_production", index)
-
-    if name is None:
-        name = f"sn_pv_production_{index}"
-
-    entries = dict(
-        zip(
-            [
-                "name",
-                "in_service",
-                "latitude",
-                "longitude",
-                "raddatabase",
-                "surface_tilt",
-                "surface_azimuth",
-                "peakpower",
-                "loss",
-                "usehorizon",
-                "userhorizon",
-                "pvtechchoice",
-                "mountingplace",
-                "trackingtype",
-                "optimal_surface_tilt",
-                "optimalangles",
-                "outputformat",
-                "url",
-                "map_variables",
-                "timeout",
-            ],
-            [
-                name,
-                in_service,
-                latitude,
-                longitude,
-                raddatabase,
-                surface_tilt,
-                surface_azimuth,
-                peakpower,
-                loss,
-                usehorizon,
-                userhorizon,
-                pvtechchoice,
-                mountingplace,
-                trackingtype,
-                optimal_surface_tilt,
-                optimalangles,
-                outputformat,
-                url,
-                map_variables,
-                timeout,
-            ],
-        )
-    )
-
-    _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
+    _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
     return int(index)

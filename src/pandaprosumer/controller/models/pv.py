@@ -1,10 +1,9 @@
-import numpy as np
 from pandaprosumer.controller.base import BasicProsumerController
 
 
-class SenergyNetsPvProductionController(BasicProsumerController):
+class PvProductionController(BasicProsumerController):
     """
-    Controller for SenergyNets PV production.
+    Controller for PV production.
 
     This controller represents a simple PV model that:
 
@@ -32,7 +31,7 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         """Name of the PV Production time series
 
         """
-        return "sn_pv_production"
+        return "pv_production"
 
     def __init__(
         self,
@@ -50,17 +49,19 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         Parameters
         ----------
         prosumer : object of type prosumer
-            pv_production_object container
-        chiller_object : _object of type SenergyNetsChillerController
-            PV Production object, where PV Production inputs are defined
-        order : list
-            _description_
-        level :list
-            _description_
+            Prosumer container
+        pv_production_object : object of type PvProductionControllerData
+            PV production controller data object, where PV production inputs are defined
+        order : int
+            The order of the controller within its level.
+        level : int
+            The level of the controller in the prosumer's controller stack.
+        data_source : object, optional
+            Optional data source (e.g. DataFrame) for PV time series
         in_service : bool, optional
-            _description_, by default True
-        index : _type_, optional
-            _description_, by default None
+            True for in_service or False for out of service, by default True
+        index : int, optional
+            Force a specified controller ID. If None, the next free index is selected.
         """
         super().__init__(
             prosumer,
@@ -78,10 +79,10 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         self._idx_p_w = self._safe_input_index("p_w")
         self._idx_solar_elev = self._safe_input_index("solar_elevation_deg")
 
-        # Peak power [kW] from the element table (sn_pv_production).
+        # Peak power [kW] from the element table (pv_production).
         self._peakpower_kw = self._read_peakpower_from_element()
 
-#added new helper functions
+    # Added new helper functions
     def _safe_input_index(self, col_name):
         """
         Return the index of a given column in ``self.input_columns``.
@@ -108,7 +109,7 @@ class SenergyNetsPvProductionController(BasicProsumerController):
     def _read_peakpower_from_element(self):
         """
         Read the installed peak power (kW) from the associated
-        ``sn_pv_production`` element.
+        ``pv_production`` element.
 
         Returns
         -------
@@ -126,45 +127,9 @@ class SenergyNetsPvProductionController(BasicProsumerController):
         else:
             try:
                 return float(elem["peakpower"])
-            except Exception:
+            except (KeyError, ValueError, TypeError):
                 return 0.0
 
-
-    def time_step(self, prosumer, time):
-        """It is the first call in each time step, thus suited for things like
-        reading profiles or prepare the controller for the next control step.
-
-        .. note:: This method is ONLY being called during time-series simulation!
-
-        Parameters
-        ----------
-        prosumer : object of type prosumer
-            Prosumer container
-        time : float
-            current time step
-
-
-        """
-        super().time_step(prosumer, time)
-        self.applied = False
-
-    def initialize_control(self, container):
-        """Some controller require extended initialization in respect to the
-        current state of the net (or their view of it). This method is being
-        called after an initial loadflow but BEFORE any control strategies are
-        being applied.
-
-        This method may be interesting if you are aiming for a global
-        controller or if it has to be aware of its initial state.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-
-
-        """
-        super().initialize_control(container)
 
     def is_converged(self, container):
         """This method calculated whether or not the controller converged. This is
@@ -235,113 +200,3 @@ class SenergyNetsPvProductionController(BasicProsumerController):
 
         self.finalize(prosumer, result)
         self.applied = True
-
-    def repair_control(self, container):
-        """Some controllers can cause net to not converge. In this case, they can implement a method to
-        try and catch the load flow error by altering some values in net, for example load scaling.
-        This method is being called in the except block in run_control.
-        Either implement this in a controller that is likely to cause the error, or define
-        a special "load flow police" controller for your use case.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-
-
-        """
-        super().repair_control(container)
-
-    def restore_init_state(self, container):
-        """Some controllers manipulate values in net and then restore them back to initial values, e.g.
-        DistributedSlack.
-        This method should be used for such a purpose because it is executed in the except block of
-        run_control to make sure that the net condition is restored even if load flow calculation
-        doesn't converge.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-
-
-        """
-        super().restore_init_state(container)
-
-    def finalize_control(self, container):
-        """Some controller require extended finalization. This method is being
-        called at the end of a loadflow.
-        It is a separate method from restore_init_state because it is possible that control
-        finalization does not only restore the init state but also something in addition to that,
-        that would require the results in net.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-
-
-        """
-        super().finalize_control(container)
-
-    def finalize_step(self, container, time):
-        """After each time step, this method is being called to clean things up or
-        similar. The OutputWriter is a class specifically designed to store
-        results of the loadflow. If the ControlHandler.output_writer got an
-        instance of this class, it will be called before the finalize step.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-        time : _type_
-            _description_
-
-        .. note:: This method is ONLY being called during time-series simulation!
-
-
-        """
-        super().finalize_step(container, time)
-
-    def set_active(self, container, in_service):
-        """Sets the controller in or out of service.
-
-        Parameters
-        ----------
-        container : _type_
-            _description_
-        in_service : bool
-            parameter descriving whether the chiller is in service (True, default) or not (False).
-
-
-        """
-        super().set_active(container, in_service)
-
-    def level_reset(self, prosumer):
-        pass
-
-    # FROM PANDAPROSUMER
-
-    def time_series_initialization(self, prosumer):
-        """Initialisation of the time_series
-
-        Parameters
-        ----------
-        prosumer : object of type prosumer
-            Prosumer container
-
-
-        """
-        return super().time_series_initialization(prosumer)
-
-    def time_series_finalization(self, prosumer):
-        """Finalisation of the time series
-
-        Parameters
-        ----------
-        prosumer : object of type prosumer
-            Prosumer container
-
-
-        """
-        return self.res

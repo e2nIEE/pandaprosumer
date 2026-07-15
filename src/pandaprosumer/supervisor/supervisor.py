@@ -8,7 +8,7 @@ import numpy as np
 
 from pandaprosumer.controller.mapped import MappedController
 from .combining_rule import CombiningRules
-from .rule import *
+from .rule import Rule
 
 try:
     import pandaplan.core.pplog as logging

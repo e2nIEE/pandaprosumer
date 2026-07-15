@@ -41,6 +41,8 @@ class DryCoolerControllerData:
         **n_rpm** - Fans rotational speed [rpm]
 
         **mdot_air_m3_per_h** - Air mass flow through the cooler [m3/h]
+
+        **mdot_water_kg_per_s** - Water consumption in adiabatic mode (evaporation for pre-cooling) [kg/s]; 0 when not adiabatic
     """
     element_index: List[int]
     element_name: str = 'dry_cooler'
@@ -50,4 +52,5 @@ class DryCoolerControllerData:
     result_columns: List[str] = field(
         default_factory=lambda: ['q_exchanged_kw', 'p_fans_kw', 'n_rpm', 'mdot_air_m3_per_h',
                                  'mdot_air_kg_per_s', 't_air_in_c', 't_air_out_c',
-                                 'mdot_fluid_kg_per_s', 't_fluid_in_c', 't_fluid_out_c'])
+                                 'mdot_fluid_kg_per_s', 't_fluid_in_c', 't_fluid_out_c',
+                                 'mdot_water_kg_per_s'])

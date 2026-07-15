@@ -1,6 +1,8 @@
 import pytest
-from pandaprosumer.create import *
-from pandaprosumer.create_controlled import *
+import numpy as np
+import pandas as pd
+from pandaprosumer.create import create_empty_prosumer_container, create_period, create_booster_heat_pump
+from pandaprosumer.create_controlled import create_controlled_booster_heat_pump
 
 
 def _default_period(prosumer):
@@ -60,7 +62,7 @@ class TestBoosterHeatPump:
         """
         prosumer = create_empty_prosumer_container()
         create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
 
         assert hasattr(prosumer, "controller")
         assert len(prosumer.controller) == 1
@@ -72,7 +74,7 @@ class TestBoosterHeatPump:
         prosumer = create_empty_prosumer_container()
 
         bhp_controller_idx = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
         bhp_controller = prosumer.controller.iloc[bhp_controller_idx].object
 
         input_columns_expected = ['t_amb_k', 't_source_k', 't_sink_k', 'demand', 'mode', 'q_received_kw', 'p_received_kw']
@@ -88,7 +90,7 @@ class TestBoosterHeatPump:
         """
         prosumer = create_empty_prosumer_container()
         bhp_controller_idx = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1', t_source_k=300)
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1', t_source_k=300)
         bhp_controller = prosumer.controller.iloc[bhp_controller_idx].object
 
         assert bhp_controller.element_instance.iloc[0]['t_source_k'] == pytest.approx(300.0)
@@ -101,7 +103,7 @@ class TestBoosterHeatPump:
         """
         prosumer = create_empty_prosumer_container()
         bhp_controller_idx = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
         bhp_controller = prosumer.controller.iloc[bhp_controller_idx].object
 
         bhp_controller.inputs = np.array([[295, 295, np.nan, 0, 3, 0, 0]])
@@ -126,7 +128,7 @@ class TestBoosterHeatPump:
         prosumer = create_empty_prosumer_container()
 
         bhp_controller_idx = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
         bhp_controller = prosumer.controller.iloc[bhp_controller_idx].object
 
         bhp_controller.inputs = np.array([[295, 295, np.nan, 1.0, 3, 0, 0]])
@@ -147,7 +149,7 @@ class TestBoosterHeatPump:
         prosumer = create_empty_prosumer_container()
 
         bhp_controller_idx_ww1 = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
         bhp_controller_ww1 = prosumer.controller.iloc[bhp_controller_idx_ww1].object
         bhp_controller_ww1.inputs = np.array([[295, 295, np.nan, 1.0, 3, 0, 0]])
         bhp_controller_ww1.q_requested_kw = lambda x: 1.0
@@ -155,7 +157,7 @@ class TestBoosterHeatPump:
         bhp_controller_ww1.control_step(prosumer)
 
         bhp_controller_idx_aw = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='air-water')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='air-water')
         bhp_controller_aw = prosumer.controller.iloc[bhp_controller_idx_aw].object
         bhp_controller_aw.inputs = np.array([[295, 295, np.nan, 1.0, 3, 0, 0]])
         bhp_controller_aw.q_requested_kw = lambda x: 1.0
@@ -163,7 +165,7 @@ class TestBoosterHeatPump:
         bhp_controller_aw.control_step(prosumer)
 
         bhp_controller_idx_ww2 = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water2')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water2')
         bhp_controller_ww2 = prosumer.controller.iloc[bhp_controller_idx_ww2].object
         bhp_controller_ww2.inputs = np.array([[295, 295, np.nan, 1.0, 3, 0, 0]])
         bhp_controller_ww2.q_requested_kw = lambda x: 1.0
@@ -188,7 +190,7 @@ class TestBoosterHeatPump:
     def test_different_modes(self):
         prosumer = create_empty_prosumer_container()
         bhp_controller_idx_ww1 = create_controlled_booster_heat_pump(
-            prosumer, order=0, period=_default_period(prosumer), hp_type='water-water1')
+            prosumer, order=0, period=_default_period(prosumer), bhp_type='water-water1')
         bhp_controller_ww1 = prosumer.controller.iloc[bhp_controller_idx_ww1].object
 
         bhp_controller_ww1.inputs = np.array([[295, 295, np.nan, 1.0, 1, 1.0, 1.0]])

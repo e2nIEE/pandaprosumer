@@ -8,14 +8,14 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @dataclass
 class ConverterElementData:
     """
-    Data class for HeatDemandElement.
+    Data class for ConverterElement.
 
     Attributes
     ----------
     name : str
         Name of the element table.
     input : List[tuple]
-        List of input attributes and their data types
+        List of input attributes and their data types (name, cp_water, in_service).
     """
     name: str = 'converter'
     input: List[tuple] = field(default_factory=lambda: [

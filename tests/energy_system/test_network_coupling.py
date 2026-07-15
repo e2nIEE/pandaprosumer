@@ -1,4 +1,6 @@
 import pandapower
+import pandapipes
+import pandas as pd
 from pandapower.timeseries import OutputWriter
 
 from pandaprosumer.create_controlled import *
@@ -91,8 +93,8 @@ def _create_prosumer_dmd(level, RESOL_S):
                  't_2_out_nom_c': 40,
                  'mdot_2_nom_kg_per_s': 3.58}
 
-    hd_params = {'t_in_set_c': 40,
-                 't_out_set_c': 20}
+    hd_params = {'t_feed_demand_c': 40,
+                 't_return_demand_c': 20}
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns,
                                                           data_source, period, 0, 0)
