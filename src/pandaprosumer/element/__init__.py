@@ -14,3 +14,4 @@ from .converter import *
 from .solar_thermal import *
 
 
+from .mixing_valve import *

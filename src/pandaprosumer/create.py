@@ -16,6 +16,7 @@ from pandaprosumer.element import (
     HeatPumpElementData,
     HeatStorageElementData,
     IceChpElementData,
+    MixingValveElementData,
     PvProductionComponentData,
     SolarThermalElementData,
     StratifiedHeatStorageElementData,
@@ -470,6 +471,56 @@ def create_heat_exchanger(prosumer,
                         in_service]))
 
     _set_entries(prosumer, "heat_exchanger", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_mixing_valve(prosumer,
+                        t_in_nom_c=95.,
+                        overflow_strategy='dump_proportional',
+                        name=None,
+                        index=None,
+                        in_service=True,
+                        **kwargs):
+    """
+        Creates a mixing valve element in prosumer["mixing_valve"]
+
+    INPUT:
+        **prosumer** - The prosumer within this mixing valve should be created
+
+    OPTIONAL:
+        **t_in_nom_c** (float, default 95) - Nominal hot-inlet temperature requested from the upstream \
+        producer [C]. Only used for the initial upstream request; the actual mixing always uses the \
+        temperature really received
+
+        **overflow_strategy** (string, default 'dump_proportional') - How a forced mass-flow surplus \
+        (producer delivers more than the demand takes, recirculation already at 0) is dispatched across \
+        responders: 'dump_proportional', 'dump_on_last' or 'cap'
+
+        **name** (string, default None) - The name for this mixing valve
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created mixing valve
+
+    EXAMPLE:
+        create_mixing_valve(prosumer, t_in_nom_c=95)
+    """
+    add_new_element(prosumer, MixingValveElementData)
+
+    if overflow_strategy not in ("cap", "dump_on_last", "dump_proportional"):
+        raise ValueError(f"Unknown overflow_strategy '{overflow_strategy}'. "
+                         "Expected one of: 'cap', 'dump_on_last', 'dump_proportional'.")
+
+    index = _get_index_with_check(prosumer, "mixing_valve", index)
+
+    entries = dict(zip(["name", "t_in_nom_c", "overflow_strategy", "in_service"],
+                       [name, t_in_nom_c, overflow_strategy, in_service]))
+
+    _set_entries(prosumer, "mixing_valve", index, **entries, **kwargs)
     return int(index)
 
 
