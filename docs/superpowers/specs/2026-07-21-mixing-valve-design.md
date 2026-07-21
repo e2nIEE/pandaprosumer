@@ -87,9 +87,10 @@ transforms temperature/mass-flow but neither creates nor destroys energy.
    `t_out_req_c - t_return_req_c < 1e-3`): no exchange — `mdot_in = 0`,
    `mdot_recirc = 0`, pass-through of any provided flow at `t_in_c` (same
    handling as the HX zero-exchange branch).
-5. **Degenerate mixing denominator** (`t_in_c - t_return_req_c < 1e-3` while
-   demand is non-degenerate): treat as cold supply (case 1) — the supply
-   cannot heat the return at all.
+5. **Dead supply** (`t_in_c - t_return_req_c < 1e-3`): deliver nothing
+   (`mdot_in = mdot_recirc = mdot_out = 0`) — the supply cannot heat the
+   return at all, and passing it through would deliver non-positive power
+   below the responders' own return temperature.
 
 ### Upstream request
 
