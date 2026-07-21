@@ -255,7 +255,7 @@ class HeatPumpController(BasicProsumerController):
             # the downstream demand contract asked for (e.g. a 65 °C DHW request
             # served at 76–94 °C, tracking the evaporator-side temperature). In a
             # coupled simulation the downstream storage then overheated above its
-            # design band and the optimiser (DEMix) saw out-of-bounds initial
+            # design band and an upstream optimiser saw out-of-bounds initial
             # states every iteration. Real machines modulate at the requested
             # setpoint with bounded efficiency — they don't overshoot delivery
             # temperature because the source got warmer.
@@ -389,9 +389,9 @@ class HeatPumpController(BasicProsumerController):
         # path too, not just in _calculate_heat_pump. q_evap is the anchored quantity
         # here (fixed evaporator mass flow), so capping the COP raises the compressor
         # power (and hence q_cond) for the same source heat — mirroring the forward
-        # path, which keeps q_cond fixed and raises p_comp. Without this cap, an ECS HP
-        # with a low temperature lift (warm BET source, 65 °C sink) returned COP 4-6
-        # despite max_cop=4.0, surfaced by the June coupled run.
+        # path, which keeps q_cond fixed and raises p_comp. Without this cap, a DHW HP
+        # with a low temperature lift (warm source, 65 °C sink) can return COP 4-6
+        # despite max_cop=4.0.
         max_cop = self._get_element_param(prosumer, 'max_cop')
         if not np.isnan(max_cop) and cop_hp > max_cop + 1e-3:
             cop_hp = max_cop
@@ -572,8 +572,8 @@ class HeatPumpController(BasicProsumerController):
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
         # Clamp a small negative evaporator load to 0. When the HP is forced ON
-        # at near-zero condenser duty (e.g. ON_HP=1 overnight with the ECS tank
-        # full, warm ambient loop), the minimum compressor power exceeds the
+        # at near-zero condenser duty (e.g. forced on overnight with the DHW
+        # tank full, warm ambient loop), the minimum compressor power exceeds the
         # tiny q_cond, COP dips below 1 and q_evap = q_cond - p_comp goes a few
         # kW negative. Physically the surplus electrical work is dissipated and
         # the source draw floors at 0 — not a wiring fault. Only a *gross*
