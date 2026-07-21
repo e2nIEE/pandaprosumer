@@ -11,3 +11,4 @@ from .heat_pump import *
 from .chiller import *
 from .pv import *
 from .solar_thermal import *
+from .mixing_valve import *

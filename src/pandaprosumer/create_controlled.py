@@ -13,6 +13,7 @@ from pandaprosumer.create import (
     create_heat_pump,
     create_heat_storage,
     create_ice_chp,
+    create_mixing_valve,
     create_period,
     create_pv_production,
     create_solar_thermal,
@@ -43,6 +44,8 @@ from pandaprosumer.controller import (
     HeatStorageControllerData,
     IceChpController,
     IceChpControllerData,
+    MixingValveController,
+    MixingValveControllerData,
     PvProductionComponentData,
     PvProductionController,
     SolarThermalController,
@@ -524,6 +527,67 @@ def create_controlled_heat_exchanger(prosumer,
                                                         level=level,
                                                         name=name)
     return heat_exchanger_controller.index
+
+
+def create_controlled_mixing_valve(prosumer,
+                                   t_in_nom_c=95.,
+                                   overflow_strategy='dump_proportional',
+                                   name=None,
+                                   index=None,
+                                   in_service=True,
+                                   level=0,
+                                   order=0,
+                                   period=0,
+                                   **kwargs):
+    """
+            Creates a mixing valve element in prosumer["mixing_valve"] and a mixing valve controller
+
+        INPUT:
+            **prosumer** - The prosumer within this mixing valve should be created
+
+        OPTIONAL:
+            **t_in_nom_c** (float, default 95) - Nominal hot-inlet temperature requested from the \
+            upstream producer [C]
+
+            **overflow_strategy** (string, default 'dump_proportional') - How a forced mass-flow surplus \
+            is dispatched across responders: 'dump_proportional', 'dump_on_last' or 'cap'
+
+            **name** (string, default None) - The name for this mixing valve
+
+            **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+                higher than the highest already existing index is selected.
+
+            **in_service** (boolean, default True) - True for in_service or False for out of service
+
+            **level** (int, default 0) - The level of the controller
+
+            **order** (int, default 0) - The order of the controller
+
+            **period** (int, default 0) - Index of the period, default is 0
+
+        OUTPUT:
+            **index** (int) - The unique ID of the created mixing valve controller
+
+        EXAMPLE:
+            create_controlled_mixing_valve(prosumer, t_in_nom_c=95)
+        """
+
+    mixing_valve_index = create_mixing_valve(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level", "kwargs"}},
+        **kwargs
+    )
+    mixing_valve_controller_data = MixingValveControllerData(
+        element_name='mixing_valve',
+        element_index=[mixing_valve_index],
+        period_index=period
+    )
+    mixing_valve_controller = MixingValveController(prosumer,
+                                                    mixing_valve_controller_data,
+                                                    order=order,
+                                                    level=level,
+                                                    name=name)
+    return mixing_valve_controller.index
 
 
 def create_controlled_electric_boiler(prosumer,
