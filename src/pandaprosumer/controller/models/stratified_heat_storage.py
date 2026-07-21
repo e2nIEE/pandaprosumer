@@ -403,7 +403,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # the producer when t_required_in > t_demand_out: the producer's q_cond
         # is then computed against a promised return that the storage never
         # actually delivers, so HP.q_cond and SHS.q_received disagree by the
-        # bypass surplus (~95 kW per near-full-tank step in the Paris ECS loop).
+        # bypass surplus (can reach ~95 kW per near-full-tank step in a DHW loop).
         delta_t_demand_c = t_demand_out_c - t_demand_in_c
         if t_required_in_c - t_demand_in_c > 1e-9 and t_required_in_c > t_demand_out_c:
             mdot_bypass_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_required_in_c - t_demand_in_c)
@@ -530,10 +530,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
             # The denominator MUST be the actual bypass ΔT (t_received_in −
             # t_demand_in), NOT (t_received_in − t_demand_out): the latter sizes
             # the flow as if the bypass were delivered at t_demand_out, so when
-            # the received water is hotter (e.g. HP at TcstCondOut=65 serving a
+            # the received water is hotter (e.g. HP at t_cond_out=65 serving a
             # 58/51 °C demand) the bypass carries ~2× the demand energy and the
             # HeatDemand books q_received ≈ 2·q_demand — i.e. negative
-            # q_uncovered / over-serve (~−30 kW avg in the Paris ECS loop, with
+            # q_uncovered / over-serve (can reach ~−30 kW avg in a DHW loop, with
             # ~20 % wasted HP electricity). Equivalent to a mixing-valve model
             # (hot bypass blended with return to hit t_demand_out at mdot_demand)
             # — both give the same mdot.
