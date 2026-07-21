@@ -20,6 +20,7 @@ information about the definition and interpretation of the parameters in the fol
     elements/heat_pump
     elements/booster_heat_pump
     elements/heat_exchanger
+    elements/mixing_valve
     elements/stratified_heat_storage
     elements/simple_heat_storage
     elements/electric_boiler
