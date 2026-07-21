@@ -2,6 +2,7 @@ import pytest
 import numpy as np
 from pandaprosumer import (create_empty_prosumer_container, create_period, create_mixing_valve,
                            create_controlled_mixing_valve)
+from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 
 def _default_period(prosumer):
@@ -100,3 +101,103 @@ class TestMixingValveController:
         assert mv.calculate_mixing(95., 70., 70., 2.) == pytest.approx((0., 0., 0., 95.))
         # Supply at the return temperature: cannot heat at all
         assert mv.calculate_mixing(70., 80., 70., 2.) == pytest.approx((0., 0., 0., 70.))
+
+    @staticmethod
+    def _make_controller(prosumer, **kwargs):
+        mv_idx = create_controlled_mixing_valve(prosumer, order=0, period=_default_period(prosumer), **kwargs)
+        return prosumer.controller.iloc[mv_idx].object
+
+    def test_t_m_to_receive_requests_nominal_temperature(self):
+        """The valve asks upstream for t_in_nom_c and the reduced hot-leg mdot."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        assert mv.t_m_to_receive(prosumer) == pytest.approx((95., 70., 0.8))
+
+    def test_control_step_nominal(self):
+        """No fixed upstream flow: assume the requested hot leg was delivered at t_in_nom_c."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.control_step(prosumer)
+
+        q_kw = 2. * 4.19 * (80. - 70.)
+        expected = [q_kw, 0.8, 95., 1.2, 2., 80., 70.]
+        assert mv.step_results == pytest.approx(np.array([expected]), rel=.01)
+        assert mv.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
+                                                  FluidMixMapping.MASS_FLOW_KEY: pytest.approx(2.)}]
+
+    def test_control_step_received_flow_and_temperature(self):
+        """Producer fixed exactly the requested hot leg at 95: nominal mix."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 95.,
+                                        FluidMixMapping.MASS_FLOW_KEY: 0.8}
+        mv.control_step(prosumer)
+        q_kw = 2. * 4.19 * (80. - 70.)
+        assert mv.step_results == pytest.approx(np.array([[q_kw, 0.8, 95., 1.2, 2., 80., 70.]]), rel=.01)
+
+    def test_control_step_cold_supply_passthrough(self):
+        """Received 78 < wished 80: pass-through at 78, no recirculation."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 78.,
+                                        FluidMixMapping.MASS_FLOW_KEY: 2.}
+        mv.control_step(prosumer)
+        q_kw = 2. * 4.19 * (78. - 70.)
+        assert mv.step_results == pytest.approx(np.array([[q_kw, 2., 78., 0., 2., 78., 70.]]), rel=.01)
+
+    def test_control_step_short_supply_holds_temperature(self):
+        """Producer fixed only 0.4 kg/s (< 0.8 needed): t_out held at 80, flow scaled to 1.0."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 95.,
+                                        FluidMixMapping.MASS_FLOW_KEY: 0.4}
+        mv.control_step(prosumer)
+        q_kw = 1. * 4.19 * (80. - 70.)
+        assert mv.step_results == pytest.approx(np.array([[q_kw, 0.4, 95., 0.6, 1., 80., 70.]]), rel=.01)
+
+    def test_control_step_excess_supply_runs_hotter(self):
+        """Producer fixed 1.0 kg/s (> 0.8 needed, < 2.0 demand): recirc shrinks, mix runs hotter."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 95.,
+                                        FluidMixMapping.MASS_FLOW_KEY: 1.}
+        mv.control_step(prosumer)
+        t_out_c = (1. * 95. + 1. * 70.) / 2.  # 82.5
+        q_kw = 2. * 4.19 * (t_out_c - 70.)
+        assert mv.step_results == pytest.approx(np.array([[q_kw, 1., 95., 1., 2., t_out_c, 70.]]), rel=.01)
+        # Energy conservation: hot leg in == mix out
+        assert 1. * (95. - 70.) == pytest.approx(2. * (t_out_c - 70.))
+
+    def test_control_step_flood_supply_passthrough_surplus(self):
+        """Producer fixed 2.5 kg/s (>= 2.0 demand): full pass-through at 95, surplus dumped."""
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (80., 70., [2.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: 95.,
+                                        FluidMixMapping.MASS_FLOW_KEY: 2.5}
+        mv.control_step(prosumer)
+        q_kw = 2.5 * 4.19 * (95. - 70.)
+        assert mv.step_results == pytest.approx(np.array([[q_kw, 2.5, 95., 0., 2.5, 95., 70.]]), rel=.01)
+        # dump_proportional: single responder receives everything
+        assert mv.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 95.,
+                                                  FluidMixMapping.MASS_FLOW_KEY: pytest.approx(2.5)}]
+
+    def test_control_step_no_demand(self):
+        prosumer = create_empty_prosumer_container()
+        mv = self._make_controller(prosumer, t_in_nom_c=95.)
+        mv.t_m_to_deliver = lambda p: (0., 0., [0.])
+        mv.time_step(prosumer, "2020-01-01 00:00:00")
+        mv.control_step(prosumer)
+        assert mv.step_results == pytest.approx(np.array([[0., 0., 95., 0., 0., 95., 0.]]))
