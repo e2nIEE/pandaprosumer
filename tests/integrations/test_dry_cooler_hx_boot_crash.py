@@ -106,11 +106,11 @@ def _build_prosumer():
     )
 
     hx_idx = create_controlled_heat_exchanger(
-        prosumer, period=period, level=1, order=0, name="hx_dc", **HX_PARAMS
+        prosumer, period=period, level=1, order=0, name="hx", **HX_PARAMS
     )
 
     dc_idx = create_controlled_dry_cooler(
-        prosumer, period=period, level=1, order=1, name="dc_dc",
+        prosumer, period=period, level=1, order=1, name="dry_cooler",
         in_service=True, **DC_PARAMS,
     )
 
@@ -133,7 +133,7 @@ def _build_prosumer():
 
 
 def test_dry_cooler_hx_chain_boots_into_steady_state():
-    """hx_dc → dc_dc must boot into a consistent steady state at t=0.
+    """hx → dry_cooler must boot into a consistent steady state at t=0.
 
     With dry_cooler.in_service=True from t=0 and no upstream fluid history,
     the dry-cooler controller must fall back to its nominal design point so
@@ -158,7 +158,7 @@ def test_dry_cooler_hx_chain_boots_into_steady_state():
         err_msg="HX and dry cooler heat exchange should match (energy balance)",
     )
 
-    assert (hx_df["t_1_in_c"] > hx_df["t_1_out_c"]).all(), "BET-side should be cooled by HX"
+    assert (hx_df["t_1_in_c"] > hx_df["t_1_out_c"]).all(), "Primary side should be cooled by HX"
     assert (hx_df["t_2_out_c"] > hx_df["t_2_in_c"]).all(), "Secondary side should be heated by HX"
     assert (dc_df["t_fluid_in_c"] > dc_df["t_fluid_out_c"]).all(), "Dry cooler should cool the fluid"
     assert (dc_df["t_air_out_c"] >= dc_df["t_air_in_c"]).all(), "Air should be heated by dry cooler"
