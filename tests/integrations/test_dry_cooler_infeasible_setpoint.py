@@ -14,12 +14,11 @@ the safeguard assertion at the bottom of ``control_step``::
 
     assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4)
 
-This was observed in the Paris demo's BDRY loop at iter ≥ 5 of the June
-scenario: DEMix sets ``T_OUT_DRY`` (the dc_dc outlet setpoint) higher than
-the actual BDRY pump outlet (because the loop hasn't accumulated enough
-heat for hx_dc to push the secondary supply that high). The current code
-either crashes (assertion fires) or returns unphysical state that breaks
-downstream couplings.
+This is observed in a coupled loop when an upstream optimiser sets the dry
+cooler outlet setpoint higher than the actual loop supply temperature
+(because the loop hasn't accumulated enough heat to push the secondary
+supply that high). The unguarded code either crashes (assertion fires) or
+returns unphysical state that breaks downstream couplings.
 
 This test pins the saturation behaviour: when ``t_out_c`` comes from a
 mapped input (i.e. it's an externally-driven setpoint, not the nominal
@@ -127,7 +126,7 @@ def _build_prosumer(t_out_setpoint_c):
     )
 
     dc_idx = create_controlled_dry_cooler(
-        prosumer, period=period, level=1, order=0, name="dc_dc",
+        prosumer, period=period, level=1, order=0, name="dry_cooler",
         in_service=True, **DC_PARAMS,
     )
 

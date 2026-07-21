@@ -401,8 +401,9 @@ class DryCoolerController(BasicProsumerController):
             # ``tests/integrations/test_dry_cooler_hx_boot_crash.py``.
             t_out_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
         else:
-            # Externally driven setpoint (e.g. DEMix ``T_OUT_DRY``): a dry
-            # cooler can only cool fluid (heat→air), never warm it. If the
+            # Externally driven outlet setpoint (e.g. from an upstream
+            # optimiser): a dry cooler can only cool fluid (heat→air), never
+            # warm it. If the
             # setpoint asks for an outlet warmer than the supplied inlet, the
             # asset is physically saturated. Clamp here so the LMTD math
             # falls through to the explicit no-exchange branch and downstream
