@@ -1,7 +1,7 @@
 from .heat_storage import *
 from .booster_heat_pump import *
 from .ice_chp import *
-from .mdu_chp import *
+#from .mdu_chp import *
 from .heat_demand import *
 from .dry_cooler import *
 from .stratified_heat_storage import *
@@ -12,3 +12,5 @@ from .heat_pump import *
 from .chiller import *
 from .pv import *
 from .solar_thermal import *
+from .battery_storage import *
+from .el_optimization import *

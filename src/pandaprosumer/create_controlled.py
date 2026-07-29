@@ -1211,6 +1211,7 @@ def create_controlled_senergy_nets_pv_production(
 
     return pv_controller.index
 
+"""
 def create_controlled_mdu_chp(prosumer,
                                size,
                                name=None,
@@ -1220,7 +1221,7 @@ def create_controlled_mdu_chp(prosumer,
                                order=0,
                                period=0,
                                **kwargs):
-    """
+
     Creates an MDU CHP element in prosumer["mdu_chp"] and an MDU CHP controller
 
     INPUT:
@@ -1247,7 +1248,7 @@ def create_controlled_mdu_chp(prosumer,
 
     EXAMPLE:
         create_controlled_mdu_chp(prosumer, 100, name="example_mdu_chp")
-    """
+
     mdu_chp_index = create_mdu_chp(prosumer, size, in_service, name, index, **kwargs)
     mdu_chp_controller_data = MduChpControllerData(
         element_name='mdu_chp',
@@ -1262,6 +1263,8 @@ def create_controlled_mdu_chp(prosumer,
                                index=None,
                                name=name)
     return mdu_chp.index
+    
+"""
 
 def create_controlled_optimtization(prosumer,
                                     index=None,
@@ -1313,3 +1316,95 @@ def create_controlled_optimtization(prosumer,
                                    name=name)
 
     return optimization.index
+
+def create_controlled_electrical_optimization(
+    prosumer,
+    in_service=True,
+    name=None,
+    index=None,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    optimization_index = create_electrical_optimization(
+        prosumer=prosumer,
+        in_service=in_service,
+        name=name,
+        index=index,
+    )
+
+    controller_data = ElectricalOptimizationControllerData(
+        element_name="electrical_optimization",
+        element_index=[optimization_index],
+        period_index=period,
+    )
+
+    controller = ElectricalOptimizationController(
+        prosumer,
+        controller_data,
+        order=order,
+        level=level,
+        in_service=in_service,
+        name=name,
+        **kwargs,
+    )
+
+    return controller.index
+
+
+def create_controlled_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    init_soc=0.5,
+    name=None,
+    index=None,
+    in_service=True,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    """
+    Create a battery-storage element and its controller.
+    """
+
+    battery_index = create_battery_storage(
+        prosumer=prosumer,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        name=name,
+        index=index,
+        in_service=in_service,
+        **kwargs,
+    )
+
+    battery_storage_object = BatteryStorageControllerData(
+        element_index=[battery_index],
+        period_index=period,
+    )
+
+    controller = BatteryStorageController(
+        prosumer=prosumer,
+        battery_storage_object=battery_storage_object,
+        order=order,
+        level=level,
+        init_soc=init_soc,
+        in_service=in_service,
+        name=name,
+    )
+
+    return controller.index
