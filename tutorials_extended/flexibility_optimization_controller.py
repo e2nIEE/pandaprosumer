@@ -16,8 +16,13 @@ start = '2020-01-01 00:00:00'
 end = '2020-01-08 23:59:59'
 time_resolution = 3600      # 60 min
 frequency = '60min'
+# start = '2020-01-01 00:00:00'
+# end = '2020-01-01 23:59:59'
+# time_resolution = 900      # 60 min
+# frequency = '15min'
 
 t_day = np.arange(0, 24, 1)  # 24 Werte (1h Schritte)
+# t_day = np.arange(0, 24, 0.25)  # 96 Werte (15min Schritte)
 
 L_day = (100 * np.exp(-((t_day - 8) ** 2) / (2 * 1.5 ** 2))
        + 100 * np.exp(-((t_day - 18) ** 2) / (2 * 1.5 ** 2)))
@@ -39,6 +44,7 @@ data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_mo
 time_series_data = pd.read_excel(data_file)
 
 time_series_data["flex_demand_kw"] = flex
+# time_series_data["t_souce_k"] = 250
 time_series_data["t_sink_k"] = 350
 time_series_data["cycle"] = 1
 # time_series_data["flex_demand_kw"] = 0
@@ -83,9 +89,9 @@ altitude_m = 0
 
 ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
-q_capacity_kwh = 80000
+q_capacity_kwh = 50000
 
-heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.5, level=2, order=2)
+heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.0, level=2, order=2)
 
 heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
@@ -200,32 +206,47 @@ ax[0].plot(res_df.index, res_df["chp_p_el"], label="CHP electric generation")
 ax[0].plot(res_df.index, res_df["bhp_p_el"], label="BHP electric consumption")
 ax[0].plot(res_df.index, res_df["p_el_sum"], label="Electric balance CHP & BHP", linewidth=3, color="grey")
 ax[0].plot(res_df.index, res_df["flex"], label="Flexibility demand", color="red", linewidth=1, linestyle="--")
-ax[0].set_ylabel("Electrical power (kW)", fontsize=12)
-ax[0].legend(fontsize=10, loc="lower left")
+ax[0].set_ylabel("Electrical power (kW)", fontsize=16)
+ax[0].legend(fontsize=16, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
 ax[1].plot(res_df.index, res_df["chp_q_th"], label="CHP thermal generation")
 ax[1].plot(res_df.index, res_df["bhp_q_th"], label="BHP thermal generation")
 ax[1].plot(res_df.index, res_df["q_delivered_storage"], label="Thermal output storage", linewidth=3, color="grey")
 ax[1].plot(res_df.index, res_df["q_received_demand"], label="Heat demand", color="red", linewidth=1, linestyle="--")
-ax[1].set_ylabel("Thermal power (kW)", fontsize=12)
-ax[1].legend(fontsize=10)
+ax[1].set_ylabel("Thermal power (kW)", fontsize=16)
+ax[1].legend(fontsize=16, loc="center left", bbox_to_anchor=(1.03, 0.5))
+
 
 ax2 = ax[1].twinx()
 ax2.plot(res_df.index, res_df["soc"], linestyle=':', label="SOC", color="green", linewidth=1.5)
-ax2.set_ylabel("State of Charge (%)", fontsize=12, color="green")
+ax2.set_ylabel("State of Charge (%)", fontsize=16, color="green")
+
 
 
 lines1, labels1 = ax[1].get_legend_handles_labels()
 lines2, labels2 = ax2.get_legend_handles_labels()
-ax[1].legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=10)
 
-hour_fmt = mdates.DateFormatter("%H")   # %H = Stunde (00–23)
-ax[1].xaxis.set_major_formatter(hour_fmt)
-ax[1].set_xlabel("Time (h)", fontsize=12)
+ax[1].legend(
+    lines1 + lines2,
+    labels1 + labels2,
+    loc="center left",
+    bbox_to_anchor=(1.045, 0.5),
+    fontsize=16
+)
 
-plt.xticks(fontsize=11)   # x-Achse Tick-Beschriftungen größer
-plt.yticks(fontsize=11)   # y-Achse Tick-Beschriftungen größer
 
+import matplotlib.dates as mdates
+
+ax[1].xaxis.set_major_locator(mdates.DayLocator())
+ax[1].xaxis.set_major_formatter(mdates.DateFormatter("%d.%m"))
+
+# hour_fmt = mdates.DateFormatter("%H")   # %H = Stunde (00–23)
+# ax[1].xaxis.set_major_formatter(hour_fmt)
+# ax[1].set_xlabel("Time (h)", fontsize=16)
+
+plt.xticks(fontsize=16)   # x-Achse Tick-Beschriftungen größer
+plt.yticks(fontsize=16)   # y-Achse Tick-Beschriftungen größer
+fig.tight_layout(rect=[0, 0, 1.2, 1])
 # Plot fertig zeichnen
 plt.draw()
 

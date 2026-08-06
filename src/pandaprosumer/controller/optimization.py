@@ -132,10 +132,25 @@ class OptimizationController(BasicProsumerController):
             return m
 
         solver = pyo.SolverFactory('appsi_highs')
-        EPS = 1e-4  # Toleranz für Constraint-Weitergabe
+        EPS = 1e-4
+        eps_soc = 0.0001# Toleranz für Constraint-Weitergabe
+        EPS_CHP_OFF = 0.5  # [kW] – darunter gilt CHP als "aus"
+
+        # ── Min-Downtime State ────────────────────────────────────────────
+        if not hasattr(self, '_chp_downtime'):
+            self._chp_downtime = {}
+
+        m = build_base_model()
+
+        # ── PRE-CONSTRAINT: Min-Downtime (nur wenn Counter > 0) ──────────
+        for idx in m.chp_index:
+            if self._chp_downtime.get(idx, 0) > 0:
+                m.add_component(
+                    f"chp_min_downtime_{idx}",
+                    pyo.Constraint(expr=m.chp[idx].p_el == 0)
+                )
 
         # ── STUFE 1: Flex-Ziel ───────────────────────────────────────────
-        m = build_base_model()
 
         m.t = pyo.Var(domain=pyo.NonNegativeReals)
         m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
@@ -177,7 +192,7 @@ class OptimizationController(BasicProsumerController):
 
         # Abweichungen des SOC vom Zielband einfrieren
         m.soc_dev_lock = pyo.Constraint(
-            expr=sum(m.soc_dev[idx] for idx in m.storage_index) <= soc_dev_opt + EPS
+            expr=sum(m.soc_dev[idx] for idx in m.storage_index) <= soc_dev_opt + eps_soc
         )
         # ── STUFE 3: CHP-Abweichung minimieren ──────────────────────────────────────
 
@@ -198,6 +213,18 @@ class OptimizationController(BasicProsumerController):
         )
 
         res3 = solver.solve(m, tee=False)
+
+        # # ── Min-Downtime Counter aktualisieren (nach finalem Solve) ───────
+        for idx in m.chp_index:
+            p_el_now = pyo.value(m.chp[idx].p_el)
+            p_el_prev = pyo.value(m.chp[idx].p_el_prev)
+
+            if self._chp_downtime.get(idx, 0) > 0:
+                # Sperre läuft ab
+                self._chp_downtime[idx] = max(0, self._chp_downtime[idx] - 1)
+            elif p_el_now < EPS_CHP_OFF and p_el_prev >= EPS_CHP_OFF:
+                # CHP gerade ausgeschaltet → 1 Zeitschritt sperren
+                self._chp_downtime[idx] = 4
 
 
         feasible = (
