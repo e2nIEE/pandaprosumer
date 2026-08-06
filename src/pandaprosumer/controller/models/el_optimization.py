@@ -71,6 +71,9 @@ class ElectricalOptimizationController(BasicProsumerController):
         self.active_request_steps = 0
         self.active_request_steps_backup = 0
 
+        self.electricity_price_eur_per_mwh = 100.0
+        self.gas_price_eur_per_mwh = 40.0
+
     # Inputs
     @property
     def _p_el_demand_kw(self):
@@ -107,6 +110,20 @@ class ElectricalOptimizationController(BasicProsumerController):
         except (KeyError, AttributeError):
             return np.nan
 
+    @property
+    def _electricity_price_eur_per_mwh(self):
+        try:
+            return self._get_input("electricity_price_eur_per_mwh")
+        except (KeyError, AttributeError):
+            return self.electricity_price_eur_per_mwh
+
+    @property
+    def _gas_price_eur_per_mwh(self):
+        try:
+            return self._get_input("gas_price_eur_per_mwh")
+        except (KeyError, AttributeError):
+            return self.gas_price_eur_per_mwh
+
     def to_scalar(self, value, default=0.0):
         """
         Convert a mapped scalar-like input to float.
@@ -135,13 +152,16 @@ class ElectricalOptimizationController(BasicProsumerController):
             return float(default)
 
     # Main optimization
-    def model_optimization(self, prosumer, p_el_demand_kw, p_pv_in_kw, p_contract_kw, p_flex_kw, p_grid_target_kw):
+    def model_optimization(self, prosumer, p_el_demand_kw, p_pv_in_kw, p_contract_kw, p_flex_kw, p_grid_target_kw,
+                           electricity_price_eur_per_mwh, gas_price_eur_per_mwh):
         """
         Build and solve one electrical dispatch problem
         """
 
         # Determine the grid target: uncontrolled net grid import is calculated
         p_grid_baseline_kw = (p_el_demand_kw - p_pv_in_kw)
+
+        below_limit = (not np.isfinite(p_contract_kw)) or (p_grid_baseline_kw < p_contract_kw)
 
         # Desired grid import that the optimizer should track
         direct_target_available = np.isfinite(p_grid_target_kw)
@@ -165,6 +185,12 @@ class ElectricalOptimizationController(BasicProsumerController):
         else:
             target_source = "baseline_operation"
             p_target_kw = p_grid_baseline_kw
+
+            if below_limit and np.isfinite(p_contract_kw):
+                # Laden bis Vertragslimit erlauben, kein target_error für Laden
+                p_target_kw = p_contract_kw
+            else:
+                p_target_kw = p_grid_baseline_kw
 
         # counter for tracking consecutive timesteps with an external flexibility request, if the request active = 0, then the counter becomes 0 for the next time step (next 15 min)
         if request_active:
@@ -227,6 +253,11 @@ class ElectricalOptimizationController(BasicProsumerController):
         else:
             model.contract_violation_zero = pyo.Constraint(expr=model.contract_violation == 0.0)
 
+        model.p_grid_import_kw = pyo.Var(domain=pyo.NonNegativeReals)
+        model.grid_import_lb = pyo.Constraint(
+            expr=model.p_grid_import_kw >= model.p_grid_kw
+        )
+
         # Term 3: Device preference objective based on 3 factors
         # 1. Previous CHP state (ON) - to ensure continuous operation instead of frequent change of state
         # 2. Previous CHP state (OFF) - P_request_kw is greater than requested threshold, request is large or sustained -> CHP is preferred
@@ -248,6 +279,11 @@ class ElectricalOptimizationController(BasicProsumerController):
         battery_discharge = sum(model.battery[index].p_discharge for index in model.battery_index)
         battery_charge = sum(model.battery[index].p_charge for index in model.battery_index)
 
+        # When active, battery is only charged with electricity from the grid
+        model.charge_from_grid_only = pyo.Constraint(
+            expr=model.p_grid_import_kw >= battery_charge
+        )
+
         # penalty sum = p_el_out _kw|(t-1) + battery disch + battery charge
         if previous_chp_state_on:
             preference_cost = (0.2 * model.chp_deviation + 8.0 * battery_discharge + 1.0 * battery_charge)
@@ -258,10 +294,29 @@ class ElectricalOptimizationController(BasicProsumerController):
         else:
             preference_cost = (500.0 * chp_startup + 5.0 * model.chp_deviation + 0.5 * battery_discharge + 1.0 * battery_charge)
 
+
+        # Energiekosten-Term
+        # Gaskosten BHKW: Gasverbrauch = p_el / eta_el  →  Kosten = gas_price / eta_el * p_el
+        chp_gas_cost = sum(
+            (gas_price_eur_per_mwh / 0.36) * model.chp[i].p_el  # eta_chp hardcoded 0.36
+            for i in model.chp_index
+        )
+        grid_import_cost = electricity_price_eur_per_mwh * model.p_grid_import_kw
+
+        weight_energy_cost = 5
+        if below_limit:
+            battery_charge_credit = electricity_price_eur_per_mwh * battery_charge
+            energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost - battery_charge_credit)
+            preference_cost = preference_cost - 2 * battery_charge
+        else:
+            energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost)
+
+
         # Objective function
         model.objective = pyo.Objective(expr=(self.weight_target * model.target_error
                                               + self.weight_contract * model.contract_violation
-                                              + preference_cost), sense=pyo.minimize)
+                                              + preference_cost
+                                              + energy_cost), sense=pyo.minimize)
         # Solve
         solver = pyo.SolverFactory(self.solver_name)
         if not solver.available(False):
@@ -283,6 +338,25 @@ class ElectricalOptimizationController(BasicProsumerController):
             p_grid_dispatch_kw = float(pyo.value(model.p_grid_kw))
             contract_violation_kw = float(pyo.value(model.contract_violation))
             battery_soc = float(np.mean([float(pyo.value(model.battery[index].soc)) for index in model.battery_index]))
+            # --- Ladeaufteilung (Heuristik) ---
+            # CHP-Überschuss = CHP-Erzeugung minus Nettolast (ohne Batterie)
+            chp_surplus_kw = max(0.0, p_el_chp_kw - p_grid_baseline_kw)
+            p_charge_from_chp_kw = min(chp_surplus_kw, p_battery_charge_kw)
+            p_charge_from_grid_kw = p_battery_charge_kw - p_charge_from_chp_kw
+            dominant_charge_source = (
+                "chp" if p_charge_from_chp_kw > p_charge_from_grid_kw else
+                "grid" if p_charge_from_grid_kw > p_charge_from_chp_kw else
+                "equal"
+            )
+
+            # --- Stromkosten [EUR/h] ---
+            # Netzstrom gesamt
+            cost_grid_total_eur_per_h = max(0.0, p_grid_dispatch_kw) * electricity_price_eur_per_mwh / 1000
+            # Netzstrom für Batterieladung
+            cost_charge_from_grid_eur_per_h = electricity_price_eur_per_mwh / 1000
+            # CHP-Strom für Batterieladung (Gaskosten-Anteil)
+            cost_charge_from_chp_eur_per_h = (gas_price_eur_per_mwh / 0.36) / 1000
+
 
         else:
             p_el_chp_kw = 0.0
@@ -292,6 +366,12 @@ class ElectricalOptimizationController(BasicProsumerController):
             p_grid_dispatch_kw = p_grid_baseline_kw
             contract_violation_kw = max(0.0, p_grid_dispatch_kw - p_contract_kw)
             battery_soc = np.nan
+            p_charge_from_chp_kw = 0.0
+            p_charge_from_grid_kw = 0.0
+            dominant_charge_source = "none"
+            cost_grid_total_eur_per_h = 0.0
+            cost_charge_from_grid_eur_per_h = 0.0
+            cost_charge_from_chp_eur_per_h = 0.0
 
         optimized_results = {
             "feasible": bool(feasible),
@@ -316,6 +396,16 @@ class ElectricalOptimizationController(BasicProsumerController):
             "dispatch_p_battery_discharge_kw": p_battery_discharge_kw,
             "dispatch_battery_soc": battery_soc,
             "dispatch_p_el_chp_kw": p_el_chp_kw,
+            # Ladeaufteilung
+            "dispatch_p_battery_charge_from_grid_kw": p_charge_from_grid_kw,
+            "dispatch_p_battery_charge_from_chp_kw": p_charge_from_chp_kw,
+            "dominant_charge_source": dominant_charge_source,
+
+            # Stromkosten [EUR/h]
+            "cost_grid_total_eur_per_h": cost_grid_total_eur_per_h,
+            "cost_charge_from_grid_eur_per_h": cost_charge_from_grid_eur_per_h,
+            "cost_charge_from_chp_eur_per_h": cost_charge_from_chp_eur_per_h,
+
             "solver_status": str(solver_result.solver.status),
             "termination_condition": str(solver_result.solver.termination_condition)
         }
@@ -338,15 +428,31 @@ class ElectricalOptimizationController(BasicProsumerController):
         p_contract_kw = self.to_scalar(self._p_contract_kw, default=np.inf)
         p_flex_kw = self.to_scalar(self._p_flex_kw, default=0.0)
         p_grid_target_kw = self.to_scalar(self._p_grid_target_kw, default=np.nan)
+        electricity_price = self.to_scalar(self._electricity_price_eur_per_mwh,
+                                           default=self.electricity_price_eur_per_mwh)
+        gas_price = self.to_scalar(self._gas_price_eur_per_mwh,
+                                   default=self.gas_price_eur_per_mwh)
 
-        p_battery_kw, p_el_chp_kw, optimized_results, next_active_request_steps = self.model_optimization(
-            prosumer=prosumer,
-            p_el_demand_kw=p_el_demand_kw,
-            p_pv_in_kw=p_pv_in_kw,
-            p_contract_kw=p_contract_kw,
-            p_flex_kw=p_flex_kw,
-            p_grid_target_kw=p_grid_target_kw
-        )
+        p_battery_kw, p_el_chp_kw, optimized_results, next_active_request_steps = \
+            self.model_optimization(
+                prosumer=prosumer,
+                p_el_demand_kw=p_el_demand_kw,
+                p_pv_in_kw=p_pv_in_kw,
+                p_contract_kw=p_contract_kw,
+                p_flex_kw=p_flex_kw,
+                p_grid_target_kw=p_grid_target_kw,
+                electricity_price_eur_per_mwh=electricity_price,  # neu
+                gas_price_eur_per_mwh=gas_price,  # neu
+            )
+
+        # p_battery_kw, p_el_chp_kw, optimized_results, next_active_request_steps = self.model_optimization(
+        #     prosumer=prosumer,
+        #     p_el_demand_kw=p_el_demand_kw,
+        #     p_pv_in_kw=p_pv_in_kw,
+        #     p_contract_kw=p_contract_kw,
+        #     p_flex_kw=p_flex_kw,
+        #     p_grid_target_kw=p_grid_target_kw
+        # )
 
         self.last_result = optimized_results
 

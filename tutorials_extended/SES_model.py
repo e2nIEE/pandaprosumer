@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from pathlib import Path
+import numpy as np
 
 from pandapower.timeseries.data_sources.frame_data import DFData
 from pandaprosumer.create import create_empty_prosumer_container, create_period
@@ -51,8 +52,22 @@ time_series_data = hourly_data.dropna(
     ]
 )
 
+daily_prices = [
+    115.95, 102.00, 97.82, 94.10, 96.07, 106.78,
+    128.24, 133.03, 139.43, 126.02, 110.65, 102.19,
+    87.17, 88.44, 85.88, 91.39, 112.49, 118.36,
+    129.77, 145.34, 156.06, 132.83, 129.77, 96.33
+]
+
+time_series_data[("electricity_price_eur_per_mwh")] = np.tile(
+    daily_prices,
+    len(time_series_data) // 24 + 1
+)[:len(time_series_data)]
+
 time_series_data["cycle"] = 1
 time_series_data["t_intake_k"] = 298.15
+time_series_data["electricity_price_eur_per_mwh"] += 150 # Taxes, etc.
+time_series_data["gas_price_eur_per_mwh"] = 20
 
 if time_series_data.index.tz is None:
     time_series_data.index = time_series_data.index.tz_localize("UTC")
@@ -73,8 +88,10 @@ print(time_series_data.head())
 
 # setup of controllers
 # Constant profile
-input_params = ["p_el_demand_kw", "p_pv_in_kw", "p_contract_kw", "p_flex_kw", "cycle", "t_intake_k"]
-result_params = ["p_el_demand_cp_kw", "p_pv_in_cp_kw", "p_contract_cp_kw", "p_flex_cp_kw", "cycle_cp", "t_intake_cp_k"]
+input_params = ["p_el_demand_kw", "p_pv_in_kw", "p_contract_kw", "p_flex_kw", "cycle", "t_intake_k",
+                "electricity_price_eur_per_mwh", "gas_price_eur_per_mwh"]
+result_params = ["p_el_demand_cp_kw", "p_pv_in_cp_kw", "p_contract_cp_kw", "p_flex_cp_kw", "cycle_cp", "t_intake_cp_k",
+                 "electricity_price_eur_per_mwh_cp", "gas_price_eur_per_mwh_cp"]
 
 cp_index = create_controlled_const_profile(prosumer, input_params, result_params, time_series_input, period, level=0, order=0)
 
@@ -87,7 +104,8 @@ chp_altitude_m = 0
 ice_chp_index = create_controlled_ice_chp(prosumer, chp_size_kw, chp_fuel, chp_altitude_m, chp_name, level=2, order=1)
 
 # Battery storage
-battery_index = create_controlled_battery_storage(prosumer=prosumer, e_capacity_kwh=2000.0, p_charge_max_kw=1000.0, p_discharge_max_kw=1000.0, eta_charge=0.95, eta_discharge=0.95, soc_min=0.10, soc_max=0.90,
+battery_capacity = 10000.0
+battery_index = create_controlled_battery_storage(prosumer=prosumer, e_capacity_kwh=battery_capacity, p_charge_max_kw=1000.0, p_discharge_max_kw=1000.0, eta_charge=0.95, eta_discharge=0.95, soc_min=0.10, soc_max=0.90,
                                                   self_discharge_per_hour=0.0001, init_soc=0.90, name="SES Battery", level=2, order=0)
 
 # Electrical optimization controller
@@ -101,9 +119,9 @@ optimization_index = create_controlled_electrical_optimization(prosumer=prosumer
 GenericMapping(
     prosumer,
     initiator_id=cp_index,
-    initiator_column=["p_el_demand_cp_kw", "p_pv_in_cp_kw", "p_contract_cp_kw", "p_flex_cp_kw"],
+    initiator_column=["p_el_demand_cp_kw", "p_pv_in_cp_kw", "p_contract_cp_kw", "p_flex_cp_kw", "electricity_price_eur_per_mwh_cp", "gas_price_eur_per_mwh_cp"],
     responder_id=optimization_index,
-    responder_column=["p_el_demand_kw", "p_pv_in_kw", "p_contract_kw", "p_flex_kw"]
+    responder_column=["p_el_demand_kw", "p_pv_in_kw", "p_contract_kw", "p_flex_kw", "electricity_price_eur_per_mwh", "gas_price_eur_per_mwh"]
 )
 
 GenericMapping(

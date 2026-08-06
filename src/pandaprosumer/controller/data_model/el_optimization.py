@@ -14,6 +14,8 @@ class ElectricalOptimizationControllerData:
             "p_contract_kw",
             "p_flex_kw",
             "p_grid_target_kw",
+            "electricity_price_eur_per_mwh",
+            "gas_price_eur_per_mwh"
         ]
     )
 
