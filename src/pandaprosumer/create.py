@@ -1085,9 +1085,9 @@ def create_senergy_nets_pv_production(
     _set_entries(prosumer, "sn_pv_production", index, **entries, **kwargs)
     return int(index)
 
-
+"""
 def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwargs):
-    """
+
     Creates an MDU CHP (Modular Data Unit Combined Heat and Power) element.
 
     INPUT:
@@ -1108,7 +1108,7 @@ def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwa
 
     EXAMPLE:
         create_mdu_chp(prosumer, 100, name="example_mdu_chp")
-    """
+
     add_new_element(prosumer, MduChpElementData)
 
     index = _get_index_with_check(prosumer, "mdu_chp", index)
@@ -1130,7 +1130,8 @@ def create_mdu_chp(prosumer, size, in_service=True, name=None, index=None, **kwa
 
     _set_entries(prosumer, "mdu_chp", index, **entries, **kwargs)
     return int(index)
-  
+"""
+
   
 def create_senergy_nets_pv_production(
     prosumer,
@@ -1307,4 +1308,113 @@ def create_optimization(
     )
 
     _set_entries(prosumer, "optimization", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_electrical_optimization(
+    prosumer,
+    in_service=True,
+    name=None,
+    index=None,
+    **kwargs,
+):
+    add_new_element(
+        prosumer,
+        ElectricalOptimizationElementData,
+    )
+
+    index = _get_index_with_check(
+        prosumer,
+        "electrical_optimization",
+        index,
+    )
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "in_service",
+            ],
+            [
+                name,
+                in_service,
+            ],
+        )
+    )
+
+    _set_entries(
+        prosumer,
+        "electrical_optimization",
+        index,
+        **entries,
+        **kwargs,
+    )
+
+    return int(index)
+
+
+
+def create_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs
+):
+    add_new_element(
+        prosumer,
+        BatteryStorageElementData
+    )
+
+    index = _get_index_with_check(
+        prosumer,
+        "battery_storage",
+        index
+    )
+
+    entries = dict(
+        zip(
+            [
+                "name",
+                "e_capacity_kwh",
+                "p_charge_max_kw",
+                "p_discharge_max_kw",
+                "eta_charge",
+                "eta_discharge",
+                "soc_min",
+                "soc_max",
+                "self_discharge_per_hour",
+                "in_service"
+            ],
+            [
+                name,
+                e_capacity_kwh,
+                p_charge_max_kw,
+                p_discharge_max_kw,
+                eta_charge,
+                eta_discharge,
+                soc_min,
+                soc_max,
+                self_discharge_per_hour,
+                in_service
+            ],
+        )
+    )
+
+    _set_entries(
+        prosumer,
+        "battery_storage",
+        index,
+        **entries,
+        **kwargs
+    )
+
     return int(index)
