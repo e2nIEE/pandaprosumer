@@ -69,7 +69,39 @@ class OptimizationController(BasicProsumerController):
 
         return coefficients.tolist()
 
-    def model_optimization(self, prosumer, heat_demand, flex_demand):
+    def model_optimization(self, prosumer, heat_demand, flex_demand, objective_mode="track_flex", update_internal_state=True):
+
+        """
+        objective_mode: "track_flex":
+            Tracks the requested device-side flexibility:
+                P_device =  flex_demand
+
+        objective_mode: min grid consumption:
+            Calculates the operating point that minimizes mall grid consumption
+                P_grid = P_residual_mall - P_device
+            P_residual_mall (mall el. load - pv generation) is constant for this timestep,
+            minimizing P_grid is equivalent to maximizing:
+                P_device = P_CHP - P_BHP
+
+        objective_mode: max_grid_consumption:
+            Calculates the operating point that maximizes mall grid consumption
+                P_grid = P_residual_mall - P_device
+            maximizing P_grid is equivalent to minimizing:
+                P_device = P_CHP - P_BHP
+
+    update_internal_state:
+        True:
+            Use for the final applied dispatch
+            Updates internal CHP state
+
+        False:
+            Use for flexibility bounds calculation
+            Does not update internal state, so baseline, min and max cases can be calculated from the previous state
+
+        Returns:
+        p_bhp, p_chp, feasible
+        """
+
         # ── Basis-Modell aufbauen (Blöcke, Constraints) ──────────────────
         def build_base_model():
             m = pyo.ConcreteModel()
@@ -127,9 +159,39 @@ class OptimizationController(BasicProsumerController):
             for idx in m.chp:
                 el_terms.append(m.chp[idx].p_el)
 
+            # added:
+            # CHP el. generation - BHP el. consumption
+            # +ve -> CHP increases generation, reduces import and supports the grid
+            # -ve -> BHP increases consumption, increases grid import
+            m.p_device = pyo.Expression(expr=sum(el_terms))
+
             m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
 
             return m
+
+        # Added: helper function
+        # packed the solver.solve inside helper
+        def solve_model(model, stage):
+            try:
+                res = solver.solve(model, tee=False)
+            except RuntimeError as exc:
+                print(f"\nOptimization failed in {stage}.")
+                print(f"Reason: {exc}")
+                return None, False
+            except Exception as exc:
+                print(f"\nOptimization error in {stage}.")
+                print(f"Reason: {exc}")
+                return None, False
+
+            feasible = (res.solver.status == SolverStatus.ok and res.solver.termination_condition
+                        in (TerminationCondition.optimal, TerminationCondition.feasible))
+
+            if not feasible:
+                print(f"\nOptimization not feasible in {stage}.")
+                print(f"Solver status: {res.solver.status}")
+                print(f"Termination condition: {res.solver.termination_condition}")
+
+            return res, feasible
 
         solver = pyo.SolverFactory('appsi_highs')
         EPS = 1e-4
@@ -150,24 +212,57 @@ class OptimizationController(BasicProsumerController):
                     pyo.Constraint(expr=m.chp[idx].p_el == 0)
                 )
 
-        # ── STUFE 1: Flex-Ziel ───────────────────────────────────────────
+        if objective_mode == "track_flex":
+            # retained existing behaviour:
+            # minimize |P_device - P_flex_target|
+            m.t = pyo.Var(domain=pyo.NonNegativeReals)
 
-        m.t = pyo.Var(domain=pyo.NonNegativeReals)
-        m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
-        m.abs_neg = pyo.Constraint(expr=-m.el_bal <= m.t)
+            m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
+            m.abs_neg = pyo.Constraint(expr=-m.el_bal <= m.t)
 
-        m.obj = pyo.Objective(expr=m.t, sense=pyo.minimize)
+            m.obj = pyo.Objective(expr=m.t, sense=pyo.minimize)
 
-        res1 = solver.solve(m, tee=False)
-        t_opt = pyo.value(m.t)
+        elif objective_mode == "min_grid_consumption":
+            # P_grid = P_residual_mall - P_device
+            # min P_grid = max P_device
+            # pyomo minimizes, so minimize -P_device
+            m.obj = pyo.Objective(expr=-m.p_device, sense=pyo.minimize)
 
-        # ── STUFE 2: SOC-Abweichungen minimieren ──────────────────────────────────────
-        # Flex-Ergebnis einfrieren
-        m.flex_lock = pyo.Constraint(expr=m.t <= t_opt + EPS)
+        elif objective_mode == "max_grid_consumption":
+            # P_grid = P_residual_mall - P_device
+            # max P_grid = min P_device
+            m.obj = pyo.Objective(expr=m.p_device, sense=pyo.minimize)
+
+        else:
+            raise ValueError("Unknown objective_mode")
+
+        res1, feasible1 = solve_model(m, "stage 1 tracking objective {objective_mode}")
+        # returns p_chp, p_bhp, feasible
+        if not feasible1:
+            return 0.0, 0.0, False
+
+        # Lock 1st objective result
+        if objective_mode == "track_flex":
+            primary_opt = pyo.value(m.t)
+            m.primary_lock = pyo.Constraint(expr=m.t <= primary_opt + EPS)
+
+        else:
+            primary_opt = pyo.value(m.p_device)
+
+            if objective_mode == "min_grid_consumption":
+                # Stage 1 for min grid consumption minimized -p_device, so it maximized p_device
+                # Lock p_device close to its maximum value
+                m.primary_lock = pyo.Constraint(expr=m.p_device >= primary_opt - EPS)
+
+            elif objective_mode == "max_grid_consumption":
+                # Stage 1 minimized p_device for max grid consumption
+                # Lock p_device close to its minimum value.
+                m.primary_lock = pyo.Constraint(expr=m.p_device <= primary_opt + EPS)
 
         m.obj.deactivate()
 
         # Stage 2: SOC-Abweichung vom Zielband minimieren
+
         SOC_TARGET = 0.5  # Mitte des Hysteresebands
         SOC_TOL = 0.1  # Abweichungen des Hyteresebands um Mitte
 
@@ -187,13 +282,17 @@ class OptimizationController(BasicProsumerController):
             sense=pyo.minimize
         )
 
-        res2 = solver.solve(m)
+        res2, feasible2 = solve_model(m, "stage 2 SOC objective")
+        if not feasible2:
+            return 0.0, 0.0, False
         soc_dev_opt = sum(pyo.value(m.soc_dev[idx]) for idx in m.storage_index)
 
         # Abweichungen des SOC vom Zielband einfrieren
         m.soc_dev_lock = pyo.Constraint(
             expr=sum(m.soc_dev[idx] for idx in m.storage_index) <= soc_dev_opt + eps_soc
         )
+        m.obj2.deactivate()
+
         # ── STUFE 3: CHP-Abweichung minimieren ──────────────────────────────────────
 
         m.chp_dev = pyo.Var(m.chp_index, domain=pyo.NonNegativeReals)
@@ -206,45 +305,202 @@ class OptimizationController(BasicProsumerController):
             rule=lambda m, idx: m.chp_dev[idx] >= -(m.chp[idx].p_el - m.chp[idx].p_el_prev)
         )
 
-        m.obj2.deactivate()
+        #m.obj2.deactivate()
         m.obj3 = pyo.Objective(
             expr=sum(m.chp_dev[idx] for idx in m.chp_index),
             sense=pyo.minimize
         )
 
-        res3 = solver.solve(m, tee=False)
+        res3, feasible3 = solve_model(m, "stage 3 CHP movement objective")
+
+        if not feasible3:
+            return 0.0, 0.0, False
+
+        # Extraction of results
+        if len(m.bhp_index):
+            p_bhp = pyo.value(next(m.bhp[idx].p_el for idx in m.bhp_index))
+        else:
+            p_bhp = 0.0
+
+        if len(m.chp_index):
+            p_chp = pyo.value(next(m.chp[idx].p_el for idx in m.chp_index))
+        else:
+            p_chp = 0.0
+
+        p_device = p_chp - p_bhp
+
+        self._last_optimization_result = {"objective_mode": objective_mode, "p_bhp_kw": p_bhp, "p_chp_kw": p_chp,
+                                          "p_device_kw": p_device, "flex_demand_kw": flex_demand, "heat_demand_kw": heat_demand}
 
         # # ── Min-Downtime Counter aktualisieren (nach finalem Solve) ───────
-        for idx in m.chp_index:
-            p_el_now = pyo.value(m.chp[idx].p_el)
-            p_el_prev = pyo.value(m.chp[idx].p_el_prev)
+        if update_internal_state:
+            for idx in m.chp_index:
+                p_el_now = pyo.value(m.chp[idx].p_el)
+                p_el_prev = pyo.value(m.chp[idx].p_el_prev)
 
-            if self._chp_downtime.get(idx, 0) > 0:
-                # Sperre läuft ab
-                self._chp_downtime[idx] = max(0, self._chp_downtime[idx] - 1)
-            elif p_el_now < EPS_CHP_OFF and p_el_prev >= EPS_CHP_OFF:
-                # CHP gerade ausgeschaltet → 1 Zeitschritt sperren
-                self._chp_downtime[idx] = 4
+                if self._chp_downtime.get(idx, 0) > 0:
+                    self._chp_downtime[idx] = max(
+                        0,
+                        self._chp_downtime[idx] - 1,
+                    )
 
+                elif p_el_now < EPS_CHP_OFF and p_el_prev >= EPS_CHP_OFF:
+                    self._chp_downtime[idx] = 4
 
-        feasible = (
-                res3.solver.status == SolverStatus.ok
-                and res3.solver.termination_condition in (
-                    TerminationCondition.optimal,
-                    TerminationCondition.feasible  # ← auch akzeptieren!
-                )
-        )
+        return p_bhp, p_chp, True
 
-        if feasible:
+    def calculate_flexibility_bounds(self, prosumer, heat_demand, flex_demand=0.0):
 
-            p_bhp = pyo.value(next(m.bhp[idx].p_el for idx in m.bhp_index))
-            p_chp = pyo.value(next(m.chp[idx].p_el for idx in m.chp_index))
+        p_bhp_base, p_chp_base, feasible_base = self.model_optimization(
+                prosumer=prosumer,
+                heat_demand=heat_demand,
+                flex_demand=flex_demand,
+                objective_mode="track_flex",
+                update_internal_state=False,
+            )
 
-        else:
-            # ── Fallback: Vorherigen Zustand fortschreiben ─────────────────
-            p_bhp, p_chp = (0, 0)
+        p_bhp_support, p_chp_support, feasible_support = self.model_optimization(
+                prosumer=prosumer,
+                heat_demand=heat_demand,
+                flex_demand=0.0,
+                objective_mode="min_grid_consumption",
+                update_internal_state=False,
+            )
 
-        return p_bhp, p_chp, feasible
+        p_bhp_absorb, p_chp_absorb, feasible_absorb = self.model_optimization(
+                prosumer=prosumer,
+                heat_demand=heat_demand,
+                flex_demand=0.0,
+                objective_mode="max_grid_consumption",
+                update_internal_state=False,
+            )
+
+        feasible = feasible_base and feasible_support and feasible_absorb
+
+        if not feasible:
+            return {"feasible": False,
+                    "p_bhp_base_kw": np.nan,
+                    "p_chp_base_kw": np.nan,
+                    "p_device_base_kw": np.nan,
+                    "p_bhp_support_kw": np.nan,
+                    "p_chp_support_kw": np.nan,
+                    "p_device_max_support_kw": np.nan,
+                    "p_bhp_absorb_kw": np.nan,
+                    "p_chp_absorb_kw": np.nan,
+                    "p_device_max_absorption_kw": np.nan,
+                }
+
+        p_device_base_kw = p_chp_base - p_bhp_base
+        p_device_max_support_kw = p_chp_support - p_bhp_support
+        p_device_max_absorption_kw = p_chp_absorb - p_bhp_absorb
+
+        return {"feasible": True,
+                "p_bhp_base_kw": p_bhp_base,
+                "p_chp_base_kw": p_chp_base,
+                "p_device_base_kw": p_device_base_kw,
+                "p_bhp_support_kw": p_bhp_support,
+                "p_chp_support_kw": p_chp_support,
+                "p_device_max_support_kw": p_device_max_support_kw,
+                "p_bhp_absorb_kw": p_bhp_absorb,
+                "p_chp_absorb_kw": p_chp_absorb,
+                "p_device_max_absorption_kw": p_device_max_absorption_kw
+                }
+
+        # # ── STUFE 1: Flex-Ziel ───────────────────────────────────────────
+        # # baseline consumption tracking flex target
+        # m.t = pyo.Var(domain=pyo.NonNegativeReals)
+        # #m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
+        # #m.abs_neg = pyo.Constraint(expr=-m.el_bal <= m.t)
+        #
+        # #m.obj = pyo.Objective(expr=m.t, sense=pyo.minimize)
+        #
+        # #res1 = solver.solve(m, tee=False)
+        # #t_opt = pyo.value(m.t)
+        #
+        # # ── STUFE 2: SOC-Abweichungen minimieren ──────────────────────────────────────
+        # # Flex-Ergebnis einfrieren
+        # m.flex_lock = pyo.Constraint(expr=m.t <= t_opt + EPS)
+        #
+        # m.obj.deactivate()
+        #
+        # # Stage 2: SOC-Abweichung vom Zielband minimieren
+        # SOC_TARGET = 0.5  # Mitte des Hysteresebands
+        # SOC_TOL = 0.1  # Abweichungen des Hyteresebands um Mitte
+        #
+        # m.soc_dev = pyo.Var(m.storage_index, domain=pyo.NonNegativeReals)
+        #
+        # m.soc_dev_pos = pyo.Constraint(
+        #     m.storage_index,
+        #     rule=lambda m, idx: m.soc_dev[idx] >= m.storage[idx].soc - (SOC_TARGET + SOC_TOL)
+        # )
+        # m.soc_dev_neg = pyo.Constraint(
+        #     m.storage_index,
+        #     rule=lambda m, idx: m.soc_dev[idx] >= (SOC_TARGET - SOC_TOL) - m.storage[idx].soc
+        # )
+        #
+        # m.obj2 = pyo.Objective(
+        #     expr=sum(m.soc_dev[idx] for idx in m.storage_index),
+        #     sense=pyo.minimize
+        # )
+        #
+        # res2 = solver.solve(m)
+        # soc_dev_opt = sum(pyo.value(m.soc_dev[idx]) for idx in m.storage_index)
+        #
+        # # Abweichungen des SOC vom Zielband einfrieren
+        # m.soc_dev_lock = pyo.Constraint(
+        #     expr=sum(m.soc_dev[idx] for idx in m.storage_index) <= soc_dev_opt + eps_soc
+        # )
+        # # ── STUFE 3: CHP-Abweichung minimieren ──────────────────────────────────────
+        #
+        # m.chp_dev = pyo.Var(m.chp_index, domain=pyo.NonNegativeReals)
+        # m.chp_dev_pos = pyo.Constraint(
+        #     m.chp_index,
+        #     rule=lambda m, idx: m.chp_dev[idx] >= m.chp[idx].p_el - m.chp[idx].p_el_prev
+        # )
+        # m.chp_dev_neg = pyo.Constraint(
+        #     m.chp_index,
+        #     rule=lambda m, idx: m.chp_dev[idx] >= -(m.chp[idx].p_el - m.chp[idx].p_el_prev)
+        # )
+        #
+        # m.obj2.deactivate()
+        # m.obj3 = pyo.Objective(
+        #     expr=sum(m.chp_dev[idx] for idx in m.chp_index),
+        #     sense=pyo.minimize
+        # )
+        #
+        # res3 = solver.solve(m, tee=False)
+        #
+        # # # ── Min-Downtime Counter aktualisieren (nach finalem Solve) ───────
+        # for idx in m.chp_index:
+        #     p_el_now = pyo.value(m.chp[idx].p_el)
+        #     p_el_prev = pyo.value(m.chp[idx].p_el_prev)
+        #
+        #     if self._chp_downtime.get(idx, 0) > 0:
+        #         # Sperre läuft ab
+        #         self._chp_downtime[idx] = max(0, self._chp_downtime[idx] - 1)
+        #     elif p_el_now < EPS_CHP_OFF and p_el_prev >= EPS_CHP_OFF:
+        #         # CHP gerade ausgeschaltet → 1 Zeitschritt sperren
+        #         self._chp_downtime[idx] = 4
+        #
+        #
+        # feasible = (
+        #         res3.solver.status == SolverStatus.ok
+        #         and res3.solver.termination_condition in (
+        #             TerminationCondition.optimal,
+        #             TerminationCondition.feasible  # ← auch akzeptieren!
+        #         )
+        # )
+        #
+        # if feasible:
+        #
+        #     p_bhp = pyo.value(next(m.bhp[idx].p_el for idx in m.bhp_index))
+        #     p_chp = pyo.value(next(m.chp[idx].p_el for idx in m.chp_index))
+        #
+        # else:
+        #     # ── Fallback: Vorherigen Zustand fortschreiben ─────────────────
+        #     p_bhp, p_chp = (0, 0)
+        #
+        # return p_bhp, p_chp, feasible
 
     def poly_expr(self, coeffs, x):
         return sum(coeffs[i] * (x ** i) for i in range(len(coeffs)))
@@ -271,12 +527,22 @@ class OptimizationController(BasicProsumerController):
 
         q_demand_kw = self._q_demand_kw
         p_flex_kw = self._p_flex_kw
+        if getattr(self, "collect_flex_bounds", False):
+            bounds = self.calculate_flexibility_bounds(
+                prosumer=prosumer,
+                heat_demand=q_demand_kw,
+                flex_demand=p_flex_kw,
+            )
 
-        p_el_bhp_in, p_el_chp_out, feasible = self.model_optimization(
-            prosumer=prosumer,
-            heat_demand=q_demand_kw,
-            flex_demand=p_flex_kw,
-           )
+            if not hasattr(self, "_flex_bounds_log"):
+                self._flex_bounds_log = {}
+
+            self._flex_bounds_log[self.time] = bounds
+
+        p_el_bhp_in, p_el_chp_out, feasible = self.model_optimization(prosumer=prosumer, heat_demand=q_demand_kw,
+                                                                      flex_demand=p_flex_kw,
+                                                                      objective_mode="track_flex",
+                                                                      update_internal_state=True)
 
         if feasible:
             result = np.array([[p_el_bhp_in, #Todo: Other format for results to make them dynamic for the specific use case and allow more then one element of the same Controller
