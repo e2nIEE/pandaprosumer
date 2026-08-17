@@ -492,7 +492,7 @@ def main():
     # 1. pandaprosumer baseline and flexibility bounds
     res_base, bounds_df = run_mall_case_with_bounds(time_series_data_base=time_series_data, flex_target_kw=baseline_flex_target_kw, flex_target_mall=flex_target_mall,
                                                     start=start, end=end, time_resolution=time_resolution, frequency=frequency,
-                                                    collect_bounds=True, allow_export=False, verbose=False)
+                                                    collect_bounds=True, allow_export=True, verbose=False)
 
     # Use only downward flexibility
     valid_times = bounds_df[(bounds_df["feasible"] == True)
@@ -663,6 +663,11 @@ def main():
     print(f"P_OPF    = {p_mall_opf_mw:.6f} MW")
     print(f"Q_OPF    = {q_mall_opf_mvar:.6f} Mvar")
 
+    if p_mall_min_mw < 0:
+        print(f"Export allowed: mall can export up to {-p_mall_min_mw * 1000.0:.3f} kW")
+    else:
+        print("Export not available")
+
     print("\nActivated flexibility")
     print(f"Load-sign convention    = {p_mall_opf_mw - p_mall_base_mw:.6f} MW")
     print(f"Grid-support convention = {p_mall_base_mw - p_mall_opf_mw:.6f} MW")
@@ -693,7 +698,7 @@ def main():
         time_resolution=time_resolution,
         frequency=frequency,
         collect_bounds=False,
-        allow_export=False,
+        allow_export=True,
         verbose=False,
     )
 
