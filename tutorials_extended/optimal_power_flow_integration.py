@@ -16,48 +16,89 @@ from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.run_time_series import run_timeseries
 
 
-start = "2020-01-01 00:00:00"
-end = "2020-01-08 23:59:59"
-time_resolution = 3600
+# 1. Time settings and mall residual electrical load from SES Excel data
+# SC_el_demand - SC_Pv_gen
 frequency = "60min"
+time_resolution = 3600
 
-# start = '2020-01-01 00:00:00'
-# end = '2020-01-01 23:59:59'
-# time_resolution = 900      # 60 min
-# frequency = '15min'
+project_root = (Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials_extended"]
+                else Path.cwd())
 
-t_day = np.arange(0, 24, 1)  # 24 Werte (1h Schritte)
-# t_day = np.arange(0, 24, 0.25)  # 96 Werte (15min Schritte)
+ses_data_file = project_root / "tutorials_extended" / "data" / "ses_data.xlsx"
+heat_data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
 
-L_day = (100 * np.exp(-((t_day - 8) ** 2) / (2 * 1.5 ** 2))
-       + 100 * np.exp(-((t_day - 18) ** 2) / (2 * 1.5 ** 2)))
+# Read SES electrical data
+ses_data = pd.read_excel(ses_data_file)
+ses_data.columns = ses_data.columns.str.strip()
+ses_data = ses_data.set_index("Timestamp").sort_index()
+# sc demand and pv gen cols
+required_cols = ["P el sc [kW]", "P pv [kW]"]
 
-G_PV_day = 100 * np.maximum(0, np.sin(np.pi / 12 * (t_day - 6)))
+for col in required_cols:
+    ses_data[col] = (ses_data[col].astype(str).str.replace(",", ".", regex=False))
+    ses_data[col] = pd.to_numeric(ses_data[col], errors="coerce")
 
-flex_day = L_day - G_PV_day
+ses_data = ses_data.dropna(subset=required_cols)
 
-n_days = 8
+# Convert SES data to 1-hour resolution
+ses_data_1h = ses_data[required_cols].resample("60min").mean()
+ses_data_1h = ses_data_1h.dropna(subset=required_cols)
 
-L = np.tile(L_day, n_days)
-G_PV = np.tile(G_PV_day, n_days)
-flex = np.tile(flex_day, n_days)
+# Use first 8 days
+start_timestamp = ses_data_1h.index.min()
+end_timestamp = start_timestamp + pd.Timedelta(days=8) - pd.Timedelta(hours=1)
 
-# Residual mall electrical demand before CHP/BHP gen/consumption
-# P_residual = L - PV
-flex_target_mall = L - G_PV
-n_steps = len(flex_target_mall)
+ses_data_1h = ses_data_1h.loc[start_timestamp:end_timestamp]
+
+# Simulation time range
+start = ses_data_1h.index.min().strftime("%Y-%m-%d %H:%M:%S")
+end = ses_data_1h.index.max().strftime("%Y-%m-%d %H:%M:%S")
+
+# Mall residual electrical demand before CHP/BHP operation
+# Positive value = mall imports from grid before CHP/BHP
+# Negative value = PV surplus before CHP/BHP
+
+p_el_sc_kw = ses_data_1h["P el sc [kW]"].astype(float).to_numpy()
+p_pv_kw = ses_data_1h["P pv [kW]"].astype(float).to_numpy()
+
+residual_mall_load_kw = p_el_sc_kw - p_pv_kw
+
+n_steps = len(residual_mall_load_kw)
+
+# Baseline: no external flex request
 baseline_flex_target_kw = np.zeros(n_steps)
 
-project_root = Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials_extended"] else Path.cwd()
-data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
-time_series_data = pd.read_excel(data_file)
+# Heat-demand input data
+time_series_data = pd.read_excel(heat_data_file)
+
+# Make heat-demand dataframe same length as 1h data
+if len(time_series_data) < n_steps:
+    repeat_factor = int(np.ceil(n_steps / len(time_series_data)))
+    time_series_data = pd.concat(
+        [time_series_data] * repeat_factor,
+        ignore_index=True,
+    )
+
+time_series_data = time_series_data.iloc[:n_steps].copy()
+
+dur = pd.date_range(start=start, periods=n_steps, freq=frequency, tz="utc",)
+time_series_data.index = dur
 
 time_series_data["flex_demand_kw"] = baseline_flex_target_kw
 time_series_data["t_sink_k"] = 350
 time_series_data["cycle"] = 1
 
-dur = pd.date_range(start=start, end=end, freq=frequency, tz="utc")
-time_series_data.index = dur
+print("\n SES mall data at 1-hour resolution")
+print(f"Start: {start}")
+print(f"End: {end}")
+print(f"Number of timesteps: {n_steps}")
+print(f"P_el_sc min/max: {p_el_sc_kw.min():.3f} / {p_el_sc_kw.max():.3f} kW")
+print(f"P_pv min/max: {p_pv_kw.min():.3f} / {p_pv_kw.max():.3f} kW")
+print(f"Residual mall load min/max: {residual_mall_load_kw.min():.3f} / {residual_mall_load_kw.max():.3f} kW")
+
+assert len(time_series_data) == n_steps
+assert len(baseline_flex_target_kw) == n_steps
+assert len(residual_mall_load_kw) == n_steps
 
 
 # 2. pprosumer model 
@@ -206,7 +247,7 @@ def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
 
 
 # 3. pprosumer run with controller-based bounds
-def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, flex_target_mall,
+def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, residual_mall_load_kw,
                               start, end, time_resolution, frequency, collect_bounds=False,
                               allow_export=False, verbose=False):
     
@@ -219,23 +260,24 @@ def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, flex_target
     res_bhp, res_chp, res_storage, res_heat_demand = [prosumer.time_series.data_source.iloc[i].df
                                                       for i in range(2, 6)]
 
-    flex_target_mall_series = pd.Series(np.asarray(flex_target_mall), index=res_chp.index, name="flex_target_mall")
+    residual_mall_series = pd.Series(np.asarray(residual_mall_load_kw), index=res_chp.index, name="residual_mall_load_kw",)
 
     p_device_kw = res_chp["p_el_out_kw"] - res_bhp["p_el_floor"]
-    p_grid_kw = flex_target_mall_series - p_device_kw
+    p_grid_kw = residual_mall_series - p_device_kw
 
-    res_df = pd.DataFrame({"flex_target_mall_kw": flex_target_mall_series,
-                           "chp_p_el_kw": res_chp["p_el_out_kw"],
-                           "bhp_p_el_kw": res_bhp["p_el_floor"],
-                           "p_device_kw": p_device_kw,
-                           "p_grid_kw": p_grid_kw,
-                           "chp_q_th_kw": res_chp["p_th_out_kw"],
-                           "bhp_q_th_kw": res_bhp["q_floor"],
-                           "q_delivered_storage_kw": res_storage["q_delivered_kw"],
-                           "q_received_demand_kw": res_heat_demand["q_received_kw"],
-                           "soc_percent": res_storage["soc"] * 100,
-                           "flex_target_kw": flex_target_kw
-                           }, index=res_chp.index)
+    res_df = pd.DataFrame({
+        "residual_mall_load_kw": residual_mall_series,
+        "chp_p_el_kw": res_chp["p_el_out_kw"],
+        "bhp_p_el_kw": res_bhp["p_el_floor"],
+        "p_device_kw": p_device_kw,
+        "p_grid_kw": p_grid_kw,
+        "chp_q_th_kw": res_chp["p_th_out_kw"],
+        "bhp_q_th_kw": res_bhp["q_floor"],
+        "q_delivered_storage_kw": res_storage["q_delivered_kw"],
+        "q_received_demand_kw": res_heat_demand["q_received_kw"],
+        "soc_percent": res_storage["soc"] * 100,
+        "flex_target_kw": flex_target_kw
+    }, index=res_chp.index)
     
     if not collect_bounds:
         return res_df, None
@@ -256,7 +298,7 @@ def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, flex_target
     # P_grid = P_residual_mall - P_device
     # max support means maximum P_device -> minimum grid consumption
     # max absorption means minimum P_device -> maximum grid consumption
-    residual_kw = res_df["flex_target_mall_kw"]
+    residual_kw = res_df["residual_mall_load_kw"]
     # flex envelope kw
     bounds_df["p_mall_base_kw"] = res_df["p_grid_kw"]
     bounds_df["p_mall_min_kw"] = (residual_kw - bounds_df["p_device_max_support_kw"])
@@ -490,8 +532,9 @@ def plot_results(v_before, v_after, bounds_df, selected_time, p_min_mw, p_base_m
 def main():
 
     # 1. pandaprosumer baseline and flexibility bounds
-    res_base, bounds_df = run_mall_case_with_bounds(time_series_data_base=time_series_data, flex_target_kw=baseline_flex_target_kw, flex_target_mall=flex_target_mall,
-                                                    start=start, end=end, time_resolution=time_resolution, frequency=frequency,
+    res_base, bounds_df = run_mall_case_with_bounds(time_series_data_base=time_series_data, flex_target_kw=baseline_flex_target_kw,
+                                                    residual_mall_load_kw=residual_mall_load_kw, start=start, end=end,
+                                                    time_resolution=time_resolution, frequency=frequency,
                                                     collect_bounds=True, allow_export=True, verbose=False)
 
     # Use only downward flexibility
@@ -614,6 +657,13 @@ def main():
 
         v_after = net.res_bus.vm_pu.copy()
         has_violation_after, violations_after = check_grid_violations(net)
+        print("\nNetwork violations after OPF:")
+        print(violations_after)
+
+        if has_violation_after:
+            print("OPF reduced the violation but some violations remain")
+        else:
+            print("All cvoltage/loading violations resolved after OPF.")
 
         selected_case = {
             "net": net,
@@ -666,7 +716,7 @@ def main():
     if p_mall_min_mw < 0:
         print(f"Export allowed: mall can export up to {-p_mall_min_mw * 1000.0:.3f} kW")
     else:
-        print("Export not available")
+        print("Export not available at this timestep.")
 
     print("\nActivated flexibility")
     print(f"Load-sign convention    = {p_mall_opf_mw - p_mall_base_mw:.6f} MW")
@@ -674,7 +724,7 @@ def main():
 
     # 6. Send OPF setpoint back to pprosumer
     p_grid_setpoint_kw = p_mall_opf_mw * 1000.0
-    residual_load_selected_kw = flex_target_mall[selected_position]
+    residual_load_selected_kw = residual_mall_load_kw[selected_position]
 
     # P_grid = P_residual_mall - P_device
     # P_device = P_CHP - P_BHP
@@ -685,14 +735,14 @@ def main():
 
     print("\nSending OPF setpoint back to PandaProsumer")
     print(f"Selected time: {selected_time}")
-    print(f"Residual mall load L - PV = {residual_load_selected_kw:.3f} kW")
+    print(f"Residual mall load P_el_sc - P_pv = {residual_load_selected_kw:.3f} kW")
     print(f"OPF grid power setpoint   = {p_grid_setpoint_kw:.3f} kW")
     print(f"Device target P_CHP-P_BHP = {p_device_setpoint_kw:.3f} kW")
 
     res_updated, _ = run_mall_case_with_bounds(
         time_series_data_base=time_series_data,
         flex_target_kw=updated_flex_target_kw,
-        flex_target_mall=flex_target_mall,
+        residual_mall_load_kw=residual_mall_load_kw,
         start=start,
         end=end,
         time_resolution=time_resolution,
