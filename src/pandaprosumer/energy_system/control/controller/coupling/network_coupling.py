@@ -20,6 +20,10 @@ class NetworkCouplingControl(BasicProsumerController):
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
         super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
+
+        self.level = level
+        self.order = order
+
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
         self.treturn_required_k = 't_from_k'
