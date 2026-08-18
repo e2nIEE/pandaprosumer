@@ -30,6 +30,7 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, level, net_ho
 
     consumer_elmt_index = get_element_index(net_hot, 'heat_consumer', 'heat_consumer_demand_coupling')
 
+    # Controller that reads the temperatures and deands from the net
     nc_read_dmd_index = create_controlled_network_coupling(net_hot,
                                                            consumer_elmt_index,
                                                            element_name='heat_consumer',
@@ -37,16 +38,17 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, level, net_ho
                                                                            'mdot_from_kg_per_s'],
                                                            temp_fluid_map_output_idx=0,
                                                            mdot_fluid_map_output_idx=2,
-                                                           level=3,
-                                                           order=2)
-
+                                                           level=2,
+                                                           order=0)
+    # Controller that writes the demand (q_kw and mdot_kg_per_s) to the net
     nc_write_dmd_index = create_controlled_network_coupling(net_hot,
                                                             consumer_elmt_index,
                                                             element_name='heat_consumer',
                                                             input_columns=['qext_w', 'controlled_mdot_kg_per_s'],
                                                             level=1,
-                                                            order=2)
+                                                            order=0)
 
+    #Mapping of t_feed and mdot from the read_dmd to the heat_demand
     FluidMixEnergySystemMapping(container=net_hot,
                                 initiator_id=nc_read_dmd_index,
                                 responder_net=prosumer,
@@ -54,6 +56,17 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, level, net_ho
                                 order=0,
                                 no_chain=False)
 
+    #Mapping from t_return from the read demdn controller to the heat_demand
+    GenericEnergySystemMapping(container=net_hot,
+                               initiator_id=nc_read_dmd_index,
+                               initiator_column='t_to_k',
+                               responder_net=prosumer,
+                               responder_id=hd_controller_index,
+                               responder_column='t_return_demand_c',
+                               order=1,
+                               conversion_function=lambda t_k: t_k - 273.15)  # K -> °C, siehe Hinweis unten
+
+    #Mapping of q_demand_kw from the heat_demand to the write dmd conteoller
     GenericEnergySystemMapping(container=prosumer,
                                initiator_id=cp_controller_index,  # Direkt vom ConstProfile
                                initiator_column='q_demand_kw_cp',  # Die ausgelesene kW-Spalte
@@ -63,14 +76,6 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, level, net_ho
                                order=0,
                                conversion_function=lambda q: q * 1000)  # kW in W umrechnen
 
-    GenericEnergySystemMapping(container=net_hot,
-                               initiator_id=nc_read_dmd_index,
-                               initiator_column='t_to_k',
-                               responder_net=prosumer,
-                               responder_id=hd_controller_index,
-                               responder_column='t_return_demand_c',
-                               order=1,
-                               conversion_function=lambda t_k: t_k - 273.15)  # K -> °C, siehe Hinweis unten
 
     # GenericEnergySystemMapping(container=prosumer,
     #                            initiator_id=hd_controller_index,
@@ -103,17 +108,18 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
                                                       level=level, order=0, **hp_params)
     gb_controller_index = create_controlled_gas_boiler(prosumer, period=period, max_q_kw=2000, name='gb_controller',
                                                        level=level, order=1)
-    # chiller_controller_index = create_controlled_chiller(prosumer, period=period, name='chiller_controller', level=level, order=2)
 
-    # GenericMapping(container=prosumer,
-    #                initiator_id=cp_controller_index,
-    #                initiator_column="t_evap_in_c_cp",
-    #                responder_id=hp_controller_index,
-    #                responder_column="t_evap_in_c",
-    #                order=0)
+    # This is just a workaround as long as the evaporater side is not connected to the cold net
+    GenericMapping(container=prosumer,
+                   initiator_id=cp_controller_index,
+                   initiator_column="t_evap_in_c_cp",
+                   responder_id=hp_controller_index,
+                   responder_column="t_evap_in_c",
+                   order=0)
 
     pump_elmt_index = get_element_index(net_hot, 'circ_pump_pressure', 'pump_hp_coupling')
 
+    # Controller that writes the flow temperature and massflow of the heat generator to the net
     nc_write_pump_index = create_controlled_network_coupling(net_hot,
                             pump_elmt_index,
                             element_name = 'circ_pump_pressure',
@@ -121,14 +127,14 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
                             mdot_fluid_map_input_col = ['mdot_flow_kg_per_s'],
                             level = 1,
                             order = 0)
-
+     # Mapping of teperatuer and massflow from the heat pump to the writ pump controller
     FluidMixEnergySystemMapping(container=prosumer,
                                 initiator_id=hp_controller_index,
                                 responder_net=net_hot,
                                 responder_id=nc_write_pump_index,
                                 order=0,
                                 no_chain=False)
-
+    # Mapping of temperatuer and massflow from the gas boiler to the writ pump controller
     FluidMixEnergySystemMapping(container=prosumer,
                                 initiator_id=gb_controller_index,
                                 responder_net=net_hot,
@@ -136,45 +142,47 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
                                 order=0,
                                 no_chain=False)
 
-    pump_cold_elmt_index = get_element_index(net_cold, 'circ_pump_pressure', 'pump_hp_coupling')
+    ##### ----------- Cooling side -------------------------------------
 
-    nc_read_pump_cold_index = create_controlled_network_coupling(
-        net_cold,
-        pump_cold_elmt_index,
-        element_name='circ_pump_pressure',
-        result_columns=['t_from_k', 't_to_k', 'mdot_from_kg_per_s'],
-        temp_fluid_map_output_idx=0,  # t_from_k -> Temperatur, die zur Pumpe zurückfließt
-        mdot_fluid_map_output_idx=2,
-        level=3,
-        order=1,
-        name='nc_read_pump_cold'
-    )
-
-    FluidMixEnergySystemMapping(container=net_cold,
-                                initiator_id=nc_read_pump_cold_index,
-                                responder_net=prosumer,
-                                responder_id=hp_controller_index,
-                                order=0,
-                                no_chain=True)  # analog zur Verbraucher-Kopplung
-
-    nc_write_pump_cold_index = create_controlled_network_coupling(
-        net_cold,
-        pump_cold_elmt_index,
-        element_name='circ_pump_pressure',
-        input_columns=['t_flow_k'],
-        level=1,
-        order=0,
-        name='nc_write_pump_cold'
-    )
-
-    GenericEnergySystemMapping(container=prosumer,
-                               initiator_id=hp_controller_index,
-                               initiator_column='t_evap_out_c',
-                               responder_net=net_cold,
-                               responder_id=nc_write_pump_cold_index,
-                               responder_column='t_flow_k',
-                               order=0,
-                               conversion_function=lambda t: t + 273.15)
+    # pump_cold_elmt_index = get_element_index(net_cold, 'circ_pump_pressure', 'pump_hp_coupling')
+    #
+    # nc_read_pump_cold_index = create_controlled_network_coupling(
+    #     net_cold,
+    #     pump_cold_elmt_index,
+    #     element_name='circ_pump_pressure',
+    #     result_columns=['t_from_k', 't_to_k', 'mdot_from_kg_per_s'],
+    #     temp_fluid_map_output_idx=0,  # t_from_k -> Temperatur, die zur Pumpe zurückfließt
+    #     mdot_fluid_map_output_idx=2,
+    #     level=3,
+    #     order=1,
+    #     name='nc_read_pump_cold'
+    # )
+    #
+    # FluidMixEnergySystemMapping(container=net_cold,
+    #                             initiator_id=nc_read_pump_cold_index,
+    #                             responder_net=prosumer,
+    #                             responder_id=hp_controller_index,
+    #                             order=0,
+    #                             no_chain=True)  # analog zur Verbraucher-Kopplung
+    #
+    # nc_write_pump_cold_index = create_controlled_network_coupling(
+    #     net_cold,
+    #     pump_cold_elmt_index,
+    #     element_name='circ_pump_pressure',
+    #     input_columns=['t_flow_k'],
+    #     level=1,
+    #     order=0,
+    #     name='nc_write_pump_cold'
+    # )
+    #
+    # GenericEnergySystemMapping(container=prosumer,
+    #                            initiator_id=hp_controller_index,
+    #                            initiator_column='t_evap_out_c',
+    #                            responder_net=net_cold,
+    #                            responder_id=nc_write_pump_cold_index,
+    #                            responder_column='t_flow_k',
+    #                            order=0,
+    #                            conversion_function=lambda t: t + 273.15)
 
     return prosumer
 

@@ -74,9 +74,9 @@ ow_net_hot = OutputWriter(net_hot, ow_time_steps, log_variables=[
     ('res_pipe', 't_to_k')
 ])
 
-period = 0
+period_index = 0
 run_time_series_system(energy_system,
-                       period_index=period, continue_on_divergence=False, verbose=True,
+                       period_index=period_index, continue_on_divergence=False, verbose=True,
                        transient=True, dt=time_resolution_s, mode="bidirectional")
 
 
