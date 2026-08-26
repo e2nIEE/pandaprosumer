@@ -297,26 +297,27 @@ class ElectricalOptimizationController(BasicProsumerController):
 
         # Energiekosten-Term
         # Gaskosten BHKW: Gasverbrauch = p_el / eta_el  →  Kosten = gas_price / eta_el * p_el
-        chp_gas_cost = sum(
-            (gas_price_eur_per_mwh / 0.36) * model.chp[i].p_el  # eta_chp hardcoded 0.36
-            for i in model.chp_index
-        )
-        grid_import_cost = electricity_price_eur_per_mwh * model.p_grid_import_kw
-
-        weight_energy_cost = 5
-        if below_limit:
-            battery_charge_credit = electricity_price_eur_per_mwh * battery_charge
-            energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost - battery_charge_credit)
-            preference_cost = preference_cost - 2 * battery_charge
-        else:
-            energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost)
+        # chp_gas_cost = sum(
+        #     (gas_price_eur_per_mwh / 0.36) * model.chp[i].p_el  # eta_chp hardcoded 0.36
+        #     for i in model.chp_index
+        # )
+        # grid_import_cost = electricity_price_eur_per_mwh * model.p_grid_import_kw
+        #
+        # weight_energy_cost = 5
+        # if below_limit:
+        #     battery_charge_credit = electricity_price_eur_per_mwh * battery_charge
+        #     energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost - battery_charge_credit)
+        #     preference_cost = preference_cost - 2 * battery_charge
+        # else:
+        #     energy_cost = weight_energy_cost * (grid_import_cost + chp_gas_cost)
 
 
         # Objective function
         model.objective = pyo.Objective(expr=(self.weight_target * model.target_error
                                               + self.weight_contract * model.contract_violation
                                               + preference_cost
-                                              + energy_cost), sense=pyo.minimize)
+                                              # + energy_cost
+                                              ), sense=pyo.minimize)
         # Solve
         solver = pyo.SolverFactory(self.solver_name)
         if not solver.available(False):
