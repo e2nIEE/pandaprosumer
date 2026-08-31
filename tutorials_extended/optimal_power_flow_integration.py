@@ -1,5 +1,6 @@
 from pathlib import Path
-
+import contextlib
+import io
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -11,13 +12,20 @@ from pandapower.timeseries.data_sources.frame_data import DFData
 from pandaprosumer.create import create_empty_prosumer_container, create_period
 from pandaprosumer.create_controlled import (create_controlled_const_profile, create_controlled_heat_demand,
                                              create_controlled_booster_heat_pump, create_controlled_ice_chp,
-                                             create_controlled_heat_storage, create_controlled_optimtization)
+                                             create_controlled_heat_storage, create_controlled_battery_storage)
 from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.run_time_series import run_timeseries
 
+import pyomo.environ as pyo
+from pyomo.opt import SolverStatus, TerminationCondition
+from pandaprosumer.controller.optimization import OptimizationController
+from pandaprosumer.controller.data_model.optimization import OptimizationControllerData
+from pandaprosumer.create import create_optimization
+from pandaprosumer.controller.models.battery_storage import BatteryStorageController
 
-# 1. Time settings and mall residual electrical load from SES Excel data
-# SC_el_demand - SC_Pv_gen
+# ============================================================
+# 1. Data preparation
+# ============================================================
 frequency = "60min"
 time_resolution = 3600
 
@@ -27,11 +35,9 @@ project_root = (Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials
 ses_data_file = project_root / "tutorials_extended" / "data" / "ses_data.xlsx"
 heat_data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
 
-# Read SES electrical data
 ses_data = pd.read_excel(ses_data_file)
 ses_data.columns = ses_data.columns.str.strip()
 ses_data = ses_data.set_index("Timestamp").sort_index()
-# sc demand and pv gen cols
 required_cols = ["P el sc [kW]", "P pv [kW]"]
 
 for col in required_cols:
@@ -39,56 +45,29 @@ for col in required_cols:
     ses_data[col] = pd.to_numeric(ses_data[col], errors="coerce")
 
 ses_data = ses_data.dropna(subset=required_cols)
+ses_data_1h = ses_data[required_cols].resample("60min").mean().dropna()
 
-# Convert SES data to 1-hour resolution
-ses_data_1h = ses_data[required_cols].resample("60min").mean()
-ses_data_1h = ses_data_1h.dropna(subset=required_cols)
-
-# Use first 8 days
 start_timestamp = ses_data_1h.index.min()
 end_timestamp = start_timestamp + pd.Timedelta(days=8) - pd.Timedelta(hours=1)
-
 ses_data_1h = ses_data_1h.loc[start_timestamp:end_timestamp]
 
-# Simulation time range
 start = ses_data_1h.index.min().strftime("%Y-%m-%d %H:%M:%S")
 end = ses_data_1h.index.max().strftime("%Y-%m-%d %H:%M:%S")
 
-# Mall residual electrical demand before CHP/BHP operation
-# Positive value = mall imports from grid before CHP/BHP
-# Negative value = PV surplus before CHP/BHP
-
 p_el_sc_kw = ses_data_1h["P el sc [kW]"].astype(float).to_numpy()
 p_pv_kw = ses_data_1h["P pv [kW]"].astype(float).to_numpy()
-
-# Synthetic high-PV scenario for overvoltage test
-# PV_SCALE = 1.0 → import violation tests
-# PV_SCALE > 1.0 (e.g. 12.0) → overvoltage / export absorption test
-PV_SCALE = 1.0
-p_pv_used_kw = p_pv_kw * PV_SCALE
-residual_mall_load_kw = p_el_sc_kw - p_pv_used_kw
+residual_mall_load_kw = p_el_sc_kw - p_pv_kw
 
 n_steps = len(residual_mall_load_kw)
-
-# Baseline: no external flex request
 baseline_flex_target_kw = np.zeros(n_steps)
 
-# Heat-demand input data
 time_series_data = pd.read_excel(heat_data_file)
-
-# Make heat-demand dataframe same length as 1h data
 if len(time_series_data) < n_steps:
     repeat_factor = int(np.ceil(n_steps / len(time_series_data)))
-    time_series_data = pd.concat(
-        [time_series_data] * repeat_factor,
-        ignore_index=True,
-    )
-
+    time_series_data = pd.concat([time_series_data] * repeat_factor, ignore_index=True)
 time_series_data = time_series_data.iloc[:n_steps].copy()
-
-dur = pd.date_range(start=start, periods=n_steps, freq=frequency, tz="utc",)
+dur = pd.date_range(start=start, periods=n_steps, freq=frequency, tz="utc")
 time_series_data.index = dur
-
 time_series_data["flex_demand_kw"] = baseline_flex_target_kw
 time_series_data["t_sink_k"] = 350
 time_series_data["cycle"] = 1
@@ -105,11 +84,336 @@ assert len(time_series_data) == n_steps
 assert len(baseline_flex_target_kw) == n_steps
 assert len(residual_mall_load_kw) == n_steps
 
+# ============================================================
+# 2. Monkeypatch battery result column order (upstream bug fix)
+# ============================================================
+def _battery_finalize_results_fixed(self, prosumer):
+    e_capacity_kwh = float(self._get_element_param(prosumer, "e_capacity_kwh"))
+    e_stored_kwh = self._soc * e_capacity_kwh
 
-# 2. pprosumer model 
-def build_mall_prosumer(time_series_data_base, flex_target_kw, start, 
+    result = np.array([
+        pd.Series(self._soc),
+        pd.Series(self.p_storage_kw),
+        pd.Series(self.p_charge_kw),
+        pd.Series(self.p_discharge_kw),
+        pd.Series(self.p_charge_available_kw),
+        pd.Series(self.p_discharge_available_kw),
+        pd.Series(e_stored_kwh),
+        pd.Series(self.p_request_unmet_kw),
+    ])
+
+    self.last_result = {
+        "soc": self._soc,
+        "p_storage_kw": self.p_storage_kw,
+        "p_charge_kw": self.p_charge_kw,
+        "p_discharge_kw": self.p_discharge_kw,
+        "p_charge_available_kw": self.p_charge_available_kw,
+        "p_discharge_available_kw": self.p_discharge_available_kw,
+        "e_stored_kwh": e_stored_kwh,
+        "p_request_unmet_kw": self.p_request_unmet_kw,
+    }
+    self.finalize(prosumer, result.T)
+
+BatteryStorageController._finalize_results = _battery_finalize_results_fixed
+
+# ============================================================
+# 3. Custom OptimizationController with battery support
+# ============================================================
+class OptimizationControllerWithBattery(OptimizationController):
+    def _add_battery(self, prosumer, block, index):
+        ctrl = prosumer.controller.loc[index]["object"]
+        e_capacity_kwh = float(ctrl.element_instance["e_capacity_kwh"].iloc[0])
+        p_charge_max_kw = float(ctrl.element_instance["p_charge_max_kw"].iloc[0])
+        p_discharge_max_kw = float(ctrl.element_instance["p_discharge_max_kw"].iloc[0])
+        eta_charge = float(ctrl.element_instance["eta_charge"].iloc[0])
+        eta_discharge = float(ctrl.element_instance["eta_discharge"].iloc[0])
+        soc_min = float(ctrl.element_instance["soc_min"].iloc[0])
+        soc_max = float(ctrl.element_instance["soc_max"].iloc[0])
+        self_discharge_per_hour = float(ctrl.element_instance["self_discharge_per_hour"].iloc[0])
+
+        resol = self.resol
+        dt_h = resol / 3600.0
+        ts_prev = self.time - pd.Timedelta(seconds=resol)
+
+        if ts_prev in prosumer.controller_results:
+            raw_soc_prev = prosumer.controller_results[ts_prev][index]["soc"]
+            soc_prev = self.to_scalar(raw_soc_prev)
+        else:
+            soc_prev = float(getattr(ctrl, "_soc", 0.5))
+
+        soc_prev_after_loss = min(max(soc_prev * max(0.0, 1.0 - self_discharge_per_hour * dt_h), soc_min), soc_max)
+
+        block.soc_prev = pyo.Param(initialize=soc_prev_after_loss)
+        block.e_capacity_kwh = pyo.Param(initialize=e_capacity_kwh)
+        block.resol = pyo.Param(initialize=resol)
+
+        block.p_charge = pyo.Var(domain=pyo.NonNegativeReals, bounds=(0, p_charge_max_kw))
+        block.p_discharge = pyo.Var(domain=pyo.NonNegativeReals, bounds=(0, p_discharge_max_kw))
+        block.soc = pyo.Var(bounds=(soc_min, soc_max))
+        block.y_charge = pyo.Var(domain=pyo.Binary)
+        block.y_discharge = pyo.Var(domain=pyo.Binary)
+
+        block.charge_discharge_excl = pyo.Constraint(expr=block.y_charge + block.y_discharge <= 1)
+        block.charge_on = pyo.Constraint(expr=block.p_charge <= p_charge_max_kw * block.y_charge)
+        block.discharge_on = pyo.Constraint(expr=block.p_discharge <= p_discharge_max_kw * block.y_discharge)
+
+        block.soc_balance = pyo.Constraint(
+            expr=block.soc == block.soc_prev
+            + eta_charge * block.p_charge * block.resol / 3600 / block.e_capacity_kwh
+            - block.p_discharge * block.resol / 3600 / (eta_discharge * block.e_capacity_kwh)
+        )
+
+        block.p_el = pyo.Expression(expr=block.p_discharge - block.p_charge)
+
+    def model_optimization(self, prosumer, heat_demand, flex_demand, objective_mode="track_flex", update_internal_state=True):
+        def build_base_model():
+            m = pyo.ConcreteModel()
+            m.heat_demand = pyo.Param(initialize=heat_demand)
+            m.flex_demand = pyo.Param(initialize=flex_demand)
+
+            bhp_idx, chp_idx, storage_idx, battery_idx = [], [], [], []
+            for idx, row in prosumer.controller.iterrows():
+                if row["level"] != 2:
+                    continue
+                cname = row["object"].__class__.__name__
+                if cname == "BoosterHeatPumpController":
+                    bhp_idx.append(idx)
+                elif cname == "IceChpController":
+                    chp_idx.append(idx)
+                elif cname == "HeatStorageController":
+                    storage_idx.append(idx)
+                elif cname == "BatteryStorageController":
+                    battery_idx.append(idx)
+
+            m.bhp_index = pyo.Set(initialize=bhp_idx)
+            m.chp_index = pyo.Set(initialize=chp_idx)
+            m.storage_index = pyo.Set(initialize=storage_idx)
+            m.battery_index = pyo.Set(initialize=battery_idx)
+
+            m.bhp = pyo.Block(m.bhp_index)
+            m.chp = pyo.Block(m.chp_index)
+            m.storage = pyo.Block(m.storage_index)
+            m.battery = pyo.Block(m.battery_index)
+
+            for idx in m.bhp_index:
+                self._add_booster_heatpump(prosumer, m.bhp[idx], idx)
+            for idx in m.chp_index:
+                self._add_chp(prosumer, m.chp[idx], idx)
+            for idx in m.storage_index:
+                self._add_storage(prosumer, m.storage[idx], idx)
+            for idx in m.battery_index:
+                self._add_battery(prosumer, m.battery[idx], idx)
+
+            heat_terms = []
+            for idx in m.bhp:
+                heat_terms.append(m.bhp[idx].q_th)
+            for idx in m.chp:
+                heat_terms.append(m.chp[idx].q_th)
+            for idx in m.storage:
+                heat_terms.append(m.storage[idx].q_th_discharge)
+                heat_terms.append(-m.storage[idx].q_th_charge)
+            m.heat_bal = pyo.Constraint(expr=sum(heat_terms) == m.heat_demand)
+
+            el_terms = []
+            for idx in m.bhp:
+                el_terms.append(-m.bhp[idx].p_el)
+            for idx in m.chp:
+                el_terms.append(m.chp[idx].p_el)
+            for idx in m.battery:
+                el_terms.append(m.battery[idx].p_el)
+
+            m.p_device = pyo.Expression(expr=sum(el_terms))
+            m.el_bal = pyo.Expression(expr=sum(el_terms) - m.flex_demand)
+            return m
+
+        def solve_model(model, stage):
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    res = solver.solve(model, tee=False)
+            except Exception as exc:
+                print(f"\nOptimization error in {stage}: {exc}")
+                return None, False
+            feasible = (res.solver.status == SolverStatus.ok and res.solver.termination_condition
+                        in (TerminationCondition.optimal, TerminationCondition.feasible))
+            if not feasible:
+                print(f"\nOptimization not feasible in {stage}. Status: {res.solver.status}, "
+                      f"Termination: {res.solver.termination_condition}")
+            return res, feasible
+
+        solver = pyo.SolverFactory('appsi_highs')
+        solver.options["log_to_console"] = False
+        EPS = 1e-4
+        eps_soc = 0.0001
+        EPS_CHP_OFF = 0.5
+
+        if not hasattr(self, '_chp_downtime'):
+            self._chp_downtime = {}
+
+        m = build_base_model()
+
+        for idx in m.chp_index:
+            if self._chp_downtime.get(idx, 0) > 0:
+                m.add_component(f"chp_min_downtime_{idx}", pyo.Constraint(expr=m.chp[idx].p_el == 0))
+
+        # Stage 1: track flex / min or max grid consumption
+        if objective_mode == "track_flex":
+            m.t = pyo.Var(domain=pyo.NonNegativeReals)
+            m.abs_pos = pyo.Constraint(expr=m.el_bal <= m.t)
+            m.abs_neg = pyo.Constraint(expr=-m.el_bal <= m.t)
+            m.obj = pyo.Objective(expr=m.t, sense=pyo.minimize)
+        elif objective_mode == "min_grid_consumption":
+            m.obj = pyo.Objective(expr=-m.p_device, sense=pyo.minimize)
+        elif objective_mode == "max_grid_consumption":
+            m.obj = pyo.Objective(expr=m.p_device, sense=pyo.minimize)
+        else:
+            raise ValueError("Unknown objective_mode")
+
+        res1, feasible1 = solve_model(m, f"stage 1 tracking objective {objective_mode}")
+        if not feasible1:
+            return 0.0, 0.0, 0.0, False
+
+        if objective_mode == "track_flex":
+            primary_opt = pyo.value(m.t)
+            m.primary_lock = pyo.Constraint(expr=m.t <= primary_opt + EPS)
+        else:
+            primary_opt = pyo.value(m.p_device)
+            if objective_mode == "min_grid_consumption":
+                m.primary_lock = pyo.Constraint(expr=m.p_device >= primary_opt - EPS)
+            else:
+                m.primary_lock = pyo.Constraint(expr=m.p_device <= primary_opt + EPS)
+
+        m.obj.deactivate()
+
+        # Stage 2: keep heat storage AND battery SOC near their target bands
+        SOC_TARGET, SOC_TOL = 0.5, 0.1
+
+        m.soc_dev = pyo.Var(m.storage_index, domain=pyo.NonNegativeReals)
+        m.soc_dev_pos = pyo.Constraint(m.storage_index, rule=lambda m, idx: m.soc_dev[idx] >= m.storage[idx].soc - (SOC_TARGET + SOC_TOL))
+        m.soc_dev_neg = pyo.Constraint(m.storage_index, rule=lambda m, idx: m.soc_dev[idx] >= (SOC_TARGET - SOC_TOL) - m.storage[idx].soc)
+
+        m.battery_soc_dev = pyo.Var(m.battery_index, domain=pyo.NonNegativeReals)
+        m.battery_soc_dev_pos = pyo.Constraint(m.battery_index, rule=lambda m, idx: m.battery_soc_dev[idx] >= m.battery[idx].soc - (SOC_TARGET + SOC_TOL))
+        m.battery_soc_dev_neg = pyo.Constraint(m.battery_index, rule=lambda m, idx: m.battery_soc_dev[idx] >= (SOC_TARGET - SOC_TOL) - m.battery[idx].soc)
+
+        m.obj2 = pyo.Objective(
+            expr=sum(m.soc_dev[idx] for idx in m.storage_index) + sum(m.battery_soc_dev[idx] for idx in m.battery_index),
+            sense=pyo.minimize,
+        )
+
+        res2, feasible2 = solve_model(m, "stage 2 SOC objective")
+        if not feasible2:
+            return 0.0, 0.0, 0.0, False
+        soc_dev_opt = (sum(pyo.value(m.soc_dev[idx]) for idx in m.storage_index)
+                       + sum(pyo.value(m.battery_soc_dev[idx]) for idx in m.battery_index))
+
+        m.soc_dev_lock = pyo.Constraint(
+            expr=sum(m.soc_dev[idx] for idx in m.storage_index) + sum(m.battery_soc_dev[idx] for idx in m.battery_index)
+            <= soc_dev_opt + eps_soc
+        )
+        m.obj2.deactivate()
+
+        # Stage 3: minimize CHP movement (battery deliberately excluded)
+        m.chp_dev = pyo.Var(m.chp_index, domain=pyo.NonNegativeReals)
+        m.chp_dev_pos = pyo.Constraint(m.chp_index, rule=lambda m, idx: m.chp_dev[idx] >= m.chp[idx].p_el - m.chp[idx].p_el_prev)
+        m.chp_dev_neg = pyo.Constraint(m.chp_index, rule=lambda m, idx: m.chp_dev[idx] >= -(m.chp[idx].p_el - m.chp[idx].p_el_prev))
+        m.obj3 = pyo.Objective(expr=sum(m.chp_dev[idx] for idx in m.chp_index), sense=pyo.minimize)
+
+        res3, feasible3 = solve_model(m, "stage 3 CHP movement objective")
+        if not feasible3:
+            return 0.0, 0.0, 0.0, False
+
+        p_bhp = pyo.value(next(m.bhp[idx].p_el for idx in m.bhp_index)) if len(m.bhp_index) else 0.0
+        p_chp = pyo.value(next(m.chp[idx].p_el for idx in m.chp_index)) if len(m.chp_index) else 0.0
+        p_battery = pyo.value(next(m.battery[idx].p_el for idx in m.battery_index)) if len(m.battery_index) else 0.0
+
+        p_device = p_chp - p_bhp + p_battery
+
+        self._last_optimization_result = {
+            "objective_mode": objective_mode, "p_bhp_kw": p_bhp, "p_chp_kw": p_chp,
+            "p_battery_kw": p_battery, "p_device_kw": p_device,
+            "flex_demand_kw": flex_demand, "heat_demand_kw": heat_demand,
+        }
+
+        if update_internal_state:
+            for idx in m.chp_index:
+                p_el_now = pyo.value(m.chp[idx].p_el)
+                p_el_prev = pyo.value(m.chp[idx].p_el_prev)
+                if self._chp_downtime.get(idx, 0) > 0:
+                    self._chp_downtime[idx] = max(0, self._chp_downtime[idx] - 1)
+                elif p_el_now < EPS_CHP_OFF and p_el_prev >= EPS_CHP_OFF:
+                    self._chp_downtime[idx] = 4
+
+        return p_bhp, p_chp, p_battery, True
+
+    def calculate_flexibility_bounds(self, prosumer, heat_demand, flex_demand=0.0):
+        p_bhp_base, p_chp_base, p_batt_base, feasible_base = self.model_optimization(
+            prosumer, heat_demand, flex_demand, objective_mode="track_flex", update_internal_state=False)
+        p_bhp_support, p_chp_support, p_batt_support, feasible_support = self.model_optimization(
+            prosumer, heat_demand, 0.0, objective_mode="min_grid_consumption", update_internal_state=False)
+        p_bhp_absorb, p_chp_absorb, p_batt_absorb, feasible_absorb = self.model_optimization(
+            prosumer, heat_demand, 0.0, objective_mode="max_grid_consumption", update_internal_state=False)
+
+        feasible = feasible_base and feasible_support and feasible_absorb
+        if not feasible:
+            return {"feasible": False, "p_device_base_kw": np.nan,
+                    "p_device_max_support_kw": np.nan, "p_device_max_absorption_kw": np.nan}
+
+        return {
+            "feasible": True,
+            "p_device_base_kw": p_chp_base - p_bhp_base + p_batt_base,
+            "p_device_max_support_kw": p_chp_support - p_bhp_support + p_batt_support,
+            "p_device_max_absorption_kw": p_chp_absorb - p_bhp_absorb + p_batt_absorb,
+        }
+
+    def control_step(self, prosumer):
+        if not hasattr(prosumer, "controller_results"):
+            prosumer.controller_results = {}
+
+        q_demand_kw = self._q_demand_kw
+        p_flex_kw = self._p_flex_kw
+
+        if getattr(self, "collect_flex_bounds", False):
+            bounds = self.calculate_flexibility_bounds(prosumer, heat_demand=q_demand_kw, flex_demand=p_flex_kw)
+            if not hasattr(self, "_flex_bounds_log"):
+                self._flex_bounds_log = {}
+            self._flex_bounds_log[self.time] = bounds
+
+        p_el_bhp_in, p_el_chp_out, p_el_battery_out, feasible = self.model_optimization(
+            prosumer, heat_demand=q_demand_kw, flex_demand=p_flex_kw,
+            objective_mode="track_flex", update_internal_state=True)
+        print(f"[{self.time}] flex={p_flex_kw:8.2f} kW | q_dem={q_demand_kw:8.2f} kW | "
+              f"BHP={p_el_bhp_in:8.2f} kW | CHP={p_el_chp_out:8.2f} kW | Batt={p_el_battery_out:8.2f} kW | "
+              f"feasible={feasible}")
+
+        if feasible:
+            result = np.array([[p_el_bhp_in, p_el_chp_out, p_el_battery_out]])
+        else:
+            result = np.array([[np.nan, np.nan, np.nan]])
+
+        self.finalize(prosumer, result)
+        self.applied = True
+
+
+def create_controlled_optimization_with_battery(prosumer, index=None, in_service=True, name=None,
+                                                level=0, order=0, period=0, **kwargs):
+    optimization_index = create_optimization(prosumer, in_service, name, index, **kwargs)
+    optimization_controller_data = OptimizationControllerData(
+        element_name='optimization',
+        element_index=[optimization_index],
+        period_index=period,
+        result_columns=["p_el_bhp_in", "p_el_chp_out", "p_el_battery_out"],
+    )
+    controller = OptimizationControllerWithBattery(
+        prosumer, optimization_controller_data, order=order, level=level, name=name,
+    )
+    return controller.index
+
+# ============================================================
+# 4. Prosumer model builder
+# ============================================================
+def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
                         end, time_resolution, frequency, collect_bounds=False, tz="utc"):
-    
+
     prosumer = create_empty_prosumer_container(check_order=False)
 
     time_series_data_mall = time_series_data_base.copy()
@@ -119,7 +423,6 @@ def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
     time_series_data_mall.index = pd.date_range(start=start, end=end, freq=frequency, tz=tz)
 
     time_series_input = DFData(time_series_data_mall)
-
     period = create_period(prosumer, time_resolution, start, end, 'utc', 'default')
 
     input_params = ['mode', 't_source_k', 'q_demand_kw', 'cycle', 't_intake_k',
@@ -156,139 +459,175 @@ def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
     ice_chp_index = create_controlled_ice_chp(prosumer, size_kw, fuel, altitude_m, name, level=2, order=1)
 
     q_capacity_kwh = 50000
-
     heat_storage_index = create_controlled_heat_storage(prosumer, q_capacity_kwh, init_soc=0.0, level=2, order=2)
 
     heat_demand_index = create_controlled_heat_demand(prosumer, scaling=1.0, level=2, order=3)
 
-    optimization_index = create_controlled_optimtization(prosumer, level=1, order=1)
+    # Battery storage (level=2 so it is seen by the optimizer)
+    battery_index = create_controlled_battery_storage(
+        prosumer,
+        e_capacity_kwh=300,        # kWh
+        p_charge_max_kw=150,       # kW
+        p_discharge_max_kw=150,    # kW
+        eta_charge=0.95,
+        eta_discharge=0.95,
+        soc_min=0.1,
+        soc_max=0.9,
+        self_discharge_per_hour=0.001,
+        init_soc=0.5,
+        name="mall_battery",
+        level=2,
+        order=4,
+    )
 
+    optimization_index = create_controlled_optimization_with_battery(prosumer, level=1, order=1)
+
+    # Mappings
     GenericMapping(prosumer,
                    initiator_id=cp_index,
                    initiator_column=["t_source_cp_k", "mode_cp", "p_el_bhp_cp", "t_amb_k_cp", "t_sink_k_cp"],
                    responder_id=bhp_index,
-                   responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"],
-                   )
+                   responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"])
 
-    GenericMapping(
-        prosumer,
-        initiator_id=cp_index,
-        initiator_column=["cycle_cp", "t_intake_cp_k", "p_el_chp_cp"],
-        responder_id=ice_chp_index,
-        responder_column=["cycle", "t_intake_k", "p_requested_kw"],
-    )
+    GenericMapping(prosumer,
+                   initiator_id=cp_index,
+                   initiator_column=["cycle_cp", "t_intake_cp_k", "p_el_chp_cp"],
+                   responder_id=ice_chp_index,
+                   responder_column=["cycle", "t_intake_k", "p_requested_kw"])
 
     GenericMapping(prosumer,
                    initiator_id=cp_index,
                    initiator_column="q_demand_cp_kw",
                    responder_id=heat_demand_index,
-                   responder_column="q_demand_kw",
-                   )
+                   responder_column="q_demand_kw")
 
     GenericMapping(prosumer,
                    initiator_id=bhp_index,
                    initiator_column="q_floor",
                    responder_id=heat_storage_index,
-                   responder_column="q_received_kw",
-                   )
+                   responder_column="q_received_kw")
 
-    GenericMapping(
-        prosumer,
-        initiator_id=ice_chp_index,
-        initiator_column="p_th_out_kw",
-        responder_id=heat_storage_index,
-        responder_column="q_received_kw",
-    )
+    GenericMapping(prosumer,
+                   initiator_id=ice_chp_index,
+                   initiator_column="p_th_out_kw",
+                   responder_id=heat_storage_index,
+                   responder_column="q_received_kw")
 
-    GenericMapping(
-        prosumer,
-        initiator_id=heat_storage_index,
-        initiator_column="q_delivered_kw",
-        responder_id=heat_demand_index,
-        responder_column="q_received_kw",
-    )
+    GenericMapping(prosumer,
+                   initiator_id=heat_storage_index,
+                   initiator_column="q_delivered_kw",
+                   responder_id=heat_demand_index,
+                   responder_column="q_received_kw")
 
     GenericMapping(prosumer,
                    initiator_id=cp_index,
                    initiator_column=["t_source_cp_k", "mode_cp", "p_el_bhp_cp", "t_amb_k_cp", "t_sink_k_cp"],
                    responder_id=bhp_index_cop_calc,
-                   responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"],
-                   )
+                   responder_column=["t_source_k", "mode", "p_received_kw", "t_amb_k", "t_sink_k"])
 
     GenericMapping(prosumer,
                    initiator_id=cp_index,
                    initiator_column=["q_demand_cp_kw", "flex_demand_cp_kw"],
                    responder_id=optimization_index,
-                   responder_column=["q_demand_kw", "p_flex_kw"],
-                   )
+                   responder_column=["q_demand_kw", "p_flex_kw"])
 
     GenericMapping(prosumer,
                    initiator_id=bhp_index_cop_calc,
                    initiator_column=["cop_floor"],
                    responder_id=optimization_index,
-                   responder_column=["cop_bhp"],
-                   )
+                   responder_column=["cop_bhp"])
 
     GenericMapping(prosumer,
                    initiator_id=optimization_index,
                    initiator_column=["p_el_bhp_in"],
                    responder_id=bhp_index,
-                   responder_column=["p_received_kw"],
-                   )
+                   responder_column=["p_received_kw"])
 
     GenericMapping(prosumer,
                    initiator_id=optimization_index,
                    initiator_column=["p_el_chp_out"],
                    responder_id=ice_chp_index,
-                   responder_column=["p_requested_kw"],
-                   )
+                   responder_column=["p_requested_kw"])
+
+    # NEW: mapping from optimizer to battery
+    GenericMapping(prosumer,
+                   initiator_id=optimization_index,
+                   initiator_column=["p_el_battery_out"],
+                   responder_id=battery_index,
+                   responder_column=["p_requested_kw"])
 
     optimization_controller = prosumer.controller.loc[optimization_index, "object"]
-
     optimization_controller.collect_flex_bounds = collect_bounds
     optimization_controller._flex_bounds_log = {}
 
     return prosumer, period, optimization_controller
 
-
-# 3. pprosumer run with controller-based bounds
+# ============================================================
+# 5. Run simulation and extract results
+# ============================================================
 def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, residual_mall_load_kw,
                               start, end, time_resolution, frequency, collect_bounds=False,
                               allow_export=False, verbose=False):
-    
-    prosumer, period, optimization_controller = build_mall_prosumer(time_series_data_base=time_series_data_base, flex_target_kw=flex_target_kw, 
-                                                                    start=start, end=end, time_resolution=time_resolution,
-                                                                    frequency=frequency, collect_bounds=collect_bounds)
+
+    prosumer, period, optimization_controller = build_mall_prosumer(
+        time_series_data_base=time_series_data_base,
+        flex_target_kw=flex_target_kw,
+        start=start, end=end,
+        time_resolution=time_resolution,
+        frequency=frequency,
+        collect_bounds=collect_bounds
+    )
 
     run_timeseries(prosumer, period, verbose=verbose)
 
-    res_bhp, res_chp, res_storage, res_heat_demand = [prosumer.time_series.data_source.iloc[i].df
-                                                      for i in range(2, 6)] ## if we add other controllers or change the index of controller then do we need to change the index here as well?
+    # Extract all data source DataFrames
+    data_frames = []
+    for i in range(len(prosumer.time_series.data_source)):
+        data_frames.append(prosumer.time_series.data_source.iloc[i].df)
 
-    residual_mall_series = pd.Series(np.asarray(residual_mall_load_kw), index=res_chp.index, name="residual_mall_load_kw",)
+    def find_df_by_columns(required_cols):
+        for df in data_frames:
+            if all(col in df.columns for col in required_cols):
+                return df
+        raise RuntimeError(f"No DataFrame found with columns {required_cols}")
 
-    p_device_kw = res_chp["p_el_out_kw"] - res_bhp["p_el_floor"]
+    # Use optimizer output for electrical powers
+    res_opt = find_df_by_columns(['p_el_bhp_in', 'p_el_chp_out', 'p_el_battery_out'])
+    res_chp = find_df_by_columns(['p_el_out_kw', 'p_th_out_kw'])
+    res_storage = find_df_by_columns(['soc', 'q_delivered_kw'])
+    res_heat_demand = find_df_by_columns(['q_received_kw'])
+    res_battery = find_df_by_columns(['p_storage_kw', 'soc'])
+
+    residual_mall_series = pd.Series(np.asarray(residual_mall_load_kw),
+                                     index=res_chp.index, name="residual_mall_load_kw")
+
+    bhp_p_el_kw = res_opt["p_el_bhp_in"]
+    chp_p_el_kw = res_opt["p_el_chp_out"]
+    battery_p_kw = res_opt["p_el_battery_out"]
+
+    p_device_kw = chp_p_el_kw - bhp_p_el_kw + battery_p_kw
     p_grid_kw = residual_mall_series - p_device_kw
 
     res_df = pd.DataFrame({
         "residual_mall_load_kw": residual_mall_series,
-        "chp_p_el_kw": res_chp["p_el_out_kw"],
-        "bhp_p_el_kw": res_bhp["p_el_floor"],
+        "chp_p_el_kw": chp_p_el_kw,
+        "bhp_p_el_kw": bhp_p_el_kw,
+        "battery_p_kw": battery_p_kw,
+        "battery_soc_percent": res_battery["soc"] * 100,
         "p_device_kw": p_device_kw,
         "p_grid_kw": p_grid_kw,
         "chp_q_th_kw": res_chp["p_th_out_kw"],
-        "bhp_q_th_kw": res_bhp["q_floor"],
+        "bhp_q_th_kw": np.zeros_like(res_chp.index),  # placeholder
         "q_delivered_storage_kw": res_storage["q_delivered_kw"],
         "q_received_demand_kw": res_heat_demand["q_received_kw"],
         "soc_percent": res_storage["soc"] * 100,
         "flex_target_kw": flex_target_kw
     }, index=res_chp.index)
-    
+
     if not collect_bounds:
         return res_df, None
 
     bounds_log = getattr(optimization_controller, "_flex_bounds_log", {})
-
     if not bounds_log:
         raise RuntimeError("No flexibility bounds")
 
@@ -296,905 +635,459 @@ def run_mall_case_with_bounds(time_series_data_base, flex_target_kw, residual_ma
     bounds_df.index = pd.to_datetime(bounds_df.index)
     bounds_df = bounds_df.reindex(res_df.index)
 
-    if "feasible" not in bounds_df.columns:
-        raise RuntimeError("Bounds log does not contain the expected 'feasible' col.")
-
-    # Convert device-side powers into grid-side mall consumption
-    # P_grid = P_residual_mall - P_device
-    # max support means maximum P_device -> minimum grid consumption
-    # max absorption means minimum P_device -> maximum grid consumption
     residual_kw = res_df["residual_mall_load_kw"]
-    # flex envelope kw
     bounds_df["p_mall_base_kw"] = res_df["p_grid_kw"]
     bounds_df["p_mall_min_kw"] = (residual_kw - bounds_df["p_device_max_support_kw"])
     bounds_df["p_mall_max_kw"] = (residual_kw - bounds_df["p_device_max_absorption_kw"])
 
-    #TODO: CHeck this 
-
-    # if mall cannot export to the grid back, clips the mall as a controllable load to reduce consumption till 0
     if not allow_export:
         bounds_df["p_mall_base_kw"] = bounds_df["p_mall_base_kw"].clip(lower=0.0)
         bounds_df["p_mall_min_kw"] = bounds_df["p_mall_min_kw"].clip(lower=0.0)
         bounds_df["p_mall_max_kw"] = bounds_df["p_mall_max_kw"].clip(lower=0.0)
 
     raw_cols = ["p_mall_min_kw", "p_mall_base_kw", "p_mall_max_kw"]
-
-    #############################
     bounds_df["p_mall_min_mw"] = bounds_df[raw_cols].min(axis=1) / 1000.0
     bounds_df["p_mall_base_mw"] = bounds_df["p_mall_base_kw"] / 1000.0
     bounds_df["p_mall_max_mw"] = bounds_df[raw_cols].max(axis=1) / 1000.0
-
     bounds_df["flex_down_mw"] = (bounds_df["p_mall_base_mw"] - bounds_df["p_mall_min_mw"])
     bounds_df["flex_up_mw"] = (bounds_df["p_mall_max_mw"] - bounds_df["p_mall_base_mw"])
 
     return res_df, bounds_df
 
-# 4. pandapower OPF integration
-v_min_pu_std= 0.90    
-v_max_pu_std = 1.10  # # reduced to 1.05 for overvoltage stress-test scenario 
-loading_percent_max_std = 150.0
+# ============================================================
+# 6. OPF and grid functions (unchanged except as needed)
+# ============================================================
+v_min_pu_std = 0.90
+v_max_pu_std = 1.10
+loading_percent_max_std = 100.0
+allow_export_to_grid = True
 
-# Which violation type to stress-test this run
-TARGET_VIOLATION = "undervoltage"  # "undervoltage" | "line_overload" | "trafo_overload" | "overvoltage"
+def get_schutterwald_subnets():
+    return lv_schutterwald(separation_by_sub=True, include_heat_pumps=False)
 
+def get_single_schutterwald_subnet(subnet_id):
+    subnets = get_schutterwald_subnets()
+    if subnet_id >= len(subnets):
+        raise RuntimeError(f"Subnet id {subnet_id} does not exist. Available: {len(subnets)}")
+    return subnets[subnet_id]
 
-def run_pf(net, context=""):
+def run_pf(net, context="", print_error=True):
     try:
         pp.runpp(net, algorithm="nr", max_iteration=50, tolerance_mva=1e-8, init="auto", numba=False)
         return True
-
     except Exception as exc:
-        print(f"\nPower flow failed: {context}")
-        print(f"Reason: {exc}")
+        if print_error:
+            print(f"\nPower flow failed: {context}\nReason: {exc}")
         return False
 
 def check_grid_violations(net):
-    """
-    Check voltage, line-loading and transformer-loading violations after a power flow
-    """
-
-    violations = {"undervoltage": [],
-                  "overvoltage": [],
-                  "line_overload": [],
-                  "trafo_overload": []
-                  }
-
-    # Bus voltage violations
+    violations = {"undervoltage": [], "overvoltage": [],
+                  "line_overload": [], "trafo_overload": []}
     for bus in net.res_bus.index:
         vm_pu = net.res_bus.at[bus, "vm_pu"]
-
         if vm_pu < v_min_pu_std:
             violations["undervoltage"].append((bus, vm_pu))
-
         if vm_pu > v_max_pu_std:
             violations["overvoltage"].append((bus, vm_pu))
-
-    # Line loading violations
     if len(net.line):
         for line in net.res_line.index:
             loading = net.res_line.at[line, "loading_percent"]
-
             if loading > loading_percent_max_std:
                 violations["line_overload"].append((line, loading))
-
-    # Transformer loading violations
     if len(net.trafo):
         for trafo in net.res_trafo.index:
             loading = net.res_trafo.at[trafo, "loading_percent"]
-
             if loading > loading_percent_max_std:
                 violations["trafo_overload"].append((trafo, loading))
-
     has_violation = any(len(v) > 0 for v in violations.values())
-
     return has_violation, violations
 
-
-def find_bus_for_stress(net, candidate_buses, p_mw, element="voltage",shortlist_size=50, use_sensitivity_prefilter=True):
-    """
-    Find the bus in `candidate_buses` that causes the worst voltage/loading
-    stress in the subnet when the mall load/sgen is placed there.
-
-    This is intentional: the study aims to observe the prosumer's demand side
-    flexibility (CHP/BHP/storage dispatch via pandaprosumer optimization)
-    under a genuinely stressed grid condition, not an easy one. A weakly
-    stressed bus wouldn't exercise the flexibility envelope at all.
-
-    Two stage search for performance on large networks (e.g. Schutterwald,
-    hundreds of buses):
-      1. Cheap linear sensitivity estimate (Z-bus self sensitivity for
-         voltage stress, PTDF for line/trafo loading) from the base case
-         power flow, scoring ALL candidate buses almost for free.
-      2. Full/exact AC power flow probing (brute force method), restricted
-         to the top `shortlist_size` candidates from step 1.
-
-    A larger `shortlist_size` trades runtime for accuracy. Setting
-    `use_sensitivity_prefilter=False` reproduces the original brute force
-    behavior over all buses exactly useful for validating that the
-    shortlist isn't dropping the true worst bus on a specific network.
-    """
-    
-    
-    
-    def _full_pf_ranking(buses_to_probe):
-        results = []
-        for bus in buses_to_probe:
-            if p_mw >= 0:
-                temp_element = pp.create_load(net, bus=bus, p_mw=p_mw, q_mvar=0.0,name="__probe__", controllable=False)
-            else:
-                temp_element = pp.create_sgen(net, bus=bus, p_mw=abs(p_mw), q_mvar=0.0,name="__probe__", controllable=False)
-
-            ok = run_pf(net, context=f"probe bus {bus} ({element})")
-
-            if not ok:
-                metric = np.nan
-            elif element == "voltage":
-                metric = net.res_bus["vm_pu"].min()
-            elif element == "voltage_high":
-                metric = net.res_bus["vm_pu"].max()
-            elif element == "line":
-                metric = net.res_line["loading_percent"].max() if len(net.line) else np.nan
-            elif element == "trafo":
-                metric = net.res_trafo["loading_percent"].max() if len(net.trafo) else np.nan
-            else:
-                raise ValueError(f"Unknown element type: {element}")
-
-            results.append((bus, metric))
-
-            if p_mw >= 0:
-                net.load.drop(temp_element, inplace=True)
-            else:
-                net.sgen.drop(temp_element, inplace=True)
-
-        reverse = element in ("line", "trafo", "voltage_high")
-        results.sort(key=lambda x: (np.isnan(x[1]),(-x[1] if reverse else x[1]) if not np.isnan(x[1]) else 0))
-        return results
-
-    candidate_buses = list(candidate_buses)
-
-    if not use_sensitivity_prefilter or len(candidate_buses) <= shortlist_size:
-        # Not worth pre-filtering a small candidate set
-        return _full_pf_ranking(candidate_buses)
-
-    try:
-        # base case must already be solved (it is, by the time this is called)
-        if not net["converged"]:
-            run_pf(net, context="base case for sensitivity build")
-
-        shortlist = _sensitivity_shortlist(net, candidate_buses, p_mw, element, shortlist_size)
-
-    except Exception as exc:
-        print(f"\nSensitivity pre-filter failed, falling back to full PF over all candidates.")
-        print(f"Reason: {exc}")
-        return _full_pf_ranking(candidate_buses)
-
-    # Exact PF on the shortlist only : this IS your final answer, not an approximation
-    return _full_pf_ranking(shortlist)
-
-
-def _sensitivity_shortlist(net, candidate_buses, p_mw, element, shortlist_size):
-    """
-    Linear sensitivity ranking used ONLY to pick which buses deserve a
-    full PF probe. Not returned to the caller as the final metric.
-    """
-    bus_lookup = net["_pd2ppc_lookups"]["bus"]
-
-    if element in ("voltage", "voltage_high"):
-        import scipy.sparse.linalg as spla
-        # Use Z-bus self-sensitivity to estimate voltage impact of a load/sgen at each bus:
-        ppc = net["_ppc"]
-        Ybus = ppc["internal"]["Ybus"].tocsc()
-        V = ppc["internal"]["V"]
-        n = Ybus.shape[0]
-        
-        lu = spla.splu(Ybus)
-        Vmag = np.abs(V)
-
-        scores = []
-        for bus in candidate_buses:
-            idx = bus_lookup[bus]
-            e = np.zeros(n, dtype=complex)
-            e[idx] = 1.0
-            z_col = lu.solve(e)                  # column of Z-bus, one solve per bus
-            dV = (z_col[idx].real / Vmag[idx]) * p_mw   # self-sensitivity estimate
-            scores.append((bus, dV))
-
-        # overvoltage probing uses negative p_mw (export) -> want most POSITIVE dV
-        # undervoltage probing uses positive p_mw (import) -> want most NEGATIVE dV
-        reverse = element == "voltage_high"
-        scores.sort(key=lambda x: -x[1] if reverse else x[1])
-
-    elif element in ("line", "trafo"):
-        from pandapower.pypower.makePTDF import makePTDF
-        ppc = net["_ppc"]
-        ppci = net["_ppc"]["internal"]
-        PTDF = makePTDF(ppc["baseMVA"], ppc["bus"], ppc["branch"])
-
-        scores = []
-        for bus in candidate_buses:
-            idx = bus_lookup[bus]
-            col = PTDF[:, idx]
-            worst_branch_shift = np.max(np.abs(col)) * abs(p_mw)
-            scores.append((bus, worst_branch_shift))
-
-        scores.sort(key=lambda x: -x[1])  # most branch impact first
-
-    else:
-        raise ValueError(f"No sensitivity method implemented for element='{element}'")
-
-    return [bus for bus, _ in scores[:shortlist_size]]
-
-
 def prepare_grid_for_opf(net):
-    """
-    Prepare the Schutterwald grid for the OPF test
-    Existing grid loads and sgens are fixed
-    Only the shopping-mall load will be controllable
-    """
     if len(net.load):
         net.load["controllable"] = False
-
     if len(net.sgen):
         net.sgen["controllable"] = False
-
-    # Relaxed limits for this use case only
     net.bus["min_vm_pu"] = v_min_pu_std
     net.bus["max_vm_pu"] = v_max_pu_std
-
     if len(net.line):
         net.line["max_loading_percent"] = loading_percent_max_std
-
     if len(net.trafo):
         net.trafo["max_loading_percent"] = loading_percent_max_std
-
-    #  slack limits for ext grid for grid balance
     net.ext_grid["min_p_mw"] = -10.0
     net.ext_grid["max_p_mw"] = 10.0
     net.ext_grid["min_q_mvar"] = -10.0
     net.ext_grid["max_q_mvar"] = 10.0
 
+def create_mall_load(net, mall_bus, p_mw, p_min_mw, p_max_mw, q_mvar, q_eps):
+    return pp.create_load(net, bus=mall_bus, p_mw=p_mw, q_mvar=q_mvar,
+                          name="Shopping Mall load", controllable=True,
+                          min_p_mw=p_min_mw, max_p_mw=p_max_mw,
+                          min_q_mvar=q_mvar - q_eps, max_q_mvar=q_mvar + q_eps)
 
-def run_mall_opf_min_deviation(net, mall_load, p_base_mw):
-    """
-    Run OPF with one controllable mall load.
-
-    Objective:
-        min (P_mall - P_base)^2
-
-        Use as minimal flexibility activation as possible while satisfying voltage and loading constraints
-    """
-
+def run_mall_opf(net, mall_load, p_base_mw, print_error=True):
     if "poly_cost" in net and len(net.poly_cost):
         net.poly_cost.drop(net.poly_cost.index, inplace=True)
-
     weight = 1000.0
-
-    pp.create_poly_cost(net, element=mall_load, et="load", cp2_eur_per_mw2=weight, cp1_eur_per_mw=-2.0 * weight * p_base_mw, cp0_eur=weight * p_base_mw**2)
-
+    pp.create_poly_cost(net, element=mall_load, et="load",
+                        cp2_eur_per_mw2=weight,
+                        cp1_eur_per_mw=-2.0 * weight * p_base_mw,
+                        cp0_eur=weight * p_base_mw**2)
     for eg in net.ext_grid.index:
         pp.create_poly_cost(net, element=eg, et="ext_grid", cp1_eur_per_mw=0.0, cp2_eur_per_mw2=0.0)
-
     try:
-        pp.runopp(net, calculate_voltage_angles=False, init="pf", numba=False, verbose=False, suppress_warnings=True, OPF_VIOLATION=1e-4, PDIPM_FEASTOL=1e-4,
-                  PDIPM_GRADTOL=1e-4, PDIPM_COMPTOL=1e-4, PDIPM_COSTTOL=1e-4, PDIPM_MAX_IT=500,)
-
+        pp.runopp(net, calculate_voltage_angles=False, init="pf", numba=False,
+                  verbose=False, suppress_warnings=True,
+                  OPF_VIOLATION=1e-4, PDIPM_FEASTOL=1e-4,
+                  PDIPM_GRADTOL=1e-4, PDIPM_COMPTOL=1e-4,
+                  PDIPM_COSTTOL=1e-4, PDIPM_MAX_IT=500)
     except Exception as exc:
-        print("\nOPF failed.")
-        print(f"Reason: {exc}")
+        if print_error:
+            print(f"\nOPF failed.\nReason: {exc}")
         return None
-
     if not getattr(net, "OPF_converged", False):
-        print("\nOPF did not converge.")
+        if print_error:
+            print("\nOPF did not converge.")
         return None
-
     return net.res_load.at[mall_load, "p_mw"]
 
+def build_opf_result_row(selected_time, subnet_id, mall_bus, status,
+                         flex_activation_required, p_mall_min_mw, p_mall_base_mw,
+                         p_mall_max_mw, p_reference_mw, p_mall_opf_mw,
+                         q_mall_opf_mvar, p_grid_setpoint_kw, p_device_setpoint_kw,
+                         v_before=None, v_after=None, violations_before=None,
+                         violations_after=None):
+    if violations_before is None:
+        violations_before = {"undervoltage": [], "overvoltage": [], "line_overload": [], "trafo_overload": []}
+    if violations_after is None:
+        violations_after = {"undervoltage": [], "overvoltage": [], "line_overload": [], "trafo_overload": []}
+    v_min_before = v_before.min() if v_before is not None else np.nan
+    v_max_before = v_before.max() if v_before is not None else np.nan
+    v_min_after = v_after.min() if v_after is not None else np.nan
+    v_max_after = v_after.max() if v_after is not None else np.nan
+    grid_support_kw = 0.0 if pd.isna(p_mall_opf_mw) else (p_mall_base_mw - p_mall_opf_mw) * 1000.0
+    return {
+        "time": selected_time,
+        "subnet_id": subnet_id,
+        "mall_bus": mall_bus,
+        "status": status,
+        "flex_activation_required": flex_activation_required,
+        "p_min_mw": p_mall_min_mw,
+        "p_base_mw": p_mall_base_mw,
+        "p_max_mw": p_mall_max_mw,
+        "p_reference_mw": p_reference_mw,
+        "p_opf_mw": p_mall_opf_mw,
+        "q_opf_mvar": q_mall_opf_mvar,
+        "p_grid_setpoint_kw": p_grid_setpoint_kw,
+        "p_device_setpoint_kw": p_device_setpoint_kw,
+        "grid_support_kw": grid_support_kw,
+        "v_min_before_pu": v_min_before,
+        "v_min_after_pu": v_min_after,
+        "v_max_before_pu": v_max_before,
+        "v_max_after_pu": v_max_after,
+        "n_undervoltage_before": len(violations_before["undervoltage"]),
+        "n_undervoltage_after": len(violations_after["undervoltage"]),
+        "n_overvoltage_before": len(violations_before["overvoltage"]),
+        "n_overvoltage_after": len(violations_after["overvoltage"]),
+        "n_line_overload_before": len(violations_before["line_overload"]),
+        "n_line_overload_after": len(violations_after["line_overload"]),
+        "n_trafo_overload_before": len(violations_before["trafo_overload"]),
+        "n_trafo_overload_after": len(violations_after["trafo_overload"])
+    }
 
-# trying to make the plots better   : 19.08.2026
+def run_opf_timeseries_for_subnet(fixed_subnet_id, fixed_mall_bus, valid_times, bounds_df,
+                                  residual_mall_load_kw, baseline_flex_target_kw,
+                                  q_mall_base_mvar, q_eps):
+    updated_flex_target_kw = baseline_flex_target_kw.copy()
+    opf_rows = []
 
-import matplotlib.dates as mdates
-
-def plot_results(
-    v_before,
-    v_after,
-    bounds_df,
-    selected_time,
-    p_min_mw,
-    p_base_mw,
-    p_max_mw,
-    p_reference_mw,
-    p_opf_mw,
-    p_updated_grid_kw,
-    v_min_pu_std,
-    v_max_pu_std,
-    save=True,
-    show=False,
-    mall_bus=True,
-    res_updated=True,
-    res_base=None,
-    results_df=None,
-):
-    """
-    Publication quality IEEE style plots for the OPF and flexibility demo.
-
-    Parameters
-    
-    v_before, v_after : pd.Series
-        Bus voltages before and after OPF (index = bus).
-    bounds_df : pd.DataFrame
-        Flexibility envelope with columns:
-        'p_mall_min_mw', 'p_mall_base_mw', 'p_mall_max_mw'.
-    selected_time : pd.Timestamp
-        Timestep selected for detailed analysis.
-    p_min_mw, p_base_mw, p_max_mw : float
-        Flexibility envelope at selected_time (MW).
-    p_reference_mw : float
-        Baseline grid power (MW) at selected_time.
-    p_opf_mw : float
-        OPF result (MW) at selected_time.
-    p_updated_grid_kw : float
-        Actual prosumer grid power after re-run (kW).
-    v_min_pu_std, v_max_pu_std : float
-        Voltage limits (pu).
-    save : bool, default True
-        Save figures to PDF and PNG.
-    show : bool, default False
-        Show figures interactively.
-    mall_bus : int, optional
-        Bus index to highlight in voltage profile.
-    res_updated : pd.DataFrame, optional
-        Prosumer time-series results after applying OPF setpoint.
-        Must contain: 'chp_p_el_kw', 'bhp_p_el_kw', 'soc_percent',
-                      'p_grid_kw', 'q_delivered_storage_kw'.
-    res_base : pd.DataFrame, optional
-        Prosumer time-series results for baseline (no flexibility).
-        Same columns as res_updated.
-    results_df : pd.DataFrame, optional
-        All-timestep OPF results. Must have a DatetimeIndex and columns
-        'p_base_mw', 'p_opf_mw', 'flex_activated_mw', etc.
-    """
-
-    # Reset to defaults and apply IEEE style rcParams
-    plt.rcdefaults()
-    plt.rcParams.update({
-        "font.family": "serif",
-        "font.serif": ["STIXGeneral"],
-        "mathtext.fontset": "stix",
-        "font.size": 8,
-        "axes.labelsize": 9,
-        "axes.titlesize": 9,
-        "xtick.labelsize": 8,
-        "ytick.labelsize": 8,
-        "legend.fontsize": 7.5,
-        "axes.linewidth": 0.6,
-        "lines.linewidth": 0.9,
-        "lines.markersize": 4,
-        "xtick.direction": "in",
-        "ytick.direction": "in",
-        "xtick.major.size": 3,
-        "ytick.major.size": 3,
-        "xtick.minor.size": 1.5,
-        "ytick.minor.size": 1.5,
-        "xtick.top": True,
-        "ytick.right": True,
-        "axes.grid": True,
-        "grid.color": "0.85",
-        "grid.linestyle": "--",
-        "grid.linewidth": 0.4,
-        "axes.axisbelow": True,
-        "legend.frameon": False,
-        "legend.scatterpoints": 1,
-        "legend.numpoints": 1,
-        "figure.dpi": 150,
-        "savefig.dpi": 600,
-        "savefig.bbox": "tight",
-        "figure.facecolor": "white",
-        "savefig.facecolor": "white",
-    })
-
-    blue, red, yellow, purple, green, black = (
-        "#0072BD", "#D95319", "#EDB120", "#7E2F8E", "#77AC30", "#000000",
-    )
-    #single_col_in = 3.5
-    #double_col_in = 7.16
-
-    FIG_WIDTH_IN = 6.5
-
-    # Plot 1 Voltage profile with optional mall bus highlight
-
-    fig, ax = plt.subplots(figsize=(FIG_WIDTH_IN, 2.6))
-    sorted_buses = v_before.sort_values().index
-    x = range(len(sorted_buses))
-
-    ax.plot(x, v_before.loc[sorted_buses].values,
-            color=blue, linewidth=1.0, label="Before OPF")
-    ax.plot(x, v_after.loc[sorted_buses].values,
-            color=red, linestyle="--", linewidth=1.0, label="After OPF")
-    ax.axhline(v_min_pu_std, color=purple, linestyle=":", linewidth=0.8,
-               label=fr"$V_{{\mathrm{{min}}}}$ = {v_min_pu_std:.2f} pu")
-    ax.axhline(v_max_pu_std, color=green, linestyle=":", linewidth=0.8,
-               label=fr"$V_{{\mathrm{{max}}}}$ = {v_max_pu_std:.2f} pu")
-
-    if mall_bus is not None and mall_bus in sorted_buses:
-        mall_rank = list(sorted_buses).index(mall_bus)
-        ax.scatter([mall_rank], [v_before.loc[mall_bus]],
-                   color=red, marker='o', s=25, zorder=6,
-                   label='Selected mall bus')
-        ax.annotate(f'Bus {mall_bus}',
-                    xy=(mall_rank, v_before.loc[mall_bus]),
-                    xytext=(mall_rank - 5, v_before.loc[mall_bus] + 0.02),
-                    arrowprops=dict(arrowstyle='->', lw=0.8))
-
-    y_min = min(v_before.min(), v_after.min(), v_min_pu_std) - 0.02
-    y_max = max(v_before.max(), v_after.max(), v_max_pu_std) + 0.02
-    ax.set_ylim(y_min, y_max)
-    ax.set_xlim(0, len(sorted_buses) - 1)
-    ax.set_xlabel("Buses sorted by voltage before OPF")
-    ax.set_ylabel("Voltage [pu]")
-    ax.legend(loc="upper left", handlelength=2.5)
-    fig.tight_layout()
-    if save:
-        fig.savefig("voltage_profile.pdf")
-        fig.savefig("voltage_profile.png")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
-
-    # 
-    # Plot 2 Bar chart comparing envelope and dispatch results
-    # 
-    fig, ax = plt.subplots(figsize=(FIG_WIDTH_IN, 2.4))
-    categories = [r"$P_{\mathrm{min}}$", r"$P_{\mathrm{base}}$", r"$P_{\mathrm{max}}$",
-                  "OPF ref", "OPF result", "Prosumer"]
-    values = [p_min_mw * 1000.0, p_base_mw * 1000.0, p_max_mw * 1000.0,
-              p_reference_mw * 1000.0, p_opf_mw * 1000.0, p_updated_grid_kw]
-    colors = ['#D95319' if v < 0 else '#0072BD' for v in values]
-
-    bars = ax.bar(categories, values, color=colors, edgecolor=black,
-                  linewidth=0.6, width=0.6)
-    ax.axhline(0, color=black, linewidth=0.8)
-    ax.set_ylabel("Mall grid power [kW]")
-    ax.grid(True, axis="y")
-
-    for bar, val in zip(bars, values):
-        offset = 1 if val >= 0 else -1
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + offset,
-                f'{val:.1f}', ha='center', va='bottom' if val >= 0 else 'top',
-                fontsize=7)
-
-    fig.tight_layout()
-    if save:
-        fig.savefig("mall_opf_dispatch.pdf")
-        fig.savefig("mall_opf_dispatch.png")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
-
-    # 
-    # Plot 3: Flexibility envelope with shaded range
-    # 
-    window_start = selected_time - pd.Timedelta(hours=12)
-    window_end = selected_time + pd.Timedelta(hours=12)
-    plot_df = bounds_df.loc[window_start:window_end]
-
-    fig, ax = plt.subplots(figsize=(FIG_WIDTH_IN, 2.8))
-    ax.fill_between(plot_df.index,
-                    plot_df["p_mall_min_mw"] * 1000.0,
-                    plot_df["p_mall_max_mw"] * 1000.0,
-                    color='gray', alpha=0.2, label='Flexibility range')
-    ax.plot(plot_df.index, plot_df["p_mall_base_mw"] * 1000.0,
-            color=blue, linewidth=1.0, label="Baseline consumption")
-    ax.plot(plot_df.index, plot_df["p_mall_min_mw"] * 1000.0,
-            color=red, linestyle="--", linewidth=0.9, label=r"$P_{\mathrm{min}}$ envelope")
-    ax.plot(plot_df.index, plot_df["p_mall_max_mw"] * 1000.0,
-            color=purple, linestyle="--", linewidth=0.9, label=r"$P_{\mathrm{max}}$ envelope")
-
-    ax.scatter([selected_time], [p_reference_mw * 1000.0], color=green, marker="o",
-               s=30, edgecolors=black, linewidths=0.6, label="OPF reference", zorder=6)
-    ax.scatter([selected_time], [p_opf_mw * 1000.0], color=red, marker="s",
-               s=30, edgecolors=black, linewidths=0.6, label="OPF result", zorder=7)
-    ax.scatter([selected_time], [p_updated_grid_kw], color=yellow, marker="^",
-               s=35, edgecolors=black, linewidths=0.6,
-               label="Updated pandaprosumer setpoint", zorder=8)
-    ax.axvline(selected_time, color=black, linestyle=":", linewidth=0.8,
-               label="Selected timestep")
-
-    ax.set_ylabel("Mall grid power [kW]")
-    ax.legend(loc="upper right", handlelength=2.5)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    fig.tight_layout()
-    if save:
-        fig.savefig("flexibility_envelope.pdf")
-        fig.savefig("flexibility_envelope.png")
-    if show:
-        plt.show()
-    else:
-        plt.close(fig)
-
-    # 
-    # Plot 4: Prosumer internal dispatch (baseline vs updated)
-    # 
-    if res_updated is not None and not res_updated.empty:
-        # Determine time window around selected_time
-        window_start = selected_time - pd.Timedelta(hours=12)
-        window_end = selected_time + pd.Timedelta(hours=12)
-
-        upd = res_updated.loc[window_start:window_end]
-        base = None
-        if res_base is not None and not res_base.empty:
-            base = res_base.loc[window_start:window_end]
-
-        fig, axes = plt.subplots(2, 2, figsize=(FIG_WIDTH_IN, 5.2), sharex=True)
-        ax_grid, ax_elec, ax_soc, ax_flex = axes[0, 0], axes[0, 1], axes[1, 0], axes[1, 1]
-
-        #  Panel (0,0): Mall grid power 
-        if base is not None:
-            ax_grid.plot(base.index, base["p_grid_kw"], color=blue,
-                         linewidth=1.0, label="Baseline grid power")
-        ax_grid.plot(upd.index, upd["p_grid_kw"], color=red,
-                     linestyle="--", linewidth=1.0, label="After OPF")
-        ax_grid.axvline(selected_time, color=black, linestyle=":", linewidth=0.8)
-        ax_grid.scatter([selected_time], [p_updated_grid_kw], color=yellow,
-                        marker="^", s=35, edgecolors=black, linewidths=0.6,
-                        label="Actual setpoint", zorder=6)
-        ax_grid.set_ylabel("Grid power [kW]")
-        ax_grid.legend(loc="upper right")
-        ax_grid.grid(True)
- 
-        #  Panel (0,1): CHP and BHP electrical power 
-        if base is not None:
-            ax_elec.plot(base.index, base["chp_p_el_kw"], color=blue,
-                         linewidth=1.0, label="CHP baseline")
-            ax_elec.plot(base.index, base["bhp_p_el_kw"], color=red,
-                         linewidth=1.0, label="BHP baseline")
-        ax_elec.plot(upd.index, upd["chp_p_el_kw"], color=blue,
-                     linestyle="--", linewidth=1.0, label="CHP updated")
-        ax_elec.plot(upd.index, upd["bhp_p_el_kw"], color=red,
-                     linestyle="--", linewidth=1.0, label="BHP updated")
-        ax_elec.axvline(selected_time, color=black, linestyle=":", linewidth=0.8)
-        ax_elec.set_ylabel("Electrical power [kW]")
-        ax_elec.legend(loc="upper right")
-        ax_elec.grid(True)
- 
-        #  Panel (1,0): Storage SOC 
-        if base is not None:
-            ax_soc.plot(base.index, base["soc_percent"], color=purple,
-                        linewidth=1.0, label="SOC baseline")
-        ax_soc.plot(upd.index, upd["soc_percent"], color=purple,
-                    linestyle="--", linewidth=1.0, label="SOC updated")
-        ax_soc.axvline(selected_time, color=black, linestyle=":", linewidth=0.8)
-        ax_soc.set_ylabel("Storage SOC [%]")
-        ax_soc.legend(loc="upper right")
-        ax_soc.grid(True)
- 
-        # Panel (1,1): Flexibility envelope 
-        bnd = bounds_df.loc[window_start:window_end]
-        ax_flex.fill_between(bnd.index,
-                             bnd["p_mall_min_mw"] * 1000,
-                             bnd["p_mall_max_mw"] * 1000,
-                             color='gray', alpha=0.2,
-                             label='Flexibility range')
-        ax_flex.plot(bnd.index, bnd["p_mall_base_mw"] * 1000,
-                     color=blue, linewidth=1.0, label="Baseline")
-        ax_flex.axvline(selected_time, color=black, linestyle=":", linewidth=0.8)
-        ax_flex.set_ylabel("Mall grid power [kW]")
-        ax_flex.legend(loc="upper right")
-        ax_flex.grid(True)
- 
-        # Only bottom row gets date-formatted x-axis tick labels;
-        # top row keeps gridlines but hides tick labels to avoid clutter.
-        for ax in (ax_soc, ax_flex):
-            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-        for ax in (ax_grid, ax_elec):
-            ax.tick_params(labelbottom=False)
- 
-        fig.tight_layout()
-        if save:
-            fig.savefig("prosumer_response.pdf")
-            fig.savefig("prosumer_response.png")
-        if show:
-            plt.show()
-        else:
-            plt.close(fig)
-
-    # 
-    # Plot 5: All-timestep overview (if results_df provided) : 
-    # currently only supports a single snapshot; multi-timestep support not yet implemented 
-
-# 5. Main workflow
-def main():
-
-    # 1. pandaprosumer baseline and flexibility bounds
-    res_base, bounds_df = run_mall_case_with_bounds(time_series_data_base=time_series_data, flex_target_kw=baseline_flex_target_kw,
-                                                    residual_mall_load_kw=residual_mall_load_kw, start=start, end=end,
-                                                    time_resolution=time_resolution, frequency=frequency,
-                                                    collect_bounds=True, allow_export=True, verbose=False)
-    
-    if TARGET_VIOLATION == "overvoltage":
-        valid_times = bounds_df[(bounds_df["feasible"] == True)
-                                & (bounds_df["p_mall_base_mw"] < -0.02)
-                                & (bounds_df["flex_up_mw"] > 0.005)].copy()
-
-        if valid_times.empty:
-            raise RuntimeError("No timestep found with mall export and upward flexibility")
-
-        selected_time = valid_times["flex_up_mw"].idxmax()
+    for selected_time in valid_times.index:
         selected_position = bounds_df.index.get_loc(selected_time)
+        p_mall_min_mw = bounds_df.at[selected_time, "p_mall_min_mw"]
+        p_mall_base_mw = bounds_df.at[selected_time, "p_mall_base_mw"]
+        p_mall_max_mw = bounds_df.at[selected_time, "p_mall_max_mw"]
 
-    else:
-        valid_times = bounds_df[(bounds_df["feasible"] == True)
-                                & (bounds_df["p_mall_base_mw"] > 0.02)
-                                & (bounds_df["flex_down_mw"] > 0.005)].copy()
-
-        if valid_times.empty:
-            raise RuntimeError("No timestep found with positive mall load and downward flexibility")
-
-        selected_time = valid_times["flex_down_mw"].idxmax()
-        selected_position = bounds_df.index.get_loc(selected_time)
-    
-    p_mall_min_mw = bounds_df.at[selected_time, "p_mall_min_mw"]
-    p_mall_base_mw = bounds_df.at[selected_time, "p_mall_base_mw"]
-    p_mall_max_mw = bounds_df.at[selected_time, "p_mall_max_mw"]
-
-    #  keep mall reactive power fixed at zero
-    # if in future we want to allow reactive power flexibility, we can add it here
-    q_mall_base_mvar = 0.0
-    q_eps = 1e-6
-
-    print("\nSelected OPF timestep")
-    print(selected_time)
-    print(f"P_min  = {p_mall_min_mw:.6f} MW")
-    print(f"P_base = {p_mall_base_mw:.6f} MW")
-    print(f"P_max  = {p_mall_max_mw:.6f} MW")
-    print(f"Flex down = {bounds_df.at[selected_time, 'flex_down_mw']:.6f} MW")
-    print(f"Flex up   = {bounds_df.at[selected_time, 'flex_up_mw']:.6f} MW")
-
-    # 2. Build simple Schutterwald OPF case
-    subnets = lv_schutterwald(separation_by_sub=True, include_heat_pumps=False)
-
-    selected_case = None
-
-    for subnet_id, net in enumerate(subnets):
-        if len(net.ext_grid) == 0 or len(net.bus) <= 20:
-            continue
-
+        net = get_single_schutterwald_subnet(fixed_subnet_id)
         prepare_grid_for_opf(net)
+        if fixed_mall_bus not in net.bus.index:
+            raise RuntimeError(f"Selected mall bus {fixed_mall_bus} is not in subnet {fixed_subnet_id}.")
 
-        if not run_pf(net, context=f"subnet {subnet_id} initial PF"):
+        p_grid_setpoint_kw = p_mall_base_mw * 1000.0
+        p_device_setpoint_kw = baseline_flex_target_kw[selected_position]
+
+        mall_load = create_mall_load(net, fixed_mall_bus, p_mall_base_mw,
+                                     p_mall_min_mw, p_mall_max_mw,
+                                     q_mall_base_mvar, q_eps)
+
+        # 1. Baseline PF
+        if not run_pf(net, f"subnet {fixed_subnet_id} with mall at {selected_time}", print_error=False):
+            opf_rows.append(build_opf_result_row(
+                selected_time, fixed_subnet_id, fixed_mall_bus, "pf_with_mall_failed",
+                False, p_mall_min_mw, p_mall_base_mw, p_mall_max_mw, p_mall_base_mw,
+                np.nan, np.nan, p_grid_setpoint_kw, p_device_setpoint_kw))
             continue
-
-        # Select an LV bus that is not the ext grid bus
-        ext_grid_buses = set(net.ext_grid.bus.values)
-
-        lv_buses = net.bus.index[(net.bus.vn_kv <= 1.0) & (net.bus.in_service == True)
-                                 & (~net.bus.index.isin(ext_grid_buses))]
-        if len(lv_buses) == 0:
-            continue
-
-        if TARGET_VIOLATION == "overvoltage":
-            element = "voltage_high"
-            probe_p_mw = -abs(p_mall_base_mw)  # export injection
-        else:
-            element = {
-                "undervoltage": "voltage",
-                "line_overload": "line",
-                "trafo_overload": "trafo",
-            }[TARGET_VIOLATION]
-            probe_p_mw = p_mall_base_mw
-
-        stress_ranking = find_bus_for_stress(
-            net,
-            lv_buses,
-            p_mw=probe_p_mw,
-            element=element,
-        )
-
-        if np.isnan(stress_ranking[0][1]):
-            continue  # nothing usable in this subnet for this metric (e.g. no trafos)
-
-        unit = "pu" if element == "voltage" else "%"
-        print(f"\nTop 5 buses in subnet {subnet_id} by {element} stress:")
-        for bus, metric in stress_ranking[:5]:
-            print(f"  bus {bus}: {metric:.3f} {unit}")
-
-        mall_bus = stress_ranking[0][0]
-
-        mall_load = pp.create_load( 
-            net,
-            bus=mall_bus,
-            p_mw=p_mall_base_mw,
-            q_mvar=q_mall_base_mvar,  
-            name="Shopping Mall load",
-            controllable=True,
-            min_p_mw=p_mall_min_mw,
-            max_p_mw=p_mall_max_mw,
-            min_q_mvar=q_mall_base_mvar - q_eps,
-            max_q_mvar=q_mall_base_mvar + q_eps
-        )
-
-        if not run_pf(net, context=f"subnet {subnet_id} with mall"):
-            continue
-
-        # 3. Baseline grid state with mall at P_base
-        # check and report violation s in the subnet before an OPF is run
         v_before = net.res_bus.vm_pu.copy()
-
         has_violation_before, violations_before = check_grid_violations(net)
 
         if not has_violation_before:
-            print("\nNo network violation detected in baseline state.")
-            print("No flexibility activation required.")
+            opf_rows.append(build_opf_result_row(
+                selected_time, fixed_subnet_id, fixed_mall_bus, "no_violation_no_flex_needed",
+                False, p_mall_min_mw, p_mall_base_mw, p_mall_max_mw, p_mall_base_mw,
+                p_mall_base_mw, q_mall_base_mvar, p_grid_setpoint_kw, p_device_setpoint_kw,
+                v_before, v_before, violations_before, violations_before))
+            updated_flex_target_kw[selected_position] = p_device_setpoint_kw
+            continue
 
-            selected_case = {
-                "net": net,
-                "subnet_id": subnet_id,
-                "subnet_name": net.name,
-                "mall_bus": mall_bus,
-                "mall_load": mall_load,
-                "p_reference_mw": p_mall_base_mw,
-                "p_mall_opf_mw": p_mall_base_mw,
-                "q_mall_opf_mvar": q_mall_base_mvar,
-                "v_before": v_before,
-                "v_after": v_before,
-                "violations_before": violations_before,
-                "violations_after": violations_before,
-                "flex_activation_required": False
-            }
-
-            break
-
-        print("\nNetwork violation detected before OPF.")
-        print(violations_before)
-
-        # 4.  Run OPF only if a violation exists
-        # Objective: minimum deviation from baseline, OPF to only compute active power setpoint of the load
-        # TODO: check if a battery storage should also be added in the optimization controller to store surplus el. generation when O/P CHP increases
-        p_mall_opf_mw = run_mall_opf_min_deviation(net=net, mall_load=mall_load, p_base_mw=p_mall_base_mw,)
-
+        # 2. OPF
+        p_mall_opf_mw = run_mall_opf(net, mall_load, p_mall_base_mw, print_error=False)
         if p_mall_opf_mw is None:
+            opf_rows.append(build_opf_result_row(
+                selected_time, fixed_subnet_id, fixed_mall_bus, "opf_failed",
+                True, p_mall_min_mw, p_mall_base_mw, p_mall_max_mw, p_mall_base_mw,
+                np.nan, np.nan, p_grid_setpoint_kw, p_device_setpoint_kw,
+                v_before, None, violations_before, None))
             continue
 
         q_mall_opf_mvar = net.res_load.at[mall_load, "q_mvar"]
-
         net.load.at[mall_load, "p_mw"] = p_mall_opf_mw
         net.load.at[mall_load, "q_mvar"] = q_mall_opf_mvar
 
-        if not run_pf(net, context=f"subnet {subnet_id} after OPF"):
+        if not run_pf(net, f"subnet {fixed_subnet_id} after OPF at {selected_time}", print_error=False):
+            opf_rows.append(build_opf_result_row(
+                selected_time, fixed_subnet_id, fixed_mall_bus, "pf_after_opf_failed",
+                True, p_mall_min_mw, p_mall_base_mw, p_mall_max_mw, p_mall_base_mw,
+                p_mall_opf_mw, q_mall_opf_mvar, p_grid_setpoint_kw, p_device_setpoint_kw,
+                v_before, None, violations_before, None))
             continue
 
         v_after = net.res_bus.vm_pu.copy()
         has_violation_after, violations_after = check_grid_violations(net)
-        print("\nNetwork violations after OPF:")
-        print(violations_after)
+        status = "opf_success_violations_resolved" if not has_violation_after else "opf_success_remaining_violations"
 
-        if has_violation_after:
-            print("OPF reduced the violation but some violations remain")
-        else:
-            print("All cvoltage/loading violations resolved after OPF.")
+        p_grid_setpoint_kw = p_mall_opf_mw * 1000.0
+        residual_load_selected_kw = residual_mall_load_kw[selected_position]
+        p_device_setpoint_kw = residual_load_selected_kw - p_grid_setpoint_kw
+        updated_flex_target_kw[selected_position] = p_device_setpoint_kw
 
-        selected_case = {
-            "net": net,
-            "subnet_id": subnet_id,
-            "subnet_name": net.name,
-            "mall_bus": mall_bus,
-            "mall_load": mall_load,
-            "p_reference_mw": p_mall_base_mw,
-            "p_mall_opf_mw": p_mall_opf_mw,
-            "q_mall_opf_mvar": q_mall_opf_mvar,
-            "v_before": v_before,
-            "v_after": v_after,
-            "violations_before": violations_before,
-            "violations_after": violations_after,
-            "flex_activation_required": True,
-        }
+        opf_rows.append(build_opf_result_row(
+            selected_time, fixed_subnet_id, fixed_mall_bus, status,
+            True, p_mall_min_mw, p_mall_base_mw, p_mall_max_mw, p_mall_base_mw,
+            p_mall_opf_mw, q_mall_opf_mvar, p_grid_setpoint_kw, p_device_setpoint_kw,
+            v_before, v_after, violations_before, violations_after))
 
-        break
+    opf_results_df = pd.DataFrame(opf_rows)
+    if not opf_results_df.empty:
+        opf_results_df = opf_results_df.set_index("time")
+    return opf_results_df, updated_flex_target_kw
 
-    if selected_case is None:
-        raise RuntimeError("No Schutterwald subnet produced a convergent OPF case.")
+# ============================================================
+# 7. Main workflow
+# ============================================================
+def main():
+    # Baseline run and bounds
+    res_base, bounds_df = run_mall_case_with_bounds(
+        time_series_data_base=time_series_data,
+        flex_target_kw=baseline_flex_target_kw,
+        residual_mall_load_kw=residual_mall_load_kw,
+        start=start, end=end,
+        time_resolution=time_resolution,
+        frequency=frequency,
+        collect_bounds=True,
+        allow_export=allow_export_to_grid,
+        verbose=False
+    )
 
-    net = selected_case["net"]
-    p_reference_mw = selected_case["p_reference_mw"]
-    # this is the opf calculated setpoint of Mall's active power
-    p_mall_opf_mw = selected_case["p_mall_opf_mw"]
-    q_mall_opf_mvar = selected_case["q_mall_opf_mvar"]
-    v_before = selected_case["v_before"]
-    v_after = selected_case["v_after"]
+    valid_times = bounds_df[bounds_df["feasible"] == True].dropna(
+        subset=["p_mall_min_mw", "p_mall_base_mw", "p_mall_max_mw"])
+    if valid_times.empty:
+        raise RuntimeError("No feasible timestep found")
 
-    print("\nSelected Schutterwald OPF case")
-    print(f"Subnet id: {selected_case['subnet_id']}")
-    print(f"Subnet name: {selected_case['subnet_name']}")
-    print(f"Mall bus: {selected_case['mall_bus']}")
+    print("\nComplete OPF time series")
+    print(f"Number of OPF timesteps: {len(valid_times)}")
+    print(f"P_base min: {valid_times['p_mall_min_mw'].min():.3f} MW, ",
+          f"P_base max: {valid_times['p_mall_max_mw'].max():.3f} MW")
 
-    print("\nGrid status")
-    print(f"V_min before OPF = {v_before.min():.6f} pu")
-    print(f"V_min after OPF  = {v_after.min():.6f} pu")
-    print(f"V_max before OPF = {v_before.max():.6f} pu")
-    print(f"V_max after OPF  = {v_after.max():.6f} pu")
+    q_mall_base_mvar = 0.0
+    q_eps = 1e-6
 
-    print("\nOPF mall result")
-    print(f"P_min    = {p_mall_min_mw:.6f} MW")
-    print(f"P_base   = {p_mall_base_mw:.6f} MW")
-    print(f"P_max    = {p_mall_max_mw:.6f} MW")
-    print(f"p_reference = {p_reference_mw:.6f} MW")
-    print(f"P_OPF    = {p_mall_opf_mw:.6f} MW")
-    print(f"Q_OPF    = {q_mall_opf_mvar:.6f} Mvar")
+    # Fixed Schutterwald subnet and mall bus
+    fixed_subnet_id = 1
+    fixed_subnet_name = "LV Schutterwald 1"
+    fixed_mall_bus = 623
 
-    if p_mall_min_mw < 0:
-        print(f"Export allowed: mall can export up to {-p_mall_min_mw * 1000.0:.3f} kW")
-    else:
-        print("Export not available at this timestep.")
+    print(f"\nUsing selected Schutterwald OPF case")
+    print(f"Subnet id: {fixed_subnet_id}")
+    print(f"Subnet name: {fixed_subnet_name}")
+    print(f"Mall bus: {fixed_mall_bus}")
 
-    print("\nActivated flexibility")
-    print(f"Load-sign convention    = {p_mall_opf_mw - p_mall_base_mw:.6f} MW")
-    print(f"Grid-support convention = {p_mall_base_mw - p_mall_opf_mw:.6f} MW")
+    check_net = get_single_schutterwald_subnet(fixed_subnet_id)
+    print(f"Number of buses in selected subnet: {len(check_net.bus)}")
+    if fixed_mall_bus not in check_net.bus.index:
+        raise RuntimeError(f"Selected mall bus {fixed_mall_bus} is not in subnet {fixed_subnet_id}.")
+    if not run_pf(check_net, f"subnet {fixed_subnet_id} base PF"):
+        raise RuntimeError(f"Base PF does not converge for subnet {fixed_subnet_id}.")
 
-    # 6. Send OPF setpoint back to pprosumer
-    p_grid_setpoint_kw = p_mall_opf_mw * 1000.0
-    residual_load_selected_kw = residual_mall_load_kw[selected_position]
+    # Run OPF time series
+    opf_results_df, updated_flex_target_kw = run_opf_timeseries_for_subnet(
+        fixed_subnet_id=fixed_subnet_id, fixed_mall_bus=fixed_mall_bus,
+        valid_times=valid_times, bounds_df=bounds_df,
+        residual_mall_load_kw=residual_mall_load_kw,
+        baseline_flex_target_kw=baseline_flex_target_kw,
+        q_mall_base_mvar=q_mall_base_mvar, q_eps=q_eps
+    )
 
-    # P_grid = P_residual_mall - P_device
-    # P_device = P_CHP - P_BHP
-    p_device_setpoint_kw = residual_load_selected_kw - p_grid_setpoint_kw
+    if opf_results_df.empty:
+        raise RuntimeError("No OPF timestep was calculated.")
 
-    updated_flex_target_kw = baseline_flex_target_kw.copy()
-    updated_flex_target_kw[selected_position] = p_device_setpoint_kw
+    # Summary statistics
+    n_violation_timesteps = ((opf_results_df["n_undervoltage_before"] > 0) |
+                             (opf_results_df["n_overvoltage_before"] > 0) |
+                             (opf_results_df["n_line_overload_before"] > 0) |
+                             (opf_results_df["n_trafo_overload_before"] > 0)).sum()
+    n_opf_success = opf_results_df["status"].isin(
+        ["opf_success_violations_resolved", "opf_success_remaining_violations"]).sum()
+    n_opf_resolved = (opf_results_df["status"] == "opf_success_violations_resolved").sum()
+    n_voltage_improved = (opf_results_df["status"].isin(
+        ["opf_success_violations_resolved", "opf_success_remaining_violations"]) &
+        (opf_results_df["v_min_after_pu"] > opf_results_df["v_min_before_pu"])).sum()
 
-    print("\nSending OPF setpoint back to PandaProsumer")
-    print(f"Selected time: {selected_time}")
-    print(f"Residual mall load P_el_sc - P_pv = {residual_load_selected_kw:.3f} kW")
-    print(f"OPF grid power setpoint   = {p_grid_setpoint_kw:.3f} kW")
-    print(f"Device target P_CHP-P_BHP = {p_device_setpoint_kw:.3f} kW")
+    print("\nSelected Schutterwald OPF case summary")
+    print(f"Subnet id: {fixed_subnet_id}")
+    print(f"Subnet name: {fixed_subnet_name}")
+    print(f"Mall bus: {fixed_mall_bus}")
+    print(f"Calculated timesteps: {len(opf_results_df)}")
+    print(f"Violation timesteps: {n_violation_timesteps}")
+    print(f"OPF success timesteps: {n_opf_success}")
+    print(f"OPF resolved timesteps: {n_opf_resolved}")
+    print(f"Voltage-improved timesteps: {n_voltage_improved}")
 
+    # Save OPF setpoint time series
+    opf_results_df.to_csv("mall_opf_setpoint_timeseries.csv")
+
+    print("\nStatus summary")
+    print(opf_results_df["status"].value_counts(dropna=False))
+    print(f"PF with mall failed: {(opf_results_df['status'] == 'pf_with_mall_failed').sum()}")
+    print(f"OPF failed: {(opf_results_df['status'] == 'opf_failed').sum()}")
+    print(f"PF after OPF failed: {(opf_results_df['status'] == 'pf_after_opf_failed').sum()}")
+    print(f"Resolved: {(opf_results_df['status'] == 'opf_success_violations_resolved').sum()}")
+    print(f"Remaining violations: {(opf_results_df['status'] == 'opf_success_remaining_violations').sum()}")
+    print(f"No-flex-needed: {(opf_results_df['status'] == 'no_violation_no_flex_needed').sum()}")
+
+    # Run updated pandaprosumer with OPF setpoints
     res_updated, _ = run_mall_case_with_bounds(
         time_series_data_base=time_series_data,
         flex_target_kw=updated_flex_target_kw,
         residual_mall_load_kw=residual_mall_load_kw,
-        start=start,
-        end=end,
+        start=start, end=end,
         time_resolution=time_resolution,
         frequency=frequency,
         collect_bounds=False,
-        allow_export=True,
-        verbose=False,
+        allow_export=allow_export_to_grid,
+        verbose=False
     )
 
-    p_updated_grid_kw = res_updated.at[selected_time, "p_grid_kw"]
+    # Compare
+    opf_results_df["p_updated_grid_kw"] = res_updated["p_grid_kw"].reindex(opf_results_df.index)
+    opf_results_df["tracking_error_kw"] = opf_results_df["p_updated_grid_kw"] - opf_results_df["p_grid_setpoint_kw"]
+    opf_results_df.to_csv("mall_opf_setpoint_timeseries_with_tracking.csv")
 
-    print("\nUpdated pandaprosumerresult at selected timestep")
-    print(f"Baseline grid consumption = {p_mall_base_mw * 1000.0:.3f} kW")
-    print(f"OPF target                = {p_reference_mw * 1000.0:.3f} kW")
-    print(f"OPF setpoint              = {p_grid_setpoint_kw:.3f} kW")
-    print(f"Updated pandaprosumer    = {p_updated_grid_kw:.3f} kW")
-    print(f"Tracking error            = {p_updated_grid_kw - p_grid_setpoint_kw:.3f} kW")
-    print("\nProsumer internal response to OPF setpoint")
-    print(f"CHP electrical output = {res_updated.at[selected_time, 'chp_p_el_kw']:.3f} kW")
-    print(f"BHP electrical input  = {res_updated.at[selected_time, 'bhp_p_el_kw']:.3f} kW")
-    print(f"Net P_device          = {res_updated.at[selected_time, 'p_device_kw']:.3f} kW")
-    print(f"Thermal storage SOC   = {res_updated.at[selected_time, 'soc_percent']:.1f} %")
-    print(f"Heat demand delivered = {res_updated.at[selected_time, 'q_delivered_storage_kw']:.3f} kW")
+    # Build final mall flexibility time series
+    mall_idx = res_base.index
+    flex_ts_df = pd.DataFrame(index=mall_idx)
+    flex_ts_df["residual_mall_load_kw"] = res_updated["residual_mall_load_kw"].reindex(mall_idx)
+    flex_ts_df["p_grid_baseline_kw"] = res_base["p_grid_kw"].reindex(mall_idx)
+    flex_ts_df["p_grid_updated_kw"] = res_updated["p_grid_kw"].reindex(mall_idx)
+    flex_ts_df["flexibility_provided_to_grid_kw"] = (
+        flex_ts_df["p_grid_baseline_kw"] - flex_ts_df["p_grid_updated_kw"])
+    flex_ts_df["p_device_kw"] = res_updated["p_device_kw"].reindex(mall_idx)
+    flex_ts_df["chp_p_el_kw"] = res_updated["chp_p_el_kw"].reindex(mall_idx)
+    flex_ts_df["bhp_p_el_kw"] = res_updated["bhp_p_el_kw"].reindex(mall_idx)
+    flex_ts_df["battery_p_kw"] = res_updated["battery_p_kw"].reindex(mall_idx)
+    flex_ts_df["battery_soc_percent"] = res_updated["battery_soc_percent"].reindex(mall_idx)
+    flex_ts_df["soc_percent"] = res_updated["soc_percent"].reindex(mall_idx)
+    flex_ts_df["q_delivered_storage_kw"] = res_updated["q_delivered_storage_kw"].reindex(mall_idx)
+    flex_ts_df["q_received_demand_kw"] = res_updated["q_received_demand_kw"].reindex(mall_idx)
+    flex_ts_df["p_flex_request_kw"] = pd.Series(updated_flex_target_kw, index=mall_idx)
+    flex_ts_df["opf_timestep"] = flex_ts_df.index.isin(opf_results_df.index)
+    flex_ts_df.to_csv("mall_storage_aware_flexibility_timeseries.csv")
 
-    plot_results(
-        v_before=v_before,
-        v_after=v_after,
-        bounds_df=bounds_df,
-        selected_time=selected_time,
-        p_min_mw=p_mall_min_mw,
-        p_base_mw=p_mall_base_mw,
-        p_max_mw=p_mall_max_mw,
-        p_reference_mw=p_reference_mw,
-        p_opf_mw=p_mall_opf_mw,
-        p_updated_grid_kw=p_updated_grid_kw,
-        v_min_pu_std=v_min_pu_std,
-        v_max_pu_std=v_max_pu_std,
-        mall_bus=selected_case["mall_bus"],          # from selected_case
-        res_updated=res_updated,                     # from the prosumer re-run
-        res_base=res_base,                       # optional, if you have baseline prosumer results
-        #results_df=results_df,                   # optional, if you ran all-timestep OPF
-    )
+    print("\nMall flexibility timeseries dataframe")
+    print(f"pandaprosumer run timesteps: {len(flex_ts_df)}")
+    print(f"OPF timesteps: {flex_ts_df['opf_timestep'].sum()}")
+    print(f"Max tracking error = {opf_results_df['tracking_error_kw'].abs().max():.6f} kW")
+    print(f"Mean tracking error = {opf_results_df['tracking_error_kw'].abs().mean():.6f} kW")
 
+    # ============================
+    # Plots
+    # ============================
+    plt.figure(figsize=(12, 6))
+    plt.plot(flex_ts_df.index, flex_ts_df["p_grid_updated_kw"], label="Updated mall grid power", linewidth=1.5)
+    plt.plot(flex_ts_df.index, flex_ts_df["p_grid_baseline_kw"], label="Baseline mall grid power", linestyle=":", linewidth=2.5)
+    plt.plot(flex_ts_df.index, flex_ts_df["flexibility_provided_to_grid_kw"], label="Flexibility provided to grid", linewidth=1.5)
+    plt.ylabel("Power [kW]")
+    plt.xlabel("Time")
+    plt.title("Storage-aware Mall Flexibility Provision")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(flex_ts_df.index, flex_ts_df["p_flex_request_kw"], label="OPF-calculated flex request")
+    plt.plot(flex_ts_df.index, flex_ts_df["p_device_kw"], linestyle="--", label="P_device = CHP - BHP + Battery")
+    plt.ylabel("Power [kW]")
+    plt.xlabel("Time")
+    plt.title("Requested vs pandaprosumer device-side flexibility potential")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(opf_results_df.index, opf_results_df["p_grid_setpoint_kw"], label="OPF grid setpoint")
+    plt.plot(opf_results_df.index, opf_results_df["p_updated_grid_kw"], linestyle="--", label="Updated pandaprosumer grid power")
+    plt.ylabel("Mall net grid power [kW]")
+    plt.xlabel("Time")
+    plt.title("OPF Setpoint Tracking by pandaprosumer")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(opf_results_df.index, opf_results_df["v_min_before_pu"], label="V_min before OPF")
+    plt.plot(opf_results_df.index, opf_results_df["v_min_after_pu"], label="V_min after OPF")
+    plt.axhline(v_min_pu_std, linestyle="--", label=f"V_min threshold {v_min_pu_std:.2f} pu")
+    plt.ylabel("Minimum voltage [pu]")
+    plt.xlabel("Time")
+    plt.title("Minimum Grid Voltage Comparison")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(flex_ts_df.index, flex_ts_df["p_device_kw"], label="P_device = CHP - BHP + Battery")
+    plt.plot(flex_ts_df.index, flex_ts_df["chp_p_el_kw"], linestyle="--", label="CHP electrical output")
+    plt.plot(flex_ts_df.index, flex_ts_df["bhp_p_el_kw"], linestyle=":", label="BHP electrical consumption")
+    plt.plot(flex_ts_df.index, flex_ts_df["battery_p_kw"], linestyle="-.", label="Battery power (discharge +)")
+    plt.ylabel("Power [kW]")
+    plt.xlabel("Time")
+    plt.title("Mall Flexibility Provision")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(flex_ts_df.index, flex_ts_df["soc_percent"], label="Thermal storage SOC")
+    plt.plot(flex_ts_df.index, flex_ts_df["battery_soc_percent"], label="Battery SOC")
+    plt.ylabel("SOC [%]")
+    plt.xlabel("Time")
+    plt.title("Storage SOC during Flexibility Provision")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     main()
