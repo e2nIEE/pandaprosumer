@@ -27,7 +27,7 @@ from pandaprosumer.mapping import GenericMapping
 from pandaprosumer.run_time_series import run_timeseries
 # SES specific imports:
 from tutorials_extended.data.ses_data_management import ses_data_df               # dataframe with input data
-
+import matplotlib.dates as mdates
 
 # ==================================================================================================
 # 2 - DATA PREPARATION (done once and reused every run)
@@ -212,6 +212,64 @@ def run_simulation(battery_capacity_kwh:float, chp_size_kw:float) -> dict:
 
     e_over_contr_kwh = float((p_over_contr_kw * dt_h).sum())
 
+    # demand
+    e_consumption_kwh = float(
+        (optimized_results["p_el_demand_kw"] * dt_h).sum()
+    )
+
+    e_pv_total_kwh = float((optimized_results["p_pv_in_kw"] * dt_h).sum())
+    e_battery_net_kwh = float((optimized_results["dispatch_p_battery_kw"] * dt_h).sum())  # discharge - charge
+
+    balance_check = (e_chp_gener_kwh
+                     + e_grid_import_total_kwh - e_grid_export_total_kwh
+                     + e_pv_total_kwh
+                     + e_battery_net_kwh) - e_consumption_kwh
+
+    print(f"PV total: {e_pv_total_kwh:.1f} kWh, Import: {e_grid_import_total_kwh:.1f} kWh, "
+          f"Battery net: {e_battery_net_kwh:.1f} kWh, Bilanzfehler: {balance_check:.4f} kWh")
+
+    fig, ax = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
+
+    ax[0].plot(optimized_results.index, optimized_results["p_grid_baseline_kw"], label="Baseline grid import")
+    ax[0].plot(
+        optimized_results.index,
+        optimized_results["p_grid_target_kw"],
+        label="Requested grid target",
+        linestyle=":"
+    )
+    ax[0].plot(optimized_results.index, optimized_results["p_grid_dispatch_kw"], label="Optimized grid import")
+    ax[0].plot(optimized_results.index, optimized_results["p_contract_kw"], label="Contractual grid limit",
+               linestyle="--")
+    ax[0].set_ylabel("Grid power [kW]")
+    ax[0].legend()
+    ax[0].grid(True)
+
+    ax[1].plot(optimized_results.index, optimized_results["dispatch_p_el_chp_kw"], label="CHP electrical output")
+    ax[1].plot(optimized_results.index, optimized_results["dispatch_p_battery_kw"], label="Battery power")
+    ax[1].axhline(0.0, linewidth=1.0)
+    ax[1].set_ylabel("Device power [kW]")
+    ax[1].legend()
+    ax[1].grid(True)
+
+    ax[2].plot(optimized_results.index, optimized_results["dispatch_battery_soc"] * 100.0, label="Battery SOC")
+    ax[2].plot(
+        optimized_results.index,
+        optimized_results["p_flex_request_kw"],
+        label="External flexibility request",
+        linestyle=":"
+    )
+    ax[2].set_ylabel("SOC [%] / Flex [kW]")
+    ax[2].set_xlabel("Time")
+    ax[2].legend()
+    ax[2].grid(True)
+
+    hour_format = mdates.DateFormatter("%d.%m %H:%M")
+    ax[2].xaxis.set_major_formatter(hour_format)
+
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    plt.show()
+
     # # Energy cost of grid import only, using the same hourly price series (EUR/MWh -> EUR/kWh)
     # price_eur_per_kwh = results["electricity_price_eur_per_mwh"] / 1000.0 if "electricity_price_eur_per_mwh" in results else None
     # total_import_cost_eur = float((grid_import_kw * dt_h * price_eur_per_kwh).sum()) if price_eur_per_kwh is not None else np.nan
@@ -233,7 +291,7 @@ def run_simulation(battery_capacity_kwh:float, chp_size_kw:float) -> dict:
 # ==================================================================================================                               # a single value (e.g. [350]) for sweeping battery capacity only
 chp_size_kw = [350]
 
-battery_capacity_kwh = [1e4, 2e4, 4e4, 6e4, 8e4]
+battery_capacity_kwh = [8e4, 9e4, 1e5, 2e5]
 
 
 if __name__ == "__main__":
