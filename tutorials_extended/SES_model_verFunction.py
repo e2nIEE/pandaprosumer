@@ -291,7 +291,7 @@ def run_simulation(battery_capacity_kwh:float, chp_size_kw:float) -> dict:
 # ==================================================================================================                               # a single value (e.g. [350]) for sweeping battery capacity only
 chp_size_kw = [350]
 
-battery_capacity_kwh = [8e4, 9e4, 1e5, 2e5]
+battery_capacity_kwh = [9e3, 1e4, 3e4, 5e4, 7e4, 9e4]
 
 
 if __name__ == "__main__":

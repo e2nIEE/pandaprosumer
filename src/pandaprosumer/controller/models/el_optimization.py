@@ -174,6 +174,7 @@ class ElectricalOptimizationController(BasicProsumerController):
             target_source = "direct_grid_target"
             p_target_kw = p_grid_target_kw
 
+
         #Target 2: if not, then check if an external flex request is provided, if so then the target is baseline grid import + flex request
         # p flex = -ve, increase grid import
         # p_flex = +ve, reduce grid import
@@ -181,13 +182,13 @@ class ElectricalOptimizationController(BasicProsumerController):
             target_source = "external_flex_request"
             p_target_kw = (p_grid_baseline_kw - p_flex_kw)
 
+
         #target 3: if neither direct target nor flex request is available, then the target becomes the uncontrolled grid import
         else:
             target_source = "baseline_operation"
             p_target_kw = p_grid_baseline_kw
-
             if below_limit and np.isfinite(p_contract_kw):
-                # Laden bis Vertragslimit erlauben, kein target_error für Laden
+                # allow charging up to the contractual limit. Based on the weight_target the system wants to achieve this
                 p_target_kw = p_contract_kw
             else:
                 p_target_kw = p_grid_baseline_kw
@@ -199,7 +200,7 @@ class ElectricalOptimizationController(BasicProsumerController):
             next_active_request_steps = 0
 
         # classify a flex request by large and small, so that later a choice between use of CHP or battery can be made
-        request_is_large = (abs(p_flex_kw) >= self.p_large_requested_threshold_kw)
+        request_is_large = (abs(p_grid_baseline_kw) >= p_contract_kw)#self.p_large_requested_threshold_kw)
         # This classification influences whether the optimizer prefers:
         # 1. battery response for short requests (OR)
         # 2. CHP startup for large or sustained requests
@@ -280,19 +281,22 @@ class ElectricalOptimizationController(BasicProsumerController):
         battery_charge = sum(model.battery[index].p_charge for index in model.battery_index)
 
         # When active, battery is only charged with electricity from the grid
-        model.charge_from_grid_only = pyo.Constraint(
-            expr=model.p_grid_import_kw >= battery_charge
-        )
+        # model.charge_from_grid_only = pyo.Constraint(
+        #     expr=model.p_grid_import_kw >= battery_charge
+        # )
 
         # penalty sum = p_el_out _kw|(t-1) + battery disch + battery charge
-        if previous_chp_state_on:
-            preference_cost = (0.2 * model.chp_deviation + 8.0 * battery_discharge + 1.0 * battery_charge)
+        if previous_chp_state_on and request_is_large:
+            preference_cost = (100 * model.chp_deviation + 1 * battery_discharge + (100) * battery_charge)
 
-        elif request_is_large or request_is_sustained:
-            preference_cost = (5.0 * chp_startup + 0.2 * model.chp_deviation + 6.0 * battery_discharge + 1.0 * battery_charge)
+        elif previous_chp_state_on:
+            preference_cost = (0.1 * model.chp_deviation + 100 * battery_discharge + 0.001 * battery_charge)
+
+        elif request_is_large:# or request_is_sustained:
+            preference_cost = (100 * chp_startup + 1 * model.chp_deviation + 10 * battery_discharge + (1) * battery_charge)
 
         else:
-            preference_cost = (500.0 * chp_startup + 5.0 * model.chp_deviation + 0.5 * battery_discharge + 1.0 * battery_charge)
+            preference_cost = (30000.0 * chp_startup + 100 * model.chp_deviation + 100 * battery_discharge + 0.001 * battery_charge)
 
 
         # Energiekosten-Term
@@ -313,7 +317,7 @@ class ElectricalOptimizationController(BasicProsumerController):
 
 
         # Objective function
-        model.objective = pyo.Objective(expr=(self.weight_target * model.target_error
+        model.objective = pyo.Objective(expr=( self.weight_target * model.target_error
                                               + self.weight_contract * model.contract_violation
                                               + preference_cost
                                               # + energy_cost
