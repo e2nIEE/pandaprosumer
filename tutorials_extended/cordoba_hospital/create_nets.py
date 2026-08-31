@@ -2,10 +2,9 @@ import pandapipes as ppi
 
 import pandapipes as ppi
 
-
 def create_thermal_networks():
 
-    net_cold = ppi.create_empty_network(fluid="water")
+    net_cold = ppi.create_empty_network(fluid="water",  name="cold_network",)
 
     # Junctions
     j_c_supply = ppi.create_junction(net_cold, pn_bar=4, tfluid_k=283.15, name="Cold Feed")
@@ -16,10 +15,15 @@ def create_thermal_networks():
     j_c_cons_out = ppi.create_junction(net_cold, pn_bar=4, tfluid_k=288.15, name="Cold Consumer Outlet")
 
     # Rohre
-    ppi.create_pipe(net_cold, from_junction=j_c_supply, to_junction=j_c_cons_in,
-                    length_km=1.5, k_mm=0.1, name="Cold Pipe Feed", std_type="280_PE-HD_16")
-    ppi.create_pipe(net_cold, from_junction=j_c_cons_out, to_junction=j_c_return,
-                    length_km=1.5, k_mm=0.1, name="Cold Pipe Return", std_type="280_PE-HD_16")
+    # ppi.create_pipe(net_cold, from_junction=j_c_supply, to_junction=j_c_cons_in,
+    #                 length_km=1.5, k_mm=0.1, name="Cold Pipe Feed", std_type="280_PE-HD_16")
+    # ppi.create_pipe(net_cold, from_junction=j_c_cons_out, to_junction=j_c_return,
+    #                 length_km=1.5, k_mm=0.1, name="Cold Pipe Return", std_type="280_PE-HD_16")
+    ppi.create_pipe_from_parameters(net_cold, from_junction=j_c_supply, to_junction=j_c_cons_in,
+                      length_km=1.5, diameter_m=0.4, k_mm=0.1, text_k=293.15, name="Cold Pipe Feed")
+
+    ppi.create_pipe_from_parameters(net_cold, from_junction=j_c_cons_out, to_junction=j_c_return,
+                      length_km=1.5, diameter_m=0.4, k_mm=0.1, text_k=293.15, name="Cold Pipe Return")
 
     # massflow calculation from qext_q, cp and delta_k
     # qext_w = 1000000 W (Wärmezufuhr ins Netz = Kälteentnahme)
@@ -33,17 +37,21 @@ def create_thermal_networks():
 
 
     # Consumer: Heat Exchanger instead of Heat Consumer -> heat consumer has no negative qext_w
-    ppi.create_flow_control(net_cold, from_junction=j_c_cons_in, to_junction=j_c_cons_in,
-                            controlled_mdot_kg_per_s=mdot_cold)
+    ppi.create_flow_control(net_cold, from_junction=j_c_cons_in, to_junction=j_c_cons_mid,
+                            controlled_mdot_kg_per_s=mdot_cold, name="cooling_demand_flow_control"
+)
     # qext_w is positive beacause heat_exchanger gets heat injected into the grid (Cooling consumer)
+    # ppi.create_heat_exchanger(net_cold, from_junction=j_c_cons_mid, to_junction=j_c_cons_out,
+    #                           qext_w=-1000000,
+    #                           name="Hospital Cooling Demand (1 MW)")
     ppi.create_heat_exchanger(net_cold, from_junction=j_c_cons_mid, to_junction=j_c_cons_out,
-                              qext_w=1000000,
-                              name="Hospital Cooling Demand (1 MW)")
+        qext_w=-1_000_000,
+        name="cooling_demand_heat_exchanger")
 
     # ==========================================
     # 2. Heizkreis (Hot Loop) - Winter: 78/70 °C
     # ==========================================
-    net_hot = ppi.create_empty_network(fluid="water")
+    net_hot = ppi.create_empty_network(fluid="water", name="hot_net_work")
 
     #
     # Junctions
