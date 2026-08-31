@@ -287,16 +287,16 @@ class ElectricalOptimizationController(BasicProsumerController):
 
         # penalty sum = p_el_out _kw|(t-1) + battery disch + battery charge
         if previous_chp_state_on and request_is_large:
-            preference_cost = (100 * model.chp_deviation + 1 * battery_discharge + (100) * battery_charge)
+            preference_cost = (100 * model.chp_deviation + 1 * battery_discharge)# + (100) * battery_charge)
 
         elif previous_chp_state_on:
-            preference_cost = (0.1 * model.chp_deviation + 100 * battery_discharge + 0.001 * battery_charge)
+            preference_cost = (0.1 * model.chp_deviation + 100 * battery_discharge)# + 0.1 * battery_charge)
 
         elif request_is_large:# or request_is_sustained:
-            preference_cost = (100 * chp_startup + 1 * model.chp_deviation + 10 * battery_discharge + (1) * battery_charge)
+            preference_cost = (1 * chp_startup + 1 * model.chp_deviation + 10 * battery_discharge)# + (1) * battery_charge)
 
         else:
-            preference_cost = (30000.0 * chp_startup + 100 * model.chp_deviation + 100 * battery_discharge + 0.001 * battery_charge)
+            preference_cost = (10000.0 * chp_startup + 1 * model.chp_deviation + 10 * battery_discharge)# + 0.1 * battery_charge)
 
 
         # Energiekosten-Term
