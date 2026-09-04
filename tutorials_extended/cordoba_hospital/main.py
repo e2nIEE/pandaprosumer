@@ -25,6 +25,7 @@ demand_data = pd.read_excel('data/cordoba_hospital_data.xlsx')
 n_steps_week = int(7 * 24 * 3600 / time_resolution_s)  # 168 bei 1h-Auflösung
 # demand_data = demand_data.iloc[:n_steps_week]
 demand_data = demand_data.iloc[:24]
+
 end = (
     pd.Timestamp(start)
     + len(demand_data) * pd.Timedelta(seconds=time_resolution_s)
@@ -43,9 +44,22 @@ demand_data["t_flow_cold_c"] = 10
 demand_data["t_return_cold_c"] = 15
 demand_data["t_flow_hot_c"] = 78
 demand_data["t_return_hot_c"] = 70
-demand_data["chiller_t_cond_flow_c"] = 40
-demand_data["chiller_t_cond_return_c"] = 30
-# demand_data["t_evap_in_c"] = 15
+# Assumed domestic-hot-water temperatures
+demand_data["t_dhw_cold_c"] = 15.0
+demand_data["t_dhw_hot_c"] = 60.0
+
+# Real ambient temperature from Excel
+demand_data["t_ambient_c"] = (demand_data["T_amb(°C)"].astype(float))
+# Increase condenser temperatures only when ambient exceeds 25°C
+temperature_increase_c = np.maximum(demand_data["t_ambient_c"] - 25.0, 0.0)
+# Water from chiller condenser to Dry Cooler
+demand_data["dry_cooler_t_in_c"] = (35.0 + temperature_increase_c)
+# Water from Dry Cooler back to chiller condenser
+demand_data["dry_cooler_t_out_c"] = (30.0 + temperature_increase_c)
+# Required by the controller; adiabatic mode remains disabled
+demand_data["phi_air_in_percent"] = 50.0
+
+
 
 demand_input = DFData(demand_data)
 
@@ -53,11 +67,22 @@ net_cold, net_hot = create_thermal_networks()
 
 prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, level=4, net_hot=net_hot)
 prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
-prosumer_prod,  hp_controller_index = create_prosumer_prod( demand_input, time_resolution_s, start, end, level=3, net_hot=net_hot, net_cold=net_cold)
-prosumer_chiller = create_prosumer_chiller(demand_input, time_resolution_s, start, end, net_cold=net_cold, level=6)
+(
+    prosumer_dhw,
+    dhw_storage_controller_index,
+    dhw_demand_controller_index
+) = create_prosumer_dhw_system(
+    demand_input,
+    time_resolution_s,
+    start,
+    end,
+    net_hot=net_hot
+)
+prosumer_prod, hp_controller_index, chiller_controller_index, dry_cooler_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, level=3, net_hot=net_hot, net_cold=net_cold)
 
 
-energy_system = _create_energy_system([net_hot, net_cold], [ prosumer_cd, prosumer_hd, prosumer_prod, prosumer_chiller], name="test_energy_system")
+
+energy_system = _create_energy_system([net_hot, net_cold], [ prosumer_cd, prosumer_hd, prosumer_prod, prosumer_dhw,], name="test_energy_system")
 
 from pandapower.timeseries import OutputWriter
 
@@ -88,8 +113,9 @@ ow_net_cold = OutputWriter(
         ("flow_control", "controlled_mdot_kg_per_s")
     ]
 )
+
+
 period_index = 0
 run_time_series_system(energy_system,
                        period_index=period_index, continue_on_divergence=False, verbose=True,
                        transient=True, dt=time_resolution_s, mode="bidirectional")
-

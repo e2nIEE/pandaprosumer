@@ -286,48 +286,60 @@ class MappedController(Controller):
         else:
             return list_responders
 
+    # def _get_generic_mapped_responders(self, prosumer):
+    #     """
+    #     Returns a list of all the controllers for which this controller is the responder.
+    #
+    #     :param prosumer: The prosumer object
+    #     :return: List of mapped responders
+    #     """
+    #     responders = [prosumer.controller.loc[item.responder]["object"] for item in
+    #                   prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+    #                   [["object", "responder"]].itertuples()]
+    #     return [responder for responder in responders if not responder.is_supervisor()]
     def _get_generic_mapped_responders(self, prosumer):
-        """
-        Returns a list of all the controllers for which this controller is the responder.
+        responders = self._get_mapped_responders(prosumer)
 
-        :param prosumer: The prosumer object
-        :return: List of mapped responders
-        """
-        responders = [prosumer.controller.loc[item.responder]["object"] for item in
-                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                      [["object", "responder"]].itertuples()]
-        return [responder for responder in responders if not responder.is_supervisor()]
+        return [
+            responder
+            for responder in responders
+            if not responder.is_supervisor()
+        ]
 
+    #
     def _get_mapped_initiators(self, container, remove_duplicate=True):
-        """
-        Returns a list of all the controllers for which this controller is the responder.
+        mask_responder = (
+                container.mapping["responder"] == self.index
+        )
 
-        :param container: The container object
-        :return: List of mapped initiators
-        """
-        # Boolean mask for responders matching self.index
-        mask_responder = container.mapping["responder"] == self.index
+        mask_no_chain = ~container.mapping["object"].apply(
+            lambda mapping: mapping.no_chain
+        )
 
-        # Boolean mask for objects where no_chain is False
-        mask_no_chain = ~container.mapping["object"].apply(lambda r: r.no_chain)
+        mask_same_container = container.mapping["object"].apply(
+            lambda mapping: mapping.responder_net is container
+        )
 
-        # Apply masks, sort, and select columns
         filtered_mapping = (
-            container.mapping[mask_responder & mask_no_chain]
+            container.mapping[
+                mask_responder
+                & mask_no_chain
+                & mask_same_container
+                ]
             .sort_values("order")
             [["object", "initiator"]]
         )
 
-        # Build the list of initiators
         list_initiators = [
-            obj.responder_net.controller.loc[initiator]["object"]
-            for obj, initiator in filtered_mapping.itertuples(index=False)
+            container.controller.loc[initiator]["object"]
+            for _, initiator
+            in filtered_mapping.itertuples(index=False)
         ]
 
         if remove_duplicate:
             return list(dict.fromkeys(list_initiators))
-        else:
-            return list_initiators
+
+        return list_initiators
 
     def _get_mapped_initiators_on_same_level(self, container, remove_duplicate=True):
         """
@@ -357,8 +369,23 @@ class MappedController(Controller):
             self_level = container.controller.loc[container.controller.object == self].level.values[0]
             if initiator_level == self_level and initiator.applied:
                 initiator.applied = False
+                # for initiator_initiator in initiator._get_mapped_initiators(container):
+                #     initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
+                #     if initiator_initiator_level == initiator_level:
                 for initiator_initiator in initiator._get_mapped_initiators(container):
-                    initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
+                    initiator_initiator_rows = container.controller.loc[
+                        container.controller.object == initiator_initiator
+                        ]
+
+                    # The initiator belongs to another container/network.
+                    # Do not recursively unapply it here.
+                    if initiator_initiator_rows.empty:
+                        continue
+
+                    initiator_initiator_level = (
+                        initiator_initiator_rows.level.iloc[0]
+                    )
+
                     if initiator_initiator_level == initiator_level:
                         initiator.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                                FluidMixMapping.MASS_FLOW_KEY: np.nan}

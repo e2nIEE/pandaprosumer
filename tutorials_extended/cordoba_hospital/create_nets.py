@@ -78,6 +78,16 @@ def create_thermal_networks():
 
     net_hot.pipe["u_w_per_m2k"] = 0.1
 
+    # Hot-network backup for the DHW system
+    ppi.create_heat_consumer(
+        net_hot,
+        from_junction=j_h_cons_in,
+        to_junction=j_h_cons_out,
+        qext_w=0.0,
+        deltat_k=8,
+        name="dhw_backup_demand_coupling"
+    )
+
     return net_cold, net_hot
 
 
