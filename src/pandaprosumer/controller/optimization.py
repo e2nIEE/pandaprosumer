@@ -264,7 +264,7 @@ class OptimizationController(BasicProsumerController):
         # Stage 2: SOC-Abweichung vom Zielband minimieren
 
         SOC_TARGET = 0.5  # Mitte des Hysteresebands
-        SOC_TOL = 0.1  # Abweichungen des Hyteresebands um Mitte
+        SOC_TOL = 0.2  # Abweichungen des Hyteresebands um Mitte
 
         m.soc_dev = pyo.Var(m.storage_index, domain=pyo.NonNegativeReals)
 

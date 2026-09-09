@@ -856,6 +856,45 @@ def run_opf_timeseries_for_subnet(fixed_subnet_id, fixed_mall_bus, time_series_d
     return opf_results_df, updated_flex_target_kw, res_base, res_actual, bounds_df, df_reinforcement
 
 
+def _collect_scaling_loadcases(net_dict: dict, keys: list, element: str, ref_idx: pd.Index) -> pd.Series:
+    """Sammelt p_mw-Werte von `element` (z.B. 'load' oder 'sgen') aus allen
+    Netzen und gibt je Zeile eine Liste über alle Lastfälle zurück."""
+    p_mw_matrix = pd.DataFrame(index=ref_idx, columns=keys, dtype=float)
+
+    for k in keys:
+        el_k = getattr(net_dict[k], element)
+        if not el_k.index.equals(ref_idx):
+            raise ValueError(f"Index von '{element}' in Netz '{k}' weicht vom Basisnetz ab.")
+        p_mw_matrix[k] = el_k["p_mw"].to_numpy()
+
+    return p_mw_matrix.apply(list, axis=1)
+
+
+def merge_loadcases(net_dict: dict, sort_keys: bool = False,
+                     elements: tuple = ("load", "sgen")) -> pp.pandapowerNet:
+    """
+    Fasst mehrere Netze mit identischer Topologie, aber unterschiedlichen
+    Lastfällen (p_mw) zu einem Netz zusammen (für load UND sgen).
+
+    - p_mw wird auf 1.0 gesetzt
+    - die ursprünglichen p_mw-Werte aller Fälle werden als Liste in
+      <element>.scaling_loadcases abgelegt (Reihenfolge = dict-Reihenfolge)
+    """
+    keys = sorted(net_dict) if sort_keys else list(net_dict)
+    net_out = copy.deepcopy(net_dict[keys[0]])
+
+    for element in elements:
+        el_out = getattr(net_out, element)
+        if el_out.empty:
+            continue  # z.B. keine sgen im Netz -> nichts zu tun
+
+        el_out["scaling_loadcases"] = _collect_scaling_loadcases(
+            net_dict, keys, element, el_out.index
+        )
+        el_out["p_mw"] = 1.0
+
+    return net_out
+
 # 5. Main workflow
 # def main():
 # TODO: remove hardcoded mall bus to choose a suitable placement
