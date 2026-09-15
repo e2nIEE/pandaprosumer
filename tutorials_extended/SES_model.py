@@ -82,20 +82,20 @@ cp_index = create_controlled_const_profile(prosumer, input_params, result_params
 
 # CHP
 chp_name = "SES CHP"
-chp_size_kw = 350
+chp_size_kw = 1400
 chp_fuel = "ng"
 chp_altitude_m = 0
 
 ice_chp_index = create_controlled_ice_chp(prosumer, chp_size_kw, chp_fuel, chp_altitude_m, chp_name, level=2, order=1)
 
 # Battery storage
-battery_capacity = 10e4
+battery_capacity = 1e4
 battery_index = create_controlled_battery_storage(prosumer=prosumer, e_capacity_kwh=battery_capacity, p_charge_max_kw=battery_capacity, p_discharge_max_kw=battery_capacity, eta_charge=0.95, eta_discharge=0.95, soc_min=0.10, soc_max=0.90,
                                                   self_discharge_per_hour=0.0001, init_soc=0.90, name="SES Battery", level=2, order=0)
 
 # Electrical optimization controller
 optimization_index = create_controlled_electrical_optimization(prosumer=prosumer, name="SES Electrical Optimization", period=period, level=1,
-                                                               order=0, solver_name="appsi_highs", p_large_requested_threshold_kw=500.0,
+                                                               order=0, solver_name="appsi_highs", p_large_requested_threshold_kw=2000.0,
                                                                sustained_request_timesteps=4, request_tolerance_kw=1e-6, weight_target=1e5,
                                                                weight_contract=1e7)
 
