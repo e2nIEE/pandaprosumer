@@ -41,7 +41,7 @@ def suppress_native_stdout():
 
 warnings.filterwarnings("ignore", category=FutureWarning, module="simbench")
 warnings.filterwarnings("ignore", category=FutureWarning, module="pandapower")
-pd.set_option('future.no_silent_downcasting', True)
+#pd.set_option('future.no_silent_downcasting', True)
 
 
 # monkeypatch: older Simbench nets are missing legacy geodata tables that
@@ -89,7 +89,7 @@ YEAR_START = pd.Timestamp("2025-01-01 00:15:00")
 # Grid violation thresholds
 v_min_pu_std = 0.90
 v_max_pu_std = 1.10
-loading_percent_max_std = 100.0
+loading_percent_max_std = 70.0
 
 allow_export_to_grid = True
 
