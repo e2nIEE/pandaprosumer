@@ -15,6 +15,8 @@ import pandapower.plotting as pp_plot
 import pandapower.topology as pp_topology
 import simbench as sb
 
+from minihyper.run import run_full_job
+
 
 try:
     from tqdm import tqdm
@@ -1216,6 +1218,33 @@ def build_opf_results(selected_time, scenario_label, status,
            "n_trafo_overload_after": len(violations_after["trafo_overload"])}
     return row
 
+def log_reinforcement_need(net, timestamp, df_reinforcement):
+    """Requires net to be in a solved (run_pf-successful) state.
+    Operates on a copy so the caller's net (with its trafo and
+    results) remains untouched for subsequent use in this timestep."""
+    from minihyper.config import GridConfig
+    cfg = GridConfig()
+    cfg.solver.time_limit_s = 60
+    net_reinforcement = copy.deepcopy(net)
+
+    trafo_id = net_reinforcement.trafo.index[0]
+    lv_bus = net_reinforcement.trafo.at[trafo_id, "lv_bus"]
+
+    pp.create_ext_grid(net_reinforcement, bus=lv_bus, vm_pu=1.0)
+    net_reinforcement.trafo.drop(index=trafo_id, inplace=True)
+
+    # pp.to_json(net_reinforcement, "C:\\Users\\carl\\PycharmProjects\\MiniHyper\\test\\networks\\network_files\\simbench_mv.json")
+    job, result_mh = run_full_job(net_reinforcement, config=cfg)
+
+    vn_kv = net_reinforcement.bus.at[lv_bus, "vn_kv"]
+    current_a = (result_mh["line_s_expansion_mva"] * 1e6
+                 / (np.sqrt(3) * vn_kv * 1e3))
+
+    if df_reinforcement is None:
+        df_reinforcement = pd.DataFrame(index=result_mh.index)
+
+    df_reinforcement[timestamp] = current_a
+    return df_reinforcement
 
 def run_opf_timeseries_for_scenario(scenario_label, direction, net_base, mall_load, mall_feeder_line_idx,
                                     profiles, idx, time_series_data_base, residual_mall_load_kw,
@@ -1234,6 +1263,9 @@ def run_opf_timeseries_for_scenario(scenario_label, direction, net_base, mall_lo
     prev_chp_downtime = {}
 
     n_hours = len(time_series_data_base)
+
+    df_reinforcement = None
+    violated_nets_dict = {}
 
     time_iter = time_series_data_base.index
     if _HAVE_TQDM:
@@ -1421,6 +1453,14 @@ def run_opf_timeseries_for_scenario(scenario_label, direction, net_base, mall_lo
                     else:
                         status = ("opf_success_remaining_violations" if has_violation_after
                                   else "opf_success_violations_resolved")
+
+                    # Trigger jetzt unabhängig von opf_failed, nur abhängig von der Verletzung
+                    if has_violation_after:
+                        violated_nets_dict[time_series_t.index[0]] = net
+
+                        # df_reinforcement = log_reinforcement_need(
+                        #     net, time_series_t.index[0], df_reinforcement
+                        # )
                 else:
                     status = "pf_after_ppros_update"
                     v_after = None
@@ -1467,7 +1507,7 @@ def run_opf_timeseries_for_scenario(scenario_label, direction, net_base, mall_lo
         violation_detail_rows,
         columns=["time", "phase", "violation_type", "element_id", "location", "value"])
 
-    return opf_results_df, updated_flex_target_kw, res_base, res_actual, bounds_df, violation_details_df
+    return opf_results_df, updated_flex_target_kw, res_base, res_actual, bounds_df, violation_details_df, violated_nets_dict
 
 
 # 11. Plotting + terminal summaries
@@ -1715,7 +1755,7 @@ def run_scenario(scenario_label, direction, ses_data_1h_full, heat_data_file,
     print(f"[{scenario_label}] Running closed-loop prosumer + grid OPF ({n_steps} hourly steps)...")
 
     (opf_results_df, updated_flex_target_kw, res_base, res_actual,
-     bounds_df, violation_details_df) = run_opf_timeseries_for_scenario(
+     bounds_df, violation_details_df, violated_nets) = run_opf_timeseries_for_scenario(
         scenario_label=scenario_label, direction=direction,
         net_base=net_base, mall_load=mall_load, mall_feeder_line_idx=mall_feeder_line_idx,
         profiles=profiles, idx=idx,
@@ -1736,7 +1776,7 @@ def run_scenario(scenario_label, direction, ses_data_1h_full, heat_data_file,
 
     plot_scenario_diagnostics(opf_results_df, res_actual, scenario_label)
 
-    return opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df
+    return opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df, violated_nets
 
 
 def run_for_grid(ses_data_1h_full, best_import_row, grid_code=None):
@@ -1824,15 +1864,15 @@ def run_for_grid(ses_data_1h_full, best_import_row, grid_code=None):
         print(f"[CASE 1] Chosen trafo capacity_derate (trafo-derate-only) = {chosen_trafo_derate:.4f}")
         print_calibration_spot_check(calib_trafo_derate, chosen_trafo_derate, "import_trafo_derate", worst_hour_imp)
 
-    run_scenario("import_derate_only_window", "import", ses_data_1h_full, heat_data_file,
-                 import_window_start, import_window_end,
-                 mall_bus=MALL_BUS_RESOLVED,
-                 grid_load_scale=1.0, grid_sgen_scale=1.0,
-                 capacity_derate=chosen_capacity_derate,
-                 derate_line_idx=derate_line_idx,
-                 profiles=profiles, idx=idx)
+    # opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df, violated_nets = run_scenario("import_derate_only_window", "import", ses_data_1h_full, heat_data_file,
+    #              import_window_start, import_window_end,
+    #              mall_bus=MALL_BUS_RESOLVED,
+    #              grid_load_scale=1.0, grid_sgen_scale=1.0,
+    #              capacity_derate=chosen_capacity_derate,
+    #              derate_line_idx=derate_line_idx,
+    #              profiles=profiles, idx=idx)
 
-    run_scenario("import_load_only_window", "import", ses_data_1h_full, heat_data_file,
+    opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df, violated_nets = run_scenario("import_load_only_window", "import", ses_data_1h_full, heat_data_file,
                  import_window_start, import_window_end,
                  mall_bus=MALL_BUS_RESOLVED,
                  grid_load_scale=chosen_import_load_scale, grid_sgen_scale=1.0,
@@ -1854,26 +1894,89 @@ def run_for_grid(ses_data_1h_full, best_import_row, grid_code=None):
               "no trafo on the mall's ext_grid-to-bus path, or the trafo axis "
               "was not binding within the tested calibration bounds.")
 
+    return opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df, violated_nets
+
+import copy
+import pandas as pd
+import pandapower as pp
+
+
+def _collect_scaling_loadcases(net_dict: dict, keys: list, element: str, ref_idx: pd.Index) -> pd.Series:
+    """Sammelt p_mw-Werte von `element` (z.B. 'load' oder 'sgen') aus allen
+    Netzen und gibt je Zeile eine Liste über alle Lastfälle zurück."""
+    p_mw_matrix = pd.DataFrame(index=ref_idx, columns=keys, dtype=float)
+
+    for k in keys:
+        el_k = getattr(net_dict[k], element)
+        if not el_k.index.equals(ref_idx):
+            raise ValueError(f"Index von '{element}' in Netz '{k}' weicht vom Basisnetz ab.")
+        p_mw_matrix[k] = el_k["p_mw"].to_numpy()
+
+    return p_mw_matrix.apply(list, axis=1)
+
+
+def merge_loadcases(net_dict: dict, sort_keys: bool = False,
+                     elements: tuple = ("load", "sgen")) -> pp.pandapowerNet:
+    """
+    Fasst mehrere Netze mit identischer Topologie, aber unterschiedlichen
+    Lastfällen (p_mw) zu einem Netz zusammen (für load UND sgen).
+
+    - p_mw wird auf 1.0 gesetzt
+    - die ursprünglichen p_mw-Werte aller Fälle werden als Liste in
+      <element>.scaling_loadcases abgelegt (Reihenfolge = dict-Reihenfolge)
+    """
+    keys = sorted(net_dict) if sort_keys else list(net_dict)
+    net_out = copy.deepcopy(net_dict[keys[0]])
+
+    for element in elements:
+        el_out = getattr(net_out, element)
+        if el_out.empty:
+            continue  # z.B. keine sgen im Netz -> nichts zu tun
+
+        el_out["scaling_loadcases"] = _collect_scaling_loadcases(
+            net_dict, keys, element, el_out.index
+        )
+        el_out["p_mw"] = 1.0
+
+    return net_out
+
 
 # 13. Main workflow
 
-def main(grid_codes=None):
-    if grid_codes is None:
-        grid_codes = [GRID_CODE]
+# def main(grid_codes=None):
+grid_codes=None
+if grid_codes is None:
+    grid_codes = [GRID_CODE]
 
-    print("\n=== Scanning full SES year for best 8-day windows ===")
-    ses_data_1h_full, scan_df, best_export_row, best_import_row = load_and_scan_ses_data(
-        ses_data_file, window_days=WINDOW_DAYS)
-    print(f"Best EXPORT window: {best_export_row['window_start']} to {best_export_row['window_end']} "
-          f"(summed residual = {best_export_row['residual_sum_kwh']:.1f} kWh, "
-          f"peak export = {-best_export_row['residual_peak_export_kw']:.1f} kW) "
-          f"-- kept for future reference only; no export scenario is run (Case 2 removed).")
-    print(f"Best IMPORT/STRESS window: {best_import_row['window_start']} to {best_import_row['window_end']} "
-          f"(peak import = {best_import_row['residual_peak_import_kw']:.1f} kW)")
+print("\n=== Scanning full SES year for best 8-day windows ===")
+ses_data_1h_full, scan_df, best_export_row, best_import_row = load_and_scan_ses_data(
+    ses_data_file, window_days=WINDOW_DAYS)
+print(f"Best EXPORT window: {best_export_row['window_start']} to {best_export_row['window_end']} "
+      f"(summed residual = {best_export_row['residual_sum_kwh']:.1f} kWh, "
+      f"peak export = {-best_export_row['residual_peak_export_kw']:.1f} kW) "
+      f"-- kept for future reference only; no export scenario is run (Case 2 removed).")
+print(f"Best IMPORT/STRESS window: {best_import_row['window_start']} to {best_import_row['window_end']} "
+      f"(peak import = {best_import_row['residual_peak_import_kw']:.1f} kW)")
 
-    for grid_code in grid_codes:
-        run_for_grid(ses_data_1h_full, best_import_row, grid_code=grid_code)
+for grid_code in grid_codes:
+    opf_results_df, bounds_df, residual_mall_load_kw, violation_details_df, violated_nets = run_for_grid(ses_data_1h_full, best_import_row, grid_code=grid_code)
+
+net_merged = merge_loadcases(violated_nets)
+from minihyper.config import GridConfig
+cfg = GridConfig()
+cfg.solver.time_limit_s = 1200
 
 
-if __name__ == "__main__":
-    main()
+trafo_id = net_merged.trafo.index[0]
+lv_bus = net_merged.trafo.at[trafo_id, "lv_bus"]
+pp.create_ext_grid(net_merged, bus=lv_bus, vm_pu=1.0)
+net_merged.trafo.drop(index=trafo_id, inplace=True)
+
+buses_to_drop = net_merged.bus.index[net_merged.bus["vn_kv"] == 110]
+pp.drop_buses(net_merged, buses_to_drop)
+
+net_merged.load["p_mw"] *= 2
+
+job, result_mh = run_full_job(net_merged, config=cfg)
+# if __name__ == "__main__":
+#     main()
