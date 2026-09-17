@@ -223,36 +223,6 @@ FUNCTION INDEX (with descriptions)
                                             single net carrying all N as parallel load
                                             cases; deep-copies nets[0] as the structural/
                                             geo/label template, so callers order the worst
-                                            hour first
-    - build_hypercap_case_dict()           : builds ONE reduced net per violating
-                                            (scenario, timestamp) snapshot - the detailed/
-                                            boundary bus sets are read from the
-                                            `region_by_scenario` dict (one frozen region per
-                                            scenario) produced by
-                                            HyperCapReducer.build_scenario_region()
-    - build_hypercap_scenario_case_dict()  : top-level per-scenario builder - for each
-                                            scenario, builds its frozen region via
-                                            build_scenario_region(), reduces+validates every
-                                            hour in that scenario against build_hypercap_
-                                            case_dict(), orders that scenario's hours worst-
-                                            hour-first, then merges all of that scenario's
-                                            per-hour reduced nets into ONE net via
-                                            merge_loadcases() above (sound only because
-                                            every hour was reduced against the identical
-                                            region, so the nets are structurally identical);
-                                            returns (case_dict, case_metadata) keyed by
-                                            scenario_label - case_dict IS the reinforcement-
-                                            planning input
-    - export_hypercap_case_slds()          : renders one classification-enhanced SLD per
-                                            case in case_dict via plot_hypercap_reduced_sld()
-    - prepare_hypercap_export()            : top-level orchestrator - calls
-                                            build_hypercap_scenario_case_dict(), writes
-                                            hypercap_cases.pkl / hypercap_cases_metadata.json
-                                            / post_mall_snapshots.pkl to out_dir, calls
-                                            export_hypercap_case_slds(), and warns if any
-                                            scenario had an hour fail validation
-
-    HyperCapSldPlotter (visualization only - no electrical data touched):
     - plot_hypercap_reduced_sld()          : draws one reduced network, colored by
                                             internal / boundary / external (Ward) region
 
@@ -403,7 +373,7 @@ project_root = (Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials
 ses_data_file = project_root / "tutorials_extended" / "data" / "ses_data.xlsx"
 heat_data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
 
-GRID_CODE = "1-MV-urban--1-sw"  # urban grids are stiff, so rural grids are preferred for stress-testing  1-MV-rural--1-sw
+GRID_CODE = "1-MV-rural--1-sw"  # urban grids are stiff, so rural grids are preferred for stress-testing  1-MV-rural--1-sw
 
 MALL_BUS = 15  # not hard coded in practice: the mall bus is auto-determined, see find_weakest_branch_leaf_bus()
 
@@ -417,7 +387,8 @@ loading_percent_max_std = 100.0
 
 
 # SLD (single-line diagram) styling knobs
-SLD_LEAF_STEP = 1.4     # vertical spacing between sibling leaves (was hardcoded 1.0)
+SLD_LEAF_STEP = 2.2     # vertical spacing between sibling leaves (1.4 made the
+                        # sgen circle of one row overlap the load arrow of the next)
 SLD_DEPTH_STEP = 3.0    # horizontal spacing per tree depth level (was hardcoded 2.0)
 
 # SLD color scheme (industrial single-line-diagram convention)
@@ -428,6 +399,35 @@ SLD_LOAD_COLOR     = "#1f4e8c"   # dark blue - load arrows
 SLD_SGEN_COLOR     = "#2e8b57"   # sea green - generation (PV/sgen)
 SLD_TRAFO_COLOR    = "#555555"   # medium grey - transformer symbol
 SLD_EXTGRID_COLOR  = "#000000"   # black hatch - ext grid
+SLD_SWITCH_COLOR   = "#d62728"   # red dotted - closed bus-bus switches (previously not drawn at all)
+SLD_IMPEDANCE_COLOR = "#9467bd"   # purple dashed - Ward eq_impedance between two boundary buses
+
+# --- SLD symbol sizes, expressed in LAYOUT UNITS ---
+# NOT derived from pp_plot.get_collection_sizes(), which scales with the
+# geographic extent of the net and returns ~0.5 layout units on a 100-bus
+# feeder -> switches/trafos drawn as oversized blobs on top of the busbars.
+SLD_SYM_SWITCH   = 0.12   # half-size of the switch square (data units)
+SLD_SYM_TRAFO    = 0.34   # trafo circle radius
+SLD_SYM_EXTGRID  = 0.38   # ext-grid box size
+SLD_SYM_MARKER   = 26     # scatter marker area (pt^2) for gen/storage/shunt/...
+SLD_SYM_SWITCH_DIST_MULT = 1.25   # switch offset from the bus, in busbar_half_width
+
+# --- colors of the remaining element types ---
+# Module level (they used to be locals inside _draw_sld_base) so that
+# _build_sld_legend() can label them with the exact same colors they are
+# drawn in. A legend that invents its own colors is worse than no legend.
+SLD_OOS_COLOR            = "#a0a0a0"   # out of service
+SLD_DCLINE_COLOR         = "#393b79"
+SLD_GEN_COLOR            = "#8c564b"   # controllable generator
+SLD_STORAGE_COLOR        = "#e377c2"   # storage (the pink "plus" markers)
+SLD_SHUNT_COLOR          = "#7f7f7f"
+SLD_WARD_COLOR           = "#17becf"
+SLD_XWARD_COLOR          = "#bcbd22"
+SLD_SVC_COLOR            = "#ff7f0e"
+SLD_SSC_COLOR            = "#ff9896"
+SLD_TCSC_COLOR           = "#c49c94"
+SLD_SWITCH_CLOSED_COLOR  = "#1a1a1a"   # filled square = closed line/trafo switch
+SLD_SWITCH_OPEN_EDGE     = "#6e6e6e"   # hollow square = open line/trafo switch
 allow_export_to_grid = True
 
 
@@ -2024,22 +2024,47 @@ class SldPlotter:
             ax.plot([x - half_length, x + half_length], [y, y], color=color, linewidth=linewidth,
                     solid_capstyle="butt", zorder=zorder)
 
+
     @staticmethod
     def draw_orthogonal_connector(ax, xy_from, xy_to, color="grey", linewidth=1.3, zorder=1,
-                                   half_width=0.35):
-        """Draws an elbow (horizontal-vertical-horizontal) connector between two
-    busbar centers instead of a diagonal line."""
+                                half_width=0.35, linestyle="solid"):
         x0, y0 = xy_from
         x1, y1 = xy_to
-
         if abs(x1 - x0) < 1e-9:
-            ax.plot([x0, x1], [y0, y1], color=color, linewidth=linewidth, zorder=zorder)
+            ax.plot([x0, x1], [y0, y1], color=color, linewidth=linewidth, zorder=zorder, linestyle=linestyle)
             return
-
         jog_x = x0 + (x1 - x0) / 2.0
         xs = [x0, jog_x, jog_x, x1]
         ys = [y0, y0, y1, y1]
-        ax.plot(xs, ys, color=color, linewidth=linewidth, zorder=zorder)
+        ax.plot(xs, ys, color=color, linewidth=linewidth, zorder=zorder, linestyle=linestyle)
+        
+    @staticmethod
+    def _switch_anchor(net, bus, other_bus, distance):
+        """Point `distance` away from `bus` along the FIRST segment of the
+    route that draw_orthogonal_connector() actually draws (horizontal out
+    of the bus, unless both buses share an x, in which case vertical).
+
+    This is the fix for switches that appeared to float in mid-air: they
+    were placed on the straight chord between the two buses, which is not
+    where the line is drawn."""
+        x0, y0 = SldPlotter._bus_xy(net, bus)
+        x1, y1 = SldPlotter._bus_xy(net, other_bus)
+        if abs(x1 - x0) < 1e-9:
+            return x0, y0 + (distance if y1 >= y0 else -distance)
+        return x0 + (distance if x1 > x0 else -distance), y0
+
+    @staticmethod
+    def _draw_switch_square(ax, x, y, closed, size=SLD_SYM_SWITCH,
+                             closed_color=SLD_SWITCH_CLOSED_COLOR,
+                             open_edge=SLD_SWITCH_OPEN_EDGE, zorder=7):
+        """Axis-aligned square on the route: filled = closed, hollow = open.
+    Drawn as a data-coordinate Rectangle (not a scatter marker) so it keeps
+    its size relative to the busbars at any figure size or dpi."""
+        ax.add_patch(mpatches.Rectangle(
+            (x - size, y - size), 2 * size, 2 * size,
+            facecolor=(closed_color if closed else "white"),
+            edgecolor=(closed_color if closed else open_edge),
+            linewidth=1.1, zorder=zorder))
 
     @staticmethod
     def _violation_bands(violation_details_df, phase="after"):
@@ -2181,7 +2206,9 @@ class SldPlotter:
                 print(f"    also directly on {len(mall_trafos)} trafo(s): {list(mall_trafos.index)}")
  
         FeederTopology.compute_hierarchical_layout(net, leaf_step=leaf_step, depth_step=depth_step)
-        bus_size = pp_plot.get_collection_sizes(net)["bus"]
+        # fixed symbol size in layout units; get_collection_sizes() scales
+        # with the net's extent and returns absurd values on a large feeder
+        bus_size = min(leaf_step, depth_step) * 0.10
  
         fig_w, fig_h = SldPlotter._compute_sld_figsize(net)
  
@@ -2198,16 +2225,20 @@ class SldPlotter:
             if pd.isna(geo_str):
                 continue
             coords = _json.loads(geo_str)["coordinates"]
-            ax.annotate(str(bus_idx), xy=(coords[0], coords[1]), xytext=(-10, -12),
-                        textcoords="offset points", fontsize=8, color="black",
+            ax.annotate(str(bus_idx), xy=(coords[0], coords[1]), xytext=(-7, -10),
+                        textcoords="offset points", fontsize=7, color="#333333",
                         fontweight="bold", zorder=20, clip_on=False,
                         ha="right", va="top",
-                        bbox=dict(boxstyle="round,pad=0.15", facecolor="white",
-                                  edgecolor="none", alpha=0.85))
+                        bbox=dict(boxstyle="round,pad=0.12", facecolor="white",
+                                  edgecolor="none", alpha=0.75))
  
-        SldPlotter._build_sld_legend(ax)
+        SldPlotter._build_sld_legend(ax, net=net)
         ax.set_title(title or f"{GRID_CODE} -- mall connected directly at bus {mall_bus} (red busbar)")
         plt.tight_layout()
+        # reserve room below the axes for the legend that now sits there, so it
+        # is not clipped in the interactive window (savefig's bbox_inches=
+        # "tight" already takes care of the PNG)
+        fig.subplots_adjust(bottom=0.14)
         plt.savefig(savepath, dpi=130, bbox_inches="tight")
         plt.show()
         return ax
@@ -2231,53 +2262,240 @@ class SldPlotter:
 
     @staticmethod
     def _build_sld_legend(ax, extra_handles=None, loc="lower left", fontsize=8,
-                           title="Legend", title_fontsize=9):
+                           title="Legend", title_fontsize=9, outside=True, ncol=4,
+                           net=None):
+        """Builds the legend. Entries for the optional element types
+    (storage, gen, shunt, ward, ...) are only added when `net` actually
+    contains rows in that table, so the legend describes THIS diagram
+    instead of listing every symbol the renderer could ever draw.
+    Passing net=None keeps the old behaviour (base entries only)."""
+
+        def _marker(marker, color, label, filled=True, size=7, edgewidth=1.4):
+            return Line2D([0], [0], marker=marker, color="w", linestyle="none",
+                          markerfacecolor=(color if filled else "white"),
+                          markeredgecolor=color, markeredgewidth=edgewidth,
+                          markersize=size, label=label)
+
         base_handles = [
             Line2D([0], [0], color=SLD_BUSBAR_COLOR, linewidth=3, label="Busbar"),
             Line2D([0], [0], color=SLD_MALL_COLOR, linewidth=5, label="Mall busbar (point of interest)"),
             Line2D([0], [0], color=SLD_LINE_COLOR, linewidth=1.3, label="Line (orthogonal routing)"),
-            Line2D([0], [0], marker="v", color="w", markerfacecolor=SLD_LOAD_COLOR, markeredgecolor="black",
-                   markersize=10, label="Load"),
-            Line2D([0], [0], marker="^", color="w", markerfacecolor=SLD_SGEN_COLOR, markeredgecolor="black",
-                   markersize=10, label="Static generator (PV etc.)"),
-            Line2D([0], [0], marker="o", color="w", markerfacecolor="none", markeredgecolor=SLD_TRAFO_COLOR,
-                   markersize=10, label="Transformer"),
+            _marker("v", SLD_LOAD_COLOR, "Load (consumption)"),
+            _marker("o", SLD_SGEN_COLOR, "Static generator (PV etc.)", filled=False, size=8),
+            _marker("D", SLD_TRAFO_COLOR, "Transformer (2-winding)"),
             mpatches.Rectangle((0, 0), 1, 1, facecolor="none", edgecolor=SLD_EXTGRID_COLOR, hatch="xxxx",
                                label="Ext. grid connection"),
+            _marker("s", SLD_SWITCH_CLOSED_COLOR, "Closed switch (line/trafo)", edgewidth=1.1),
+            _marker("s", SLD_SWITCH_OPEN_EDGE, "Open switch (line/trafo)", filled=False, edgewidth=1.1),
+            Line2D([0], [0], color=SLD_SWITCH_COLOR, linewidth=1.3,
+                   label="Bus-bus switch (closed)"),
+            Line2D([0], [0], color=SLD_OOS_COLOR, linewidth=1.3, linestyle=(0, (4, 3)),
+                   label="Out-of-service / open bus-bus switch"),
+            Line2D([0], [0], marker="", color="w", linestyle="none",
+                   label="Numbers = bus/node index"),
         ]
-        ax.legend(handles=base_handles + (extra_handles or []), loc=loc, fontsize=fontsize,
-                  framealpha=0.9, title=title, title_fontsize=title_fontsize)
-    
+
+        # (table, handle) pairs appended only if the table has rows
+        OPTIONAL_ENTRIES = [
+            ("storage", lambda: _marker("P", SLD_STORAGE_COLOR, "Storage (battery etc.)", size=8)),
+            ("gen", lambda: _marker("s", SLD_GEN_COLOR, "Controllable generator")),
+            ("shunt", lambda: _marker("v", SLD_SHUNT_COLOR, "Shunt")),
+            ("ward", lambda: _marker("x", SLD_WARD_COLOR, "Ward equivalent", edgewidth=1.6)),
+            ("xward", lambda: _marker("X", SLD_XWARD_COLOR, "Extended Ward equivalent")),
+            ("svc", lambda: _marker("*", SLD_SVC_COLOR, "SVC", size=9)),
+            ("ssc", lambda: _marker("*", SLD_SSC_COLOR, "SSC", size=9)),
+            ("impedance", lambda: Line2D([0], [0], color=SLD_IMPEDANCE_COLOR, linewidth=1.3,
+                                         label="Impedance (Ward branch)")),
+            ("dcline", lambda: Line2D([0], [0], color=SLD_DCLINE_COLOR, linewidth=1.35,
+                                      label="DC line")),
+            ("tcsc", lambda: Line2D([0], [0], color=SLD_TCSC_COLOR, linewidth=1.3, label="TCSC")),
+        ]
+        if net is not None:
+            for table_name, make_handle in OPTIONAL_ENTRIES:
+                try:
+                    present = table_name in net and len(net[table_name]) > 0
+                except Exception:
+                    present = False
+                if present:
+                    base_handles.append(make_handle())
+        legend_kwargs = dict(handles=base_handles + (extra_handles or []),
+                             fontsize=fontsize, framealpha=0.95, title=title,
+                             title_fontsize=title_fontsize, handlelength=1.6,
+                             labelspacing=0.4, columnspacing=1.4, borderpad=0.5)
+        if outside:
+            # park it below the axes so it never covers a feeder; the
+            # bbox_inches="tight" in savefig keeps it in the exported PNG
+            ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.01),
+                      ncol=ncol, borderaxespad=0.0, **legend_kwargs)
+        else:
+            ax.legend(loc=loc, ncol=1, **legend_kwargs)
+
+
     @staticmethod
     def _draw_sld_base(ax, net, bus_size, busbar_half_width=0.35, bus_color_fn=None,
                         mall_bus=None, load_color=SLD_LOAD_COLOR, sgen_color=SLD_SGEN_COLOR,
-                        line_color=SLD_LINE_COLOR, trafo_color=SLD_TRAFO_COLOR):
-        """Draws the SLD elements shared by plot_single_line_diagram() and
-    plot_hypercap_reduced_sld(): orthogonal line connectors, busbars,
-    load/sgen icons, transformers, and the ext_grid symbol.
- 
-    bus_color_fn(bus) -> (color, linewidth) or (color, linewidth,
-    half_length_mult) lets a caller customize busbar appearance (e.g.
-    HyperCAP's internal/boundary/external classification) without
-    duplicating the drawing loop. Defaults to plain black busbars with
-    the mall bus highlighted red and slightly thicker/longer, matching
-    plot_single_line_diagram()'s original behavior.
-    """
+                        line_color=SLD_LINE_COLOR, trafo_color=SLD_TRAFO_COLOR, logger=None):
+        """Draws every populated element table in `net`, or logs it as not
+        rendered. Out-of-service elements are drawn dashed/grey instead of
+        being omitted or drawn identically to in-service elements.
+        `logger`: optional logging.Logger; falls back to print() if None.
+        """
+
+        def _log(msg, level="warning"):
+            if logger is not None:
+                getattr(logger, level, logger.warning)(msg)
+            else:
+                print(f"[_draw_sld_base:{level}] {msg}")
+
+        OOS_COLOR = SLD_OOS_COLOR
+        OOS_DASH = (0, (4, 3))
+        DCLINE_COLOR = SLD_DCLINE_COLOR
+        GEN_COLOR = SLD_GEN_COLOR
+        STORAGE_COLOR = SLD_STORAGE_COLOR
+        SHUNT_COLOR = SLD_SHUNT_COLOR
+        WARD_COLOR = SLD_WARD_COLOR
+        XWARD_COLOR = SLD_XWARD_COLOR
+        SVC_COLOR = SLD_SVC_COLOR
+        SSC_COLOR = SLD_SSC_COLOR
+        TCSC_COLOR = SLD_TCSC_COLOR
+
+        rendered_tables = set()
+
         if bus_color_fn is None:
             def bus_color_fn(bus):
                 return (SLD_MALL_COLOR, 5.0, 1.6) if bus == mall_bus else (SLD_BUSBAR_COLOR, 3.0, 1.0)
- 
-        for li, row in net.line.iterrows():
-            from_bus, to_bus = int(row["from_bus"]), int(row["to_bus"])
-            if pd.isna(net.bus.at[from_bus, "geo"]) or pd.isna(net.bus.at[to_bus, "geo"]):
-                continue
-            SldPlotter.draw_orthogonal_connector(ax, SldPlotter._bus_xy(net, from_bus), SldPlotter._bus_xy(net, to_bus),
-                                       color=line_color, linewidth=1.35, zorder=2,
-                                       half_width=busbar_half_width)
- 
+
+        def _has_geo(bus):
+            return not pd.isna(net.bus.at[bus, "geo"])
+
+        # ---- lines: bug A fixed (single loop), bug C fixed (in_service style) ----
+        if len(net.line):
+            for li, row in net.line.iterrows():
+                from_bus, to_bus = int(row["from_bus"]), int(row["to_bus"])
+                if not (_has_geo(from_bus) and _has_geo(to_bus)):
+                    continue
+                in_service = bool(row.get("in_service", True))
+                style = (dict(color=line_color, linewidth=1.35, linestyle="solid") if in_service
+                        else dict(color=OOS_COLOR, linewidth=1.1, linestyle=OOS_DASH))
+                SldPlotter.draw_orthogonal_connector(
+                    ax, SldPlotter._bus_xy(net, from_bus), SldPlotter._bus_xy(net, to_bus),
+                    zorder=2, half_width=busbar_half_width, **style)
+            rendered_tables.add("line")
+
+        # ---- dcline (previously never drawn) ----
+        if "dcline" in net and len(net.dcline):
+            for di, row in net.dcline.iterrows():
+                from_bus, to_bus = int(row["from_bus"]), int(row["to_bus"])
+                if not (_has_geo(from_bus) and _has_geo(to_bus)):
+                    continue
+                in_service = bool(row.get("in_service", True))
+                style = (dict(color=DCLINE_COLOR, linewidth=1.35, linestyle="solid") if in_service
+                        else dict(color=OOS_COLOR, linewidth=1.1, linestyle=OOS_DASH))
+                SldPlotter.draw_orthogonal_connector(
+                    ax, SldPlotter._bus_xy(net, from_bus), SldPlotter._bus_xy(net, to_bus),
+                    zorder=2, half_width=busbar_half_width, **style)
+            rendered_tables.add("dcline")
+
+        # ---- switches ----
+        if len(net.switch):
+            # bus-bus: closed AND open still both drawn -- a bus-bus switch IS
+            # the only connector between those two buses (unlike line/trafo
+            # switches, which sit on top of a connector/symbol that's drawn
+            # independently elsewhere), so filtering these to open-only would
+            # visually disconnect closed bus-bus pairs. Left unchanged.
+            bb = net.switch[net.switch["et"] == "b"]
+            for si, row in bb.iterrows():
+                bus_a, bus_b = int(row["bus"]), int(row["element"])
+                if not (_has_geo(bus_a) and _has_geo(bus_b)):
+                    continue
+                closed = bool(row["closed"])
+                style = (dict(color=SLD_SWITCH_COLOR, linewidth=1.1, linestyle="solid") if closed
+                        else dict(color=OOS_COLOR, linewidth=1.0, linestyle=(0, (2, 2))))
+                SldPlotter.draw_orthogonal_connector(
+                    ax, SldPlotter._bus_xy(net, bus_a), SldPlotter._bus_xy(net, bus_b),
+                    zorder=2, half_width=busbar_half_width, **style)
+            rendered_tables.add("switch")
+
+            # bus-line / bus-trafo switches.
+            # Only OPEN switches are drawn as markers here -- their connector
+            # (the line itself, or the trafo circle) is drawn unconditionally
+            # in the sections above/below regardless of switch state, so
+            # dropping the closed-switch markers only removes clutter; it
+            # cannot disconnect anything.
+            le = net.switch[net.switch["et"].isin(["l", "t"])]
+            l_sw = le[(le["et"] == "l") & (~le["closed"])]
+            t_sw = le[(le["et"] == "t") & (~le["closed"])]
+
+            sw_dist = busbar_half_width * SLD_SYM_SWITCH_DIST_MULT
+            _sw_taken = {}
+
+            def _switch_xy(bus, other_bus):
+                """Anchor on the route, nudged perpendicular if another switch
+            already occupies that exact spot (e.g. two lines leaving the
+            same bus in the same direction)."""
+                x, y = SldPlotter._switch_anchor(net, bus, other_bus, sw_dist)
+                key = (round(x, 3), round(y, 3))
+                slot = _sw_taken.get(key, 0)
+                _sw_taken[key] = slot + 1
+                return x, y + slot * SLD_SYM_SWITCH * 2.6
+
+            for si, row in l_sw.iterrows():
+                bus, li = int(row["bus"]), int(row["element"])
+                if li not in net.line.index or not _has_geo(bus):
+                    continue
+                line_row = net.line.loc[li]
+                other = int(line_row["to_bus"] if int(line_row["from_bus"]) == bus
+                            else line_row["from_bus"])
+                if not _has_geo(other):
+                    continue
+                x, y = _switch_xy(bus, other)
+                SldPlotter._draw_switch_square(ax, x, y, False)
+
+            for si, row in t_sw.iterrows():
+                bus, ti = int(row["bus"]), int(row["element"])
+                if ti not in net.trafo.index or not _has_geo(bus):
+                    continue
+                trafo_row = net.trafo.loc[ti]
+                other = int(trafo_row["lv_bus"] if int(trafo_row["hv_bus"]) == bus
+                            else trafo_row["hv_bus"])
+                if not _has_geo(other):
+                    continue
+                x, y = _switch_xy(bus, other)
+                SldPlotter._draw_switch_square(ax, x, y, False,
+                                                closed_color=trafo_color)
+
+        # ---- impedance (this is one is ward impedance: may read on the internet or documentation) ----
+        if "impedance" in net and len(net.impedance):
+            for ii, row in net.impedance.iterrows():
+                bus_a, bus_b = int(row["from_bus"]), int(row["to_bus"])
+                if not (_has_geo(bus_a) and _has_geo(bus_b)):
+                    continue
+                in_service = bool(row.get("in_service", True))
+                style = (dict(color=SLD_IMPEDANCE_COLOR, linewidth=1.1, linestyle="solid") if in_service
+                        else dict(color=OOS_COLOR, linewidth=1.0, linestyle=OOS_DASH))
+                SldPlotter.draw_orthogonal_connector(
+                    ax, SldPlotter._bus_xy(net, bus_a), SldPlotter._bus_xy(net, bus_b),
+                    zorder=2, half_width=busbar_half_width, **style)
+            rendered_tables.add("impedance")
+
+        # ---- tcsc: series FACTS device, from_bus/to_bus (not a single "bus") ----
+        if "tcsc" in net and len(net.tcsc):
+            for _, row in net.tcsc.iterrows():
+                from_bus, to_bus = int(row["from_bus"]), int(row["to_bus"])
+                if not (_has_geo(from_bus) and _has_geo(to_bus)):
+                    continue
+                in_service = bool(row.get("in_service", True))
+                style = (dict(color=TCSC_COLOR, linewidth=1.3, linestyle="solid") if in_service
+                        else dict(color=OOS_COLOR, linewidth=1.0, linestyle=OOS_DASH))
+                SldPlotter.draw_orthogonal_connector(
+                    ax, SldPlotter._bus_xy(net, from_bus), SldPlotter._bus_xy(net, to_bus),
+                    zorder=3, half_width=busbar_half_width, **style)
+            rendered_tables.add("tcsc")
+
+        # ---- busbars ----
         for bus in net.bus.index:
             bus = int(bus)
-            if pd.isna(net.bus.at[bus, "geo"]):
+            if not _has_geo(bus):
                 continue
             x, y = SldPlotter._bus_xy(net, bus)
             spec = bus_color_fn(bus)
@@ -2285,29 +2503,144 @@ class SldPlotter:
             half_len_mult = spec[2] if len(spec) > 2 else 1.0
             SldPlotter.draw_busbar(ax, x, y, half_length=busbar_half_width * half_len_mult,
                         color=color, linewidth=linewidth, zorder=5, orientation="vertical")
- 
+        rendered_tables.add("bus")
+
+        # ---- load / sgen icons (existing style preserved, method untouched) ----
         SldPlotter.draw_load_sgen_icons(ax, net, bus_size, mall_bus=mall_bus,
-                              bus_half_length=busbar_half_width,
-                              load_color=load_color, sgen_color=sgen_color,
-                              line_color=SLD_BUSBAR_COLOR)
- 
+                            bus_half_length=busbar_half_width,
+                            load_color=load_color, sgen_color=sgen_color,
+                            line_color=SLD_BUSBAR_COLOR)
+        if len(net.load):
+            rendered_tables.add("load")
+        if len(net.sgen):
+            rendered_tables.add("sgen")
+
+        # ---- trafo (2W): existing style + out-of-service split ----
         if len(net.trafo):
-            trafo_raw = pp_plot.create_trafo_collection(
-                net, trafos=net.trafo.index, size=bus_size * 2, color=trafo_color)
-            SldPlotter._add_collection_safe(ax, trafo_raw)
- 
+            in_mask = net.trafo["in_service"].astype(bool)
+            try:
+                if in_mask.any():
+                    SldPlotter._add_collection_safe(ax, pp_plot.create_trafo_collection(
+                        net, trafos=net.trafo.index[in_mask], size=SLD_SYM_TRAFO, color=trafo_color))
+                if (~in_mask).any():
+                    SldPlotter._add_collection_safe(ax, pp_plot.create_trafo_collection(
+                        net, trafos=net.trafo.index[~in_mask], size=SLD_SYM_TRAFO, color=OOS_COLOR))
+            except Exception as exc:
+                _log(f"pp_plot.create_trafo_collection failed: {exc!r}")
+            rendered_tables.add("trafo")
+
+        # ---- trafo3w: use pp_plot if present, else marker fallback ----
+        if "trafo3w" in net and len(net.trafo3w):
+            has_fn = hasattr(pp_plot, "create_trafo3w_collection")
+            drawn = False
+            if has_fn:
+                try:
+                    in_mask = net.trafo3w["in_service"].astype(bool)
+                    if in_mask.any():
+                        SldPlotter._add_collection_safe(ax, pp_plot.create_trafo3w_collection(
+                            net, trafo3ws=net.trafo3w.index[in_mask], color=trafo_color))
+                    if (~in_mask).any():
+                        SldPlotter._add_collection_safe(ax, pp_plot.create_trafo3w_collection(
+                            net, trafo3ws=net.trafo3w.index[~in_mask], color=OOS_COLOR))
+                    drawn = True
+                except Exception as exc:
+                    _log(f"pp_plot.create_trafo3w_collection exists but failed ({exc!r}); "
+                        f"using marker fallback.")
+            if not drawn:
+                for ti, row in net.trafo3w.iterrows():
+                    hv_bus = int(row["hv_bus"])
+                    if not _has_geo(hv_bus):
+                        continue
+                    x, y = SldPlotter._bus_xy(net, hv_bus)
+                    in_service = bool(row.get("in_service", True))
+                    ax.scatter([x], [y], marker="D", s=44, linewidth=1.4, zorder=6,
+                            facecolor="none",
+                            edgecolor=(trafo_color if in_service else OOS_COLOR))
+                if not has_fn:
+                    _log("pp_plot.create_trafo3w_collection not found in this pandapower "
+                        "version; trafo3w drawn as diamond markers at hv_bus.", "info")
+            rendered_tables.add("trafo3w")
+
+        # ---- ext_grid: existing style + out-of-service split ----
         if len(net.ext_grid):
-            extgrid_raw = pp_plot.create_ext_grid_collection(
-                net, ext_grids=net.ext_grid.index, size=bus_size * 2)
-            SldPlotter._add_collection_safe(ax, extgrid_raw)
- 
+            in_mask = (net.ext_grid["in_service"].astype(bool)
+                    if "in_service" in net.ext_grid.columns
+                    else pd.Series(True, index=net.ext_grid.index))
+            try:
+                if in_mask.any():
+                    SldPlotter._add_collection_safe(ax, pp_plot.create_ext_grid_collection(
+                        net, ext_grids=net.ext_grid.index[in_mask], size=SLD_SYM_EXTGRID))
+                if (~in_mask).any():
+                    SldPlotter._add_collection_safe(ax, pp_plot.create_ext_grid_collection(
+                        net, ext_grids=net.ext_grid.index[~in_mask], size=SLD_SYM_EXTGRID, color=OOS_COLOR))
+            except Exception as exc:
+                _log(f"pp_plot.create_ext_grid_collection failed: {exc!r}")
+            rendered_tables.add("ext_grid")
+
+        # ---- single-bus elements with no dedicated pp_plot collection ----
+        # These markers used to be scattered at the exact bus coordinate, i.e.
+        # on top of the busbar. Park them below-LEFT of the bar instead (loads
+        # and sgens already own the right-hand side) and stack several elements
+        # on the same bus downwards so they never land on each other.
+        _marker_slot = {}
+
+        def _scatter_bus_elements(table_name, marker, color, size=SLD_SYM_MARKER):
+            if table_name not in net or not len(net[table_name]):
+                return
+            for _, row in net[table_name].iterrows():
+                bus = int(row["bus"])
+                if not _has_geo(bus):
+                    continue
+                x, y = SldPlotter._bus_xy(net, bus)
+                slot = _marker_slot.get(bus, 0)
+                _marker_slot[bus] = slot + 1
+                x -= busbar_half_width * 0.8
+                y -= busbar_half_width * 1.3 + slot * 0.26
+                in_service = bool(row.get("in_service", True))
+                ax.scatter([x], [y], marker=marker, s=size, linewidth=1.2, zorder=6,
+                        facecolor=(color if in_service else "none"),
+                        edgecolor=(color if in_service else OOS_COLOR))
+            rendered_tables.add(table_name)
+
+        _scatter_bus_elements("gen", "s", GEN_COLOR)
+        _scatter_bus_elements("storage", "P", STORAGE_COLOR)
+        _scatter_bus_elements("shunt", "v", SHUNT_COLOR, size=SLD_SYM_MARKER * 0.8)
+        _scatter_bus_elements("ward", "x", WARD_COLOR, size=SLD_SYM_MARKER * 0.8)
+        _scatter_bus_elements("xward", "X", XWARD_COLOR, size=SLD_SYM_MARKER * 0.8)
+        _scatter_bus_elements("svc", "*", SVC_COLOR)
+        _scatter_bus_elements("ssc", "*", SSC_COLOR)
+
+        # ---- audit: log any populated element table we did not render ----
+        # NOTE: dir(net) (as originally specced) is wrong for a pandapowerNet --
+        # it returns methods/dunders too, most not DataFrames -> len() would
+        # raise. net is dict-like, so we iterate net.keys() restricted to known
+        # electrical element tables and skip res_*/cost/metadata tables.
+        KNOWN_ELEMENT_TABLES = {
+            "bus", "line", "trafo", "trafo3w", "impedance", "dcline", "switch",
+            "load", "sgen", "gen", "ext_grid", "storage", "shunt", "ward",
+            "xward", "svc", "ssc", "tcsc", "motor", "asymmetric_load", "asymmetric_sgen",
+        }
+        for table_name in net.keys():
+            if table_name not in KNOWN_ELEMENT_TABLES:
+                continue
+            try:
+                table = net[table_name]
+            except Exception:
+                continue
+            if not hasattr(table, "__len__") or not len(table):
+                continue
+            if table_name not in rendered_tables:
+                _log(f"net.{table_name} has {len(table)} row(s) but was NOT "
+                    f"rendered by _draw_sld_base.")
+
+
     @staticmethod
     def draw_load_sgen_icons(ax, net, bus_size, mall_bus=None,
                               bus_half_length=0.35, attach_frac=0.85,
-                              h_offset=0.5, v_drop=0.45, stack_gap=0.4,
+                              h_offset=0.55, v_drop=0.42, stack_gap=0.42,
                               load_color=SLD_LOAD_COLOR, sgen_color=SLD_SGEN_COLOR,
                               line_color=SLD_BUSBAR_COLOR,
-                              arrow_len=0.3, sgen_radius=0.19):
+                              arrow_len=0.26, sgen_radius=0.16):
         """Draws load/sgen icons manually using standard SLD conventions.
 
     - sgen's stub attaches near the TOP of the busbar
@@ -3410,7 +3743,8 @@ class HyperCapSldPlotter:
             mpatches.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#1f77d0",
                                hatch="xx", label="Ward equivalent"),
         ]
-        SldPlotter._build_sld_legend(ax, extra_handles=extra_handles, title="HyperCAP classification")
+        SldPlotter._build_sld_legend(ax, extra_handles=extra_handles, net=net,
+                                     title="HyperCAP classification")
 
         case_text = (f"CASE\n{case_id}\n\n"
                      f"Internal: {sorted(internal_buses)}\n"
@@ -3455,7 +3789,9 @@ class HyperCapSldPlotter:
                 return "#e69f00", 5.0
             return SLD_BUSBAR_COLOR, 3.0
 
-        bus_size = pp_plot.get_collection_sizes(net)["bus"]
+        # fixed symbol size in layout units; get_collection_sizes() scales
+        # with the net's extent and returns absurd values on a large feeder
+        bus_size = min(leaf_step, depth_step) * 0.10
         SldPlotter._draw_sld_base(ax, net, bus_size, busbar_half_width=busbar_half_width,
                         bus_color_fn=_classify, mall_bus=resolved_mall_bus)
 
