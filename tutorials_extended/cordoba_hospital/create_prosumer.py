@@ -1,4 +1,5 @@
 from pandaprosumer import create_controlled_gas_boiler
+from pandapower.control.controller.const_control import ConstControl
 from pandaprosumer.create_controlled import (create_controlled_network_coupling,create_controlled_heat_pump,
                                              create_controlled_heat_demand, create_controlled_chiller,
                                              create_controlled_dry_cooler,create_controlled_heat_storage,
@@ -151,42 +152,61 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, level, net_ho
 
 
 
-def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
+def create_prosumer_dhw_system(
+        data_source,
+        time_res,
+        start,
+        end,
+        net_hot
+    ):
+
     prosumer = create_empty_prosumer_container(
         "dhw_system",
         check_order=False
     )
 
-    period = create_period(prosumer, time_res, start, end, "utc", "default")
+    period = create_period(
+        prosumer,
+        time_res,
+        start,
+        end,
+        "utc",
+        "default"
+    )
+
 
     solar_dhw_cp_index = create_controlled_const_profile(
         prosumer,
-        input_columns=["Solarthermal (kW)", "DHW(kg/s)", "t_dhw_cold_c", "t_dhw_hot_c"],
-        result_columns=["solar_thermal_kw_cp", "dhw_mdot_kg_per_s_cp", "t_dhw_cold_c_cp", "t_dhw_hot_c_cp"],
+        input_columns=[
+            "Solarthermal (kW)",
+            "DHW(kg/s)",
+            "t_dhw_cold_c",
+            "t_dhw_hot_c"
+        ],
+        result_columns=[
+            "solar_thermal_kw_cp",
+            "dhw_mdot_kg_per_s_cp",
+            "t_dhw_cold_c_cp",
+            "t_dhw_hot_c_cp"
+        ],
         data_source=data_source,
         period=period,
         level=0,
         order=0
     )
 
-    dhw_demand_controller_index = create_controlled_heat_demand(
-        prosumer,
-        period=period,
-        name="dhw_demand_controller",
-        level=3,
-        order=2
-    )
 
     dhw_storage_controller_index = create_controlled_heat_storage(
         prosumer,
-        q_capacity_kwh=2926.0, # maximale gespeicherte Energie
-        init_soc=0.5, #  der Speicher startet zu 50 % gefüllt. --> 2926 × 0.5 = 1463 kWh
+        q_capacity_kwh=2926.0,
+        init_soc=0.5,
         period=period,
         name="dhw_heat_storage",
-        level=2,
+        level=1,
         order=0
     )
 
+    # Solar thermal charges the storage.
     GenericMapping(
         container=prosumer,
         initiator_id=solar_dhw_cp_index,
@@ -196,6 +216,16 @@ def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
         order=0
     )
 
+
+    dhw_demand_controller_index = create_controlled_heat_demand(
+        prosumer,
+        period=period,
+        name="dhw_demand_controller",
+        level=2,
+        order=0
+    )
+
+
     GenericMapping(
         container=prosumer,
         initiator_id=dhw_storage_controller_index,
@@ -203,17 +233,25 @@ def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
         responder_id=dhw_demand_controller_index,
         responder_column="q_received_kw",
         order=0,
-        no_chain = False
+        no_chain=False
     )
+
 
     GenericMapping(
         container=prosumer,
         initiator_id=solar_dhw_cp_index,
-        initiator_column=["t_dhw_hot_c_cp", "t_dhw_cold_c_cp"],
+        initiator_column=[
+            "t_dhw_hot_c_cp",
+            "t_dhw_cold_c_cp"
+        ],
         responder_id=dhw_demand_controller_index,
-        responder_column=["t_feed_demand_c", "t_return_demand_c"],
+        responder_column=[
+            "t_feed_demand_c",
+            "t_return_demand_c"
+        ],
         order=0
     )
+
 
     GenericMapping(
         container=prosumer,
@@ -223,9 +261,10 @@ def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
         responder_column="q_demand_kw",
         order=1,
         conversion_function=lambda mdot: (
-                mdot * 4.18 * (60.0 - 15.0)
+            mdot * 4.18 * (60.0 - 15.0)
         )
     )
+
 
     dhw_backup_element_index = get_element_index(
         net_hot,
@@ -233,19 +272,22 @@ def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
         "dhw_backup_demand_coupling"
     )
 
-    nc_write_dhw_backup_index = create_controlled_network_coupling(
-        net_hot,
-        dhw_backup_element_index,
-        element_name="heat_consumer",
-        input_columns=["qext_w"],
-        level=4,
-        order=0,
-        name="nc_write_dhw_backup"
+
+    nc_write_dhw_backup_index = (
+        create_controlled_network_coupling(
+            net_hot,
+            dhw_backup_element_index,
+            element_name="heat_consumer",
+            input_columns=["qext_w"],
+            level=2,
+            order=1,
+            name="nc_write_dhw_backup"
+        )
     )
 
 
-    GenericEnergySystemMapping( # der richtige Ablauf ist --> Wärmespeicher → Warmwasserbedarf → Wärmenetz
-        container=prosumer, # verbindet den Warmwasser-Bedarfsregler mit dem Wärmenetz.
+    GenericEnergySystemMapping(
+        container=prosumer,
         initiator_id=dhw_demand_controller_index,
         initiator_column="q_uncovered_kw",
         responder_net=net_hot,
@@ -254,15 +296,99 @@ def create_prosumer_dhw_system(data_source, time_res, start, end, net_hot):
         order=0,
         no_chain=True,
         conversion_function=lambda q_kw: (
-                np.maximum(q_kw, 0.0) * 1000),
+            np.maximum(q_kw, 0.0) * 1000.0
+        )
+    )
+
+
+    nc_read_dhw_backup_index = (
+        create_controlled_network_coupling(
+            net_hot,
+            dhw_backup_element_index,
+            element_name="heat_consumer",
+            result_columns=[
+                "t_from_k",
+                "t_to_k",
+                "mdot_from_kg_per_s"
+            ],
+            temp_fluid_map_output_idx=0,
+            mdot_fluid_map_output_idx=2,
+            level=4,
+            order=0,
+            name="nc_read_dhw_backup"
+        )
+    )
+
+
+
+    dhw_network_demand_controller_index = (
+        create_controlled_heat_demand(
+            prosumer,
+            period=period,
+            name="dhw_network_demand_controller",
+            level=5,
+            order=0
+        )
+    )
+
+
+    GenericMapping(
+        container=prosumer,
+        initiator_id=dhw_demand_controller_index,
+        initiator_column="q_uncovered_kw",
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="q_demand_kw",
+        order=0,
+        no_chain=True,
+        conversion_function=lambda q_kw: (
+            np.maximum(q_kw, 0.0)
+        )
+    )
+
+
+    FluidMixEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        order=0,
+        no_chain=False
+    )
+
+    GenericEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        initiator_column="t_from_k",
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="t_feed_demand_c",
+        order=1,
+        no_chain=False,
+        conversion_function=lambda t_k: (
+            np.asarray(t_k) - 273.15
+        )
+    )
+
+    GenericEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        initiator_column="t_to_k",
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="t_return_demand_c",
+        order=2,
+        no_chain=False,
+        conversion_function=lambda t_k: (
+            np.asarray(t_k) - 273.15
+        )
     )
 
     return (
         prosumer,
         dhw_storage_controller_index,
-        dhw_demand_controller_index
+        dhw_demand_controller_index,
+        dhw_network_demand_controller_index
     )
-
 
 
 def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_cold):
@@ -365,7 +491,7 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
         # Assumed aggregate nominal fan data
         n_nom_rpm=730.0,
         p_fan_nom_kw=40.0,
-        qair_nom_m3_per_h=2_100_000.0,
+        qair_nom_m3_per_h=3_000_000.0,
 
         # Nominal operating point
         t_air_in_nom_c=25.0,
@@ -373,7 +499,7 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
         t_fluid_in_nom_c=35.0,
         t_fluid_out_nom_c=30.0,
 
-        fans_number=1,
+        fans_number=10,
         adiabatic_mode=False,
         min_delta_t_air_c=1.0,
 
@@ -515,6 +641,7 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
                 / (4.18 * delta_t_cond_c)
         )
 
+
         return float(mdot_cond_kg_per_s)
 
 
@@ -593,6 +720,90 @@ def create_prosumer_prod(data_source, time_res, start, end, level, net_hot, net_
 
     return prosumer, hp_controller_index, chiller_controller_index, dry_cooler_controller_index
 
+def prepare_winter_pv_control_profiles(
+    demand_data,
+    normal_temperature_c=78.0,
+    surplus_temperature_c=80.0,
+    normal_hp_limit_kw=100.0,
+    maximum_hp_limit_kw=350.0
+):
+
+    # Maximum allowed HP electrical power in every hour
+    demand_data["hp_power_limit_kw"] = np.where(
+        demand_data["pv_surplus_kw"] > 0.0,
+        np.minimum(
+            demand_data["hp_baseline_power_kw"]
+            + demand_data["pv_surplus_kw"],
+            maximum_hp_limit_kw
+        ),
+        normal_hp_limit_kw
+    )
+
+    # Hot-network supply-temperature target
+    demand_data["hot_supply_target_c"] = np.where(
+        demand_data["pv_surplus_kw"] > 0.0,
+        surplus_temperature_c,
+        normal_temperature_c
+    )
+
+    # pandapipes uses Kelvin
+    demand_data["hot_supply_target_k"] = (
+        demand_data["hot_supply_target_c"]
+        + 273.15
+    )
+
+    return demand_data
+
+
+def add_winter_pv_controllers(
+        prosumer_prod,
+        net_hot,
+        data_source,
+        hp_controller_index
+):
+
+    hp_element_index = (
+        prosumer_prod.controller.at[
+            hp_controller_index,
+            "object"
+        ].obj.element_index[0]
+    )
+
+    # Apply the hourly compressor-power limit.
+    hp_power_controller = ConstControl(
+        prosumer_prod,
+        element="heat_pump",
+        variable="max_p_comp_kw",
+        element_index=hp_element_index,
+        profile_name="hp_power_limit_kw",
+        data_source=data_source,
+        level=2,
+        order=0
+    )
+
+    # Find the physical circulation pump
+    # of the hot network.
+    hot_pump_index = get_element_index(
+        net_hot,
+        "circ_pump_pressure",
+        "pump_hp_coupling"
+    )
+
+    # Apply the hourly hot-network temperature:
+    # 78°C normally and 80°C during PV surplus.
+    temperature_controller = ConstControl(
+        net_hot,
+        element="circ_pump_pressure",
+        variable="t_flow_k",
+        element_index=hot_pump_index,
+        profile_name="hot_supply_target_k",
+        data_source=data_source,
+        level=1,
+        order=0
+    )
+
+    return hp_power_controller, temperature_controller
+
 
 def create_prosumer_cooling_demand(data_source, time_res, start, end, net_cold):
 
@@ -607,7 +818,7 @@ def create_prosumer_cooling_demand(data_source, time_res, start, end, net_cold):
         prosumer,
         input_columns=["Cooling demand (kW)"],
         result_columns=["cooling_demand_kw_cp"],
-        data_source=data_source,
+        data_source=data_source ,
         period=period,
         level=0,
         order=0
