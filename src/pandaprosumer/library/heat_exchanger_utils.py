@@ -105,14 +105,20 @@ def compute_temp(q_ratio, q_u_w, t_in_c, t_fluid_in_c, t_fluid_out_c,
         a = delta_t / (q_ratio * lmtd_n)
 
         if a > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
-            logger.warning(f"Heat Exchanger state too far from nominal conditions. "
-                           f"The temperature difference between the primary (t_in_c={t_in_c}°C) and "
-                           f"secondary side (t_fluid_out_c={t_fluid_out_c}°C) may be too high or the transferred heat "
-                           f"q_u_w={q_u_w}W too small compared to the nominal conditions")
-            t_out_c = t_in_c
+            # The exchanger is far oversized for the requested duty (q_ratio << 1): the LMTD
+            # solution `a*x + log(1-x) = 0` has 1-x = exp(-a) below double precision, which the
+            # dichotomy cannot resolve. Its a -> inf limit is well defined though: the outlet
+            # pinches on the other side's inlet (delta_t_result -> 0). Take that limit instead
+            # of giving up (the former `t_out_c = t_in_c` zeroed this side while the caller kept
+            # the other side's result -> energy created at the exchanger boundary).
+            logger.debug(f"Heat Exchanger far below nominal duty (a={a:.1f} > "
+                         f"{HeatExchangerControl.OUT_OF_RANGE_THRESHOLD}, q_u_w={q_u_w:.0f}W, "
+                         f"t_in_c={t_in_c}°C, t_fluid_out_c={t_fluid_out_c}°C): pinching the outlet "
+                         f"on the other side's inlet t_fluid_in_c={t_fluid_in_c}°C")
+            delta_t_result = 0.
         else:
             delta_t_result = calculate_temperature_difference(a, delta_t, is_cold=not heat_consumer)
-            t_out_c = t_fluid_in_c - delta_t_result if heat_consumer else t_fluid_in_c + delta_t_result
+        t_out_c = t_fluid_in_c - delta_t_result if heat_consumer else t_fluid_in_c + delta_t_result
     # Find the primary mass flow rate so that the heat exchanged by the fluid on the primary side is equal to q_u
     # mdot_1_kg_per_s = q_u_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
     # mdot_air_kg_per_s = q_u_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))

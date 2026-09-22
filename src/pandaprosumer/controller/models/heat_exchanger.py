@@ -257,10 +257,12 @@ class HeatExchangerController(BasicProsumerController):
                                                           delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
                                                           heat_consumer=False)
 
-        # If the primary mass flow is too low, no heat is exchanged to the secondary side
-        # if mdot_1_kg_per_s < 1e-6:
-        #     mdot_2_kg_per_s = 0
-        #     t_2_out_c = t_2_in_c
+        # Energy conservation at the exchanger boundary: if the primary side ended up with no
+        # flow, no heat can reach the secondary side either. Without this the responder (heat
+        # demand / storage) booked mdot_2 * cp * (t_2_out - t_2_in) while the exchanger booked 0.
+        if mdot_1_kg_per_s < 1e-6:
+            mdot_2_kg_per_s = 0.
+            t_2_out_c = t_2_in_c
         return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
 
     def calculate_heat_exchanger_reverse(self, prosumer, t_1_in_c, t_1_out_c, mdot_1_kg_per_s, t_2_in_c):

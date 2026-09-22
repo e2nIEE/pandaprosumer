@@ -275,9 +275,16 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         self.dz_m = self.H_m / self.N_l  # 𝛥z (layer high)
 
-        # Heat exchange areas
-        self.SN_m2 = perimeter_m * self.dz_m
-        self.S1_m2 = self.Sl_m2 = self.A_m2 + self.SN_m2
+        # Heat exchange areas with the environment: every layer loses through its
+        # lateral surface (perimeter · dz); the bottom layer (1) and the top layer
+        # (N) additionally through the end disc A, so the tank total is 2A + N·S_lat.
+        # (Until 2026-09-09 S1 = Sl = A + S_lat and SN = S_lat: the cross-section
+        # was counted on every interior layer and the top disc was missing — with
+        # 20 layers the applied UA was ≈ 2× the cylinder's. See
+        # tests/models/test_shs_loss_surfaces.py.)
+        s_lateral_m2 = perimeter_m * self.dz_m
+        self.Sl_m2 = s_lateral_m2                     # interior layers
+        self.S1_m2 = self.SN_m2 = self.A_m2 + s_lateral_m2   # bottom / top layers
 
         # initial temperatures are stored for computing stored energy (see eq. 8 in the paper)
         self.init_layer_temps_c = self._layer_temps_c.copy()
@@ -285,6 +292,11 @@ class StratifiedHeatStorageController(BasicProsumerController):
         self.t_previous_out_charge_c = np.nan
         self.t_previous_in_charge_c = np.nan
         self.mdot_previous_in_kg_per_s = np.nan
+        # Return temperature the source was promised (``t_keep_return_c``) on
+        # the pass being reapplied -- together with ``mdot_previous_in_kg_per_s``
+        # and ``t_previous_in_charge_c`` it gives the energy the source actually
+        # delivered, which anchors the reapply request (see _reapply_request).
+        self.t_previous_keep_return_c = np.nan
 
         # Stagnation guard for the reapply loop: if the SHS's computed return
         # temperature stays within STAGNATION_TOL_C of its previous value for
@@ -417,31 +429,113 @@ class StratifiedHeatStorageController(BasicProsumerController):
             t_required_out_c = (mdot_bypass_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         if not np.isnan(self.t_previous_out_charge_c):
-            # Reapply pass: recompute the charge mass flow consistent with the
-            # return temperature fed back from the previous pass.
-            #
-            # As the fed-back return (t_required_out_c) approaches the bottom
-            # layer (t_charge_out_c) — i.e. the tank fills up — this denominator
-            # collapses and the requested charge mass flow blows up (observed:
-            # 78 → 360 → 880 → 1140 kg/s across four reapplies at a
-            # nearly-full-tank transition step), which the upstream source then
-            # tries to deliver, wrecking the energy balance. Guard the near-zero
-            # denominator, clamp to non-negative, and apply the SAME
-            # max_charge_mdot cap as the forward path above (which this branch
-            # historically bypassed): when the tank can no longer absorb charge
-            # the request collapses to ~0 and the surplus is bypassed to the
-            # demand in _calculate_heat_storage instead.
-            denom_c = t_required_out_c - t_charge_out_c
-            if abs(denom_c) > 1e-6:
-                mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / denom_c
+            return self._reapply_request(prosumer, t_demand_out_c, t_demand_in_c, mdot_demand_kg_per_s,
+                                         t_charge_out_c,
+                                         (t_required_in_c, t_required_out_c, mdot_required_kg_per_s))
+
+        return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
+
+    def _reapply_request(self, prosumer, t_demand_out_c, t_demand_in_c, mdot_demand_kg_per_s,
+                         t_charge_out_c, forward_request):
+        """
+        Request to send upstream on a REAPPLY pass of the convergence loop.
+
+        The source (HP condenser, HX, ...) delivered ``mdot_previous_in_kg_per_s``
+        at ``t_previous_in_charge_c`` on the previous pass, heating it from the
+        return it was promised (``t_previous_keep_return_c``); the SHS then split
+        that stream (demand bypass first, remainder to charge) and found the
+        actual mixed return ``t_previous_out_charge_c`` differed from the promise.
+
+        A source that under-delivered was LIMITED (power / mass-flow cap) and keeps
+        its feed temperature while shrinking the mass flow when the return it is
+        promised gets colder. Re-requesting the forward charge mass flow at the
+        colder actual return (the historical behaviour) therefore makes it deliver
+        even less mass, the SHS -- which gives the bypass priority -- loses charge
+        share, the mass-weighted return drops again, and so on: a fixed-point
+        iteration whose contraction factor tends to 1 as the bottom layer approaches
+        the feed temperature (the charge stream then carries almost no energy but
+        dominates the mass-weighted return). Observed: -0.22 K per pass from 60.5 to
+        46.9 °C, neither the convergence band nor the stagnation guard could ever
+        fire, ``ControllerNotConverged`` after ``max_iter`` passes.
+
+        Anchor the request on the ENERGY the source actually delivered instead:
+        split ``q_prev`` exactly as ``_calculate_heat_storage`` will (iso-energy
+        demand bypass first, the remainder to charge, nothing to charge when the
+        tank is full or the source cannot even cover the bypass), request the
+        resulting total mass flow at the resulting mixed return. The source can
+        deliver that energy (it just did), so it delivers exactly the request, the
+        split reproduces the promised return, and the pair converges in one pass
+        (a second one at most, for the small cp differences between the two sides).
+
+        No ``max_charge_mdot_kg_per_s`` cap here, on purpose: that cap bounds the
+        FORWARD request ("don't ask upstream for more than it can supply"). A
+        source that honours requests never delivers more energy than the (already
+        capped) forward request, so the anchored charge is within the cap anyway;
+        a source pinned at a minimum power (HP at ``min_p_comp_kw``) delivers its
+        pinned energy whatever is asked, and capping the request would only promise
+        a return it cannot honour (observed 1.2 K promised/actual gap while a
+        pinned HP filled a tank capped at 10 kg/s). The request must mirror what
+        the source will actually deliver for the boundary to conserve energy.
+
+        :return: (feed temperature, return temperature, mass flow) to request
+        """
+        t_in_c = self.t_previous_in_charge_c
+        mdot_prev_kg_per_s = self.mdot_previous_in_kg_per_s
+        t_keep_prev_c = self.t_previous_keep_return_c
+        if (np.isnan(t_in_c) or np.isnan(mdot_prev_kg_per_s) or np.isnan(t_keep_prev_c)
+                or mdot_prev_kg_per_s <= 0 or t_in_c - t_keep_prev_c <= 1e-9):
+            # No usable delivery to anchor on -- keep the forward request.
+            return forward_request
+
+        cp_src_j_per_kgk = float(self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_in_c + t_keep_prev_c) / 2))
+        q_prev_w = mdot_prev_kg_per_s * cp_src_j_per_kgk * (t_in_c - t_keep_prev_c)
+
+        # Iso-energy demand bypass at the ACTUAL delivered feed temperature
+        # (same formula as _calculate_heat_storage).
+        delta_t_bypass_c = t_in_c - t_demand_in_c
+        if delta_t_bypass_c > 1e-9:
+            mdot_bypass_full_kg_per_s = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c) / delta_t_bypass_c
+            cp_bypass_j_per_kgk = float(self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_in_c + t_demand_in_c) / 2))
+            q_bypass_full_w = mdot_bypass_full_kg_per_s * cp_bypass_j_per_kgk * delta_t_bypass_c
+        else:
+            mdot_bypass_full_kg_per_s = 0.0
+            cp_bypass_j_per_kgk = np.nan
+            q_bypass_full_w = 0.0
+
+        # Same "tank full" energy-budget test as _calculate_heat_storage, at the
+        # delivered feed temperature: a full tank bypasses the whole stream.
+        t_charge_ref_in_c = self._get_element_param(prosumer, 'min_useful_temp_c')
+        remaining_capacity_kwh = (self._get_max_stored_energy_kwh(t_charge_ref_in_c, t_in_c)
+                                  - self._get_stored_energy_kwh(t_charge_ref_in_c))
+        tank_full = remaining_capacity_kwh < self._get_element_param(prosumer, "max_remaining_capacity_kwh")
+
+        delta_t_charge_c = t_in_c - t_charge_out_c
+        if q_prev_w >= q_bypass_full_w and not (tank_full and mdot_demand_kg_per_s > 0):
+            # Source covers the demand bypass; the surplus energy charges the tank.
+            mdot_bypass_kg_per_s = mdot_bypass_full_kg_per_s
+            if delta_t_charge_c > 1e-6:
+                cp_charge_j_per_kgk = float(self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_in_c + t_charge_out_c) / 2))
+                mdot_charge_kg_per_s = (q_prev_w - q_bypass_full_w) / (cp_charge_j_per_kgk * delta_t_charge_c)
             else:
                 mdot_charge_kg_per_s = 0.0
             mdot_charge_kg_per_s = max(mdot_charge_kg_per_s, 0.0)
-            if max_charge_mdot is not None and not np.isnan(max_charge_mdot):
-                mdot_charge_kg_per_s = min(mdot_charge_kg_per_s, float(max_charge_mdot))
-            return self.t_previous_in_charge_c, self.t_previous_out_charge_c, mdot_charge_kg_per_s
+        else:
+            # Source cannot even cover the bypass (the SHS will discharge the
+            # rest), or the tank is full (whole stream bypassed): no charge, the
+            # delivered energy goes to the demand.
+            mdot_charge_kg_per_s = 0.0
+            if delta_t_bypass_c > 1e-9:
+                mdot_bypass_kg_per_s = q_prev_w / (cp_bypass_j_per_kgk * delta_t_bypass_c)
+            else:
+                mdot_bypass_kg_per_s = 0.0
 
-        return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
+        mdot_required_kg_per_s = mdot_bypass_kg_per_s + mdot_charge_kg_per_s
+        if mdot_required_kg_per_s > 1e-12:
+            t_required_out_c = (mdot_charge_kg_per_s * t_charge_out_c
+                                + mdot_bypass_kg_per_s * t_demand_in_c) / mdot_required_kg_per_s
+        else:
+            t_required_out_c = t_in_c
+        return t_in_c, t_required_out_c, mdot_required_kg_per_s
 
     @property
     def _t_charge_out(self):
@@ -910,6 +1004,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
             self.t_previous_out_charge_c = np.nan
             self.t_previous_in_charge_c = np.nan
             self.mdot_previous_in_kg_per_s = np.nan
+            self.t_previous_keep_return_c = np.nan
             self._reapply_last_t_received_out_c = np.nan
             self._reapply_stagnation_count = 0
         else:
@@ -918,6 +1013,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
             self._unapply_initiators(prosumer)
             self.t_previous_out_charge_c = t_received_out_c
             self.t_previous_in_charge_c = t_received_in_c
-            self.mdot_previous_in_kg_per_s = mdot_delivered_kg_per_s
+            # What the source actually delivered on this pass, and the return
+            # it was promised -- anchors the next request (_reapply_request).
+            self.mdot_previous_in_kg_per_s = mdot_received_kg_per_s
+            self.t_previous_keep_return_c = self.t_keep_return_c
             self.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                               FluidMixMapping.MASS_FLOW_KEY: np.nan}
