@@ -401,7 +401,7 @@ project_root = (Path.cwd().parent if Path.cwd().name in ["tutorials", "tutorials
                 else Path.cwd())
 
 ses_data_file = project_root / "tutorials_extended" / "data" / "ses_data.xlsx"
-heat_data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data.xlsx"
+heat_data_file = project_root / "tutorials_extended" / "data" / "aleja_heat_demand_model_data_2025.xlsx"
 
 GRID_CODE = "1-MV-urban--1-sw"  # urban grids are stiff, so rural grids are preferred for stress-testing  1-MV-rural--1-sw
 
@@ -414,8 +414,20 @@ YEAR_START = pd.Timestamp("2025-01-01 00:15:00")
 v_min_pu_std = 0.90
 v_max_pu_std = 1.10
 loading_percent_max_std = 100.0
+LOCAL_TZ = "Europe/Berlin"
+#SIMULATION_START = pd.Timestamp("2025-01-01 00:00:00")
+#SIMULATION_END = pd.Timestamp("2026-01-01 00:00:00")
 
+SIMULATION_START_LOCAL = pd.Timestamp(
+    "2025-01-01 00:00:00"
+).tz_localize(LOCAL_TZ)
 
+SIMULATION_END_LOCAL = pd.Timestamp(
+    "2026-01-01 00:00:00"
+).tz_localize(LOCAL_TZ)
+
+SIMULATION_START = SIMULATION_START_LOCAL.tz_convert("UTC")
+SIMULATION_END = SIMULATION_END_LOCAL.tz_convert("UTC")
 # SLD (single-line diagram) styling knobs
 SLD_LEAF_STEP = 1.4     # vertical spacing between sibling leaves (was hardcoded 1.0)
 SLD_DEPTH_STEP = 3.0    # horizontal spacing per tree depth level (was hardcoded 2.0)
@@ -430,8 +442,8 @@ SLD_TRAFO_COLOR    = "#555555"   # medium grey - transformer symbol
 SLD_EXTGRID_COLOR  = "#000000"   # black hatch - ext grid
 allow_export_to_grid = True
 
-
-WINDOW_DAYS = 8
+#PM: TODO: change to 365
+WINDOW_DAYS = 365
 
 # knobs used to push the grid into a violation during calibration
 CALIBRATION_DERATE_BOUNDS = (1.0, 0.15)
@@ -464,15 +476,73 @@ IMPORT_Q_EPS_MVAR = 1e-6
 def load_full_ses_data(path):
     ses_data = pd.read_excel(path)
     ses_data.columns = ses_data.columns.str.strip()
-    ses_data = ses_data.set_index("Timestamp").sort_index()
 
     required_cols = ["P el sc [kW]", "P pv [kW]"]
     for col in required_cols:
-        ses_data[col] = ses_data[col].astype(str).str.replace(",", ".", regex=False)
-        ses_data[col] = pd.to_numeric(ses_data[col], errors="coerce")
-    ses_data = ses_data.dropna(subset=required_cols)
+        ses_data[col] = (
+            ses_data[col]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+        )
+        ses_data[col] = pd.to_numeric(
+            ses_data[col],
+            errors="coerce"
+        )
 
-    ses_data_1h = ses_data[required_cols].resample("60min").mean().dropna(subset=required_cols)
+    ses_data = ses_data.dropna(
+        subset=["Timestamp"] + required_cols
+    )
+
+    # Parse raw local German timestamps.
+    raw_time = pd.to_datetime(
+        ses_data["Timestamp"],
+        dayfirst=True
+    )
+
+    # IMPORTANT:
+    # first interpret them as Europe/Berlin,
+    # including the DST transition,
+    # then convert every timestamp to UTC.
+    local_index = pd.DatetimeIndex(raw_time).tz_localize(
+        LOCAL_TZ,
+        ambiguous="infer",
+        nonexistent="raise"
+    )
+
+    utc_index = local_index.tz_convert("UTC")
+
+    ses_data = ses_data.drop(columns="Timestamp")
+    ses_data.index = utc_index
+    ses_data = ses_data.sort_index()
+
+    # Now resampling happens in continuous UTC time.
+    ses_data_1h = (
+        ses_data[required_cols]
+        .resample("60min")
+        .mean()
+    )
+
+    # Select the physical interval corresponding to local year 2025.
+    ses_data_1h = ses_data_1h.loc[
+        (ses_data_1h.index >= SIMULATION_START) &
+        (ses_data_1h.index < SIMULATION_END)
+    ]
+
+    if ses_data_1h[required_cols].isna().any().any():
+        bad = ses_data_1h[
+            ses_data_1h[required_cols].isna().any(axis=1)
+        ]
+        raise RuntimeError(
+            "NaN values remain in hourly SES data:\n"
+            f"{bad}"
+        )
+
+    if len(ses_data_1h) != 8760:
+        raise RuntimeError(
+            f"Expected 8760 hourly SES points, "
+            f"got {len(ses_data_1h)}."
+        )
+
     return ses_data_1h
 
 def scan_ses_windows(ses_data_1h, window_days=WINDOW_DAYS):
@@ -527,6 +597,7 @@ def build_time_series_data(residual_mall_load_kw, start, n_steps, heat_data_file
 ##############################################################################################
 # 3. pprosumer model (unchanged from the closed-loop model: previous
 # controller results and CHP downtime are carried across timesteps)
+#PM: TODO: check if the addition of the el. battery storage would make sense for case when mall flex is insufficient
 #################################################################################################
 
 def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
@@ -1062,6 +1133,7 @@ class FeederTopology:
 
         return downstream_sgen_idx, downstream_load_idx, downstream_buses
 
+#PM#2: check why the switches are set to False when build_feeder_graph(net) to create this nx graph sets it to TRUE
     @staticmethod
     def compute_hierarchical_layout(net, leaf_step=SLD_LEAF_STEP, depth_step=SLD_DEPTH_STEP):
         """Fills in net.bus.geo (in place) for any bus missing geo data, using a
@@ -1517,7 +1589,8 @@ class GridStressCalibration:
 #####################################################################################################################
 # 10. OPF results row + closed-loop scenario runner
 #####################################################################################################################
-
+#PM#1: check why the plot stors only mall_feeder_line_loading_before_pct(after_pct), this should plot the overloads on all net.res_line
+# net.res_line.loading_percent.max()
 class OpfTimeseriesRunner:
     @staticmethod
     def build_opf_results(selected_time, scenario_label, status,
@@ -2247,7 +2320,7 @@ class SldPlotter:
         ]
         ax.legend(handles=base_handles + (extra_handles or []), loc=loc, fontsize=fontsize,
                   framealpha=0.9, title=title, title_fontsize=title_fontsize)
-    
+    #PM#3: no switches are considered here as you're checking only for line between two buses, there can also be b2b switches
     @staticmethod
     def _draw_sld_base(ax, net, bus_size, busbar_half_width=0.35, bus_color_fn=None,
                         mall_bus=None, load_color=SLD_LOAD_COLOR, sgen_color=SLD_SGEN_COLOR,
@@ -2798,8 +2871,10 @@ class ScenarioRunner:
         print("\n=== Plotting single-line diagram (mall connection point highlighted) ===")
         SldPlotter.plot_single_line_diagram(net_template, mall_bus=MALL_BUS_RESOLVED)
 
-        import_window_end = best_import_row["window_end"] + pd.Timedelta(hours=1)
-        import_window_start = best_import_row["window_start"]
+        #import_window_end = best_import_row["window_end"] + pd.Timedelta(hours=1)
+        #import_window_start = best_import_row["window_start"]
+        import_window_start = SIMULATION_START
+        import_window_end = SIMULATION_END
 
         p_el_sc_kw_imp = ses_data_1h_full.loc[import_window_start:import_window_end - pd.Timedelta(hours=1), "P el sc [kW]"].astype(float).to_numpy()
         p_pv_kw_imp = ses_data_1h_full.loc[import_window_start:import_window_end - pd.Timedelta(hours=1), "P pv [kW]"].astype(float).to_numpy()
@@ -3115,7 +3190,8 @@ class HyperCapReducer:
                   ", ".join(f"{m}->{r}" for m, _, r in sorted(collapsed_records, key=lambda x: x[2])))
 
         return normalized
-
+#TODO: PM
+#PM#4: To add the source bus idx before grid reduction and have a mapping
     @staticmethod
     def build_reduced_net_for_case(net_snapshot, boundary_buses, internal_buses, eq_type="ward"):
         boundary = sorted({int(b) for b in boundary_buses})
@@ -3421,7 +3497,7 @@ class HyperCapSldPlotter:
                 ha="right", va="bottom", zorder=30,
                 bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                           edgecolor="#999999", alpha=0.94))
-
+#PM#5: check why the internal buses and boundary buses are still being check for in the original grid
     @staticmethod
     def plot_hypercap_reduced_sld(net, case_id, case_metadata, savepath, dpi=220,
                                    leaf_step=SLD_LEAF_STEP, depth_step=SLD_DEPTH_STEP,
