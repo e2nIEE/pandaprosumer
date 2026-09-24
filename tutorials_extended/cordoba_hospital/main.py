@@ -89,7 +89,7 @@ demand_input = DFData(demand_data)
 
 net_cold, net_hot = create_thermal_networks()
 
-prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, level=1, net_hot=net_hot)
+prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, net_hot=net_hot)
 prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
 (
     prosumer_dhw,
@@ -103,7 +103,7 @@ prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, st
     end,
     net_hot=net_hot
 )
-prosumer_prod, hp_controller_index, chiller_controller_index, dry_cooler_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, level=3, net_hot=net_hot, net_cold=net_cold)
+prosumer_prod, hp_controller_index, chiller_controller_index, dry_cooler_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, net_hot=net_hot, net_cold=net_cold)
 
 
 
