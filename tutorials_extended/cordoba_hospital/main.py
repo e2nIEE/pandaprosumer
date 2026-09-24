@@ -89,7 +89,7 @@ demand_input = DFData(demand_data)
 
 net_cold, net_hot = create_thermal_networks()
 
-prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, level=4, net_hot=net_hot)
+prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, level=1, net_hot=net_hot)
 prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
 (
     prosumer_dhw,
@@ -144,365 +144,365 @@ period_index = 0
 run_time_series_system(energy_system,
                        period_index=period_index, continue_on_divergence=False, verbose=True,
                        transient=True, dt=time_resolution_s, mode="bidirectional")
-
-def get_component_results(prosumer, component_name):
-    component_row = prosumer.time_series.loc[
-        prosumer.time_series["name"] == component_name
-    ].iloc[0]
-
-    return component_row["data_source"].df
-
-
-# RESULTS OF THE NORMAL RUN
-hp_results = get_component_results(prosumer_prod, "hp_controller")
-chiller_results = get_component_results(prosumer_prod, "reversed_hp_controller")
-dry_cooler_results = get_component_results(prosumer_prod, "dry_cooler_controller")
-baseline_boiler_results = get_component_results(prosumer_prod, "gb_controller")
-
-
-# ELECTRICAL CONSUMPTION IN THE NORMAL RUN
-demand_data["hp_baseline_power_kw"] = (
-    hp_results["p_comp_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["chiller_baseline_power_kw"] = (
-    chiller_results["p_comp_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["dry_cooler_baseline_power_kw"] = (
-    dry_cooler_results["p_fans_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["equipment_baseline_power_kw"] = (
-    demand_data["hp_baseline_power_kw"]
-    + demand_data["chiller_baseline_power_kw"]
-    + demand_data["dry_cooler_baseline_power_kw"]
-)
-
-demand_data["total_baseline_load_kw"] = (
-    demand_data["hospital_electric_load_kw"]
-    + demand_data["equipment_baseline_power_kw"]
-)
-
-# AVAILABLE PV SURPLUS
-demand_data["pv_surplus_kw"] = np.maximum(
-    demand_data["pv_gen_kw"]
-    - demand_data["total_baseline_load_kw"],
-    0.0
-)
-
-# PREPARE THE CONTROL PROFILES
-demand_data = prepare_winter_pv_control_profiles(
-    demand_data,
-    normal_temperature_c=78.0,
-    surplus_temperature_c=80.0,
-    normal_hp_limit_kw=100.0,
-    maximum_hp_limit_kw=350.0
-)
-
-# CREATE THE CONTROLLED SYSTEM
-controlled_demand_input = DFData(demand_data.copy())
-
-controlled_net_cold, controlled_net_hot = (create_thermal_networks())
-
-controlled_prosumer_hd = create_prosumer_heat_demand(
-    controlled_demand_input,
-    time_resolution_s,
-    start,
-    end,
-    level=4,
-    net_hot=controlled_net_hot
-)
-
-controlled_prosumer_cd = create_prosumer_cooling_demand(
-    controlled_demand_input,
-    time_resolution_s,
-    start,
-    end,
-    net_cold=controlled_net_cold
-)
-
-(
-    controlled_prosumer_dhw,
-    controlled_dhw_storage_index,
-    controlled_dhw_demand_index,
-    controlled_dhw_network_demand_index
-) = create_prosumer_dhw_system(
-    controlled_demand_input,
-    time_resolution_s,
-    start,
-    end,
-    net_hot=controlled_net_hot
-)
-
-(
-    controlled_prosumer_prod,
-    controlled_hp_controller_index,
-    controlled_chiller_controller_index,
-    controlled_dry_cooler_controller_index
-) = create_prosumer_prod(
-    controlled_demand_input,
-    time_resolution_s,
-    start,
-    end,
-    level=3,
-    net_hot=controlled_net_hot,
-    net_cold=controlled_net_cold
-)
-
-
-# Apply the hourly HP limit and hot-network temperature
-add_winter_pv_controllers(
-    prosumer_prod=controlled_prosumer_prod,
-    net_hot=controlled_net_hot,
-    data_source=controlled_demand_input,
-    hp_controller_index=controlled_hp_controller_index
-)
-
-
-# RUN THE CONTROLLED SYSTEM
-controlled_energy_system = _create_energy_system(
-    [
-        controlled_net_hot,
-        controlled_net_cold
-    ],
-    [
-        controlled_prosumer_cd,
-        controlled_prosumer_hd,
-        controlled_prosumer_prod,
-        controlled_prosumer_dhw
-    ],
-    name="controlled_winter_energy_system"
-)
-
-print("\nRunning controlled winter scenario...")
-run_time_series_system(
-    controlled_energy_system,
-    period_index=0,
-    continue_on_divergence=False,
-    verbose=True,
-    transient=True,
-    dt=time_resolution_s,
-    mode="bidirectional"
-)
-
-
-# READ THE CONTROLLED RESULTS
-controlled_hp_results = get_component_results(controlled_prosumer_prod, "hp_controller")
-controlled_chiller_results = get_component_results(controlled_prosumer_prod, "reversed_hp_controller")
-controlled_dry_cooler_results = get_component_results(controlled_prosumer_prod, "dry_cooler_controller")
-controlled_boiler_results = get_component_results(controlled_prosumer_prod, "gb_controller")
-controlled_dhw_results = get_component_results(controlled_prosumer_dhw, "dhw_demand_controller")
-controlled_dhw_network_results = get_component_results(controlled_prosumer_dhw, "dhw_network_demand_controller")
-
-# ELECTRICAL CONSUMPTION IN THE CONTROLLED RUN
-demand_data["hp_controlled_power_kw"] = (
-    controlled_hp_results["p_comp_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["chiller_controlled_power_kw"] = (
-    controlled_chiller_results["p_comp_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["dry_cooler_controlled_power_kw"] = (
-    controlled_dry_cooler_results["p_fans_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-demand_data["equipment_controlled_power_kw"] = (
-    demand_data["hp_controlled_power_kw"]
-    + demand_data["chiller_controlled_power_kw"]
-    + demand_data["dry_cooler_controlled_power_kw"]
-)
-
-demand_data["total_controlled_load_kw"] = (
-    demand_data["hospital_electric_load_kw"]
-    + demand_data["equipment_controlled_power_kw"]
-)
-
-demand_data["controlled_balance_kw"] = (
-    demand_data["pv_gen_kw"]
-    - demand_data["total_controlled_load_kw"]
-)
-
-demand_data["unused_pv_kw"] = np.maximum(
-    demand_data["controlled_balance_kw"], 0.0
-)
-
-demand_data["grid_import_kw"] = np.maximum(
-    -demand_data["controlled_balance_kw"], 0.0
-)
-
-# THERMAL RESULTS
-heating_demand_kw = demand_data["Heating demand (kW)"].fillna(0.0)
-
-controlled_dhw_request_kw = (
-    controlled_dhw_results["q_uncovered_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-    .clip(lower=0.0)
-)
-
-controlled_dhw_received_kw = (
-    controlled_dhw_network_results["q_received_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-    .clip(lower=0.0)
-)
-
-controlled_dhw_unmet_kw = (
-    controlled_dhw_network_results["q_uncovered_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-    .clip(lower=0.0)
-)
-
-baseline_hp_heat_kw = (
-    hp_results["q_cond_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-controlled_hp_heat_kw = (
-    controlled_hp_results["q_cond_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-baseline_boiler_heat_kw = (
-    baseline_boiler_results["q_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-controlled_boiler_heat_kw = (
-    controlled_boiler_results["q_kw"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-# MASS FLOWS
-baseline_hp_mdot_kg_s = (
-    hp_results["mdot_cond_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-controlled_hp_mdot_kg_s = (
-    controlled_hp_results["mdot_cond_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-baseline_boiler_mdot_kg_s = (
-    baseline_boiler_results["mdot_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-controlled_boiler_mdot_kg_s = (
-    controlled_boiler_results["mdot_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-baseline_gas_mdot_kg_s = (
-    baseline_boiler_results["mdot_gas_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-controlled_gas_mdot_kg_s = (
-    controlled_boiler_results["mdot_gas_kg_per_s"]
-    .reindex(demand_data.index)
-    .fillna(0.0)
-)
-
-
-# TOTAL HEAT
-total_heat_demand_kw = heating_demand_kw + controlled_dhw_request_kw
-baseline_total_heat_production_kw = baseline_hp_heat_kw + baseline_boiler_heat_kw
-controlled_total_heat_production_kw = controlled_hp_heat_kw + controlled_boiler_heat_kw
-
-# OPERATING STATES
-surplus_mask = demand_data["pv_surplus_kw"] > 0.0
-previous_hour_surplus = demand_data["pv_surplus_kw"].shift(1).fillna(0.0)
-
-after_surplus_mask = (
-    (previous_hour_surplus > 0.0)
-    & (~surplus_mask)
-)
-
-
-# WEEKLY REPORT
-weekly_report = pd.DataFrame(index=demand_data.index)
-
-weekly_report["Betriebszustand"] = np.select(
-    [surplus_mask, after_surplus_mask],
-    ["PV-Überschuss", "Nach PV-Überschuss"],
-    default="Normalbetrieb"
-)
-
-weekly_report["Raumheizbedarf_kW"] = heating_demand_kw
-weekly_report["PV_Überschuss_vorher_kW"] = demand_data["pv_surplus_kw"]
-weekly_report["PV_Überschuss_nachher_kW"] = demand_data["unused_pv_kw"]
-
-weekly_report["WP_Rücklauf_normal_C"] = (
-    hp_results["t_cond_in_c"].reindex(demand_data.index)
-)
-
-weekly_report["WP_Vorlauf_normal_C"] = (
-    hp_results["t_cond_out_c"].reindex(demand_data.index)
-)
-
-weekly_report["WP_Rücklauf_geregelt_C"] = (
-    controlled_hp_results["t_cond_in_c"].reindex(demand_data.index)
-)
-
-weekly_report["WP_Vorlauf_geregelt_C"] = (
-    controlled_hp_results["t_cond_out_c"].reindex(demand_data.index)
-)
-
-weekly_report["WP_Strom_normal_kW"] = demand_data["hp_baseline_power_kw"]
-weekly_report["WP_Strom_geregelt_kW"] = demand_data["hp_controlled_power_kw"]
-
-weekly_report["Warmwasser_Netzbedarf_kW"] = controlled_dhw_request_kw
-weekly_report["Warmwasser_Netzlieferung_kW"] = controlled_dhw_received_kw
-weekly_report["Warmwasser_Restbedarf_kW"] = controlled_dhw_unmet_kw
-
-weekly_report["Gesamtwärmebedarf_kW"] = total_heat_demand_kw
-
-weekly_report["WP_Wärme_normal_kW"] = baseline_hp_heat_kw
-weekly_report["Kesselwärme_normal_kW"] = baseline_boiler_heat_kw
-weekly_report["Gesamterzeugung_normal_kW"] = baseline_total_heat_production_kw
-
-weekly_report["WP_Wärme_geregelt_kW"] = controlled_hp_heat_kw
-weekly_report["Kesselwärme_geregelt_kW"] = controlled_boiler_heat_kw
-weekly_report["Gesamterzeugung_geregelt_kW"] = controlled_total_heat_production_kw
-
-weekly_report["WP_Massenstrom_normal_kg_s"] = baseline_hp_mdot_kg_s
-weekly_report["WP_Massenstrom_geregelt_kg_s"] = controlled_hp_mdot_kg_s
-weekly_report["Kessel_Massenstrom_normal_kg_s"] = baseline_boiler_mdot_kg_s
-weekly_report["Kessel_Massenstrom_geregelt_kg_s"] = controlled_boiler_mdot_kg_s
-
-
-print(
-    "\n"
-    "============================================================\n"
-    "WOCHENBERICHT: NORMALBETRIEB UND GEREGELTER BETRIEB\n"
-    "============================================================"
-)
-
-print(weekly_report.round(4).to_string())
-
+#
+# def get_component_results(prosumer, component_name):
+#     component_row = prosumer.time_series.loc[
+#         prosumer.time_series["name"] == component_name
+#     ].iloc[0]
+#
+#     return component_row["data_source"].df
+#
+#
+# # RESULTS OF THE NORMAL RUN
+# hp_results = get_component_results(prosumer_prod, "hp_controller")
+# chiller_results = get_component_results(prosumer_prod, "reversed_hp_controller")
+# dry_cooler_results = get_component_results(prosumer_prod, "dry_cooler_controller")
+# baseline_boiler_results = get_component_results(prosumer_prod, "gb_controller")
+#
+#
+# # ELECTRICAL CONSUMPTION IN THE NORMAL RUN
+# demand_data["hp_baseline_power_kw"] = (
+#     hp_results["p_comp_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["chiller_baseline_power_kw"] = (
+#     chiller_results["p_comp_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["dry_cooler_baseline_power_kw"] = (
+#     dry_cooler_results["p_fans_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["equipment_baseline_power_kw"] = (
+#     demand_data["hp_baseline_power_kw"]
+#     + demand_data["chiller_baseline_power_kw"]
+#     + demand_data["dry_cooler_baseline_power_kw"]
+# )
+#
+# demand_data["total_baseline_load_kw"] = (
+#     demand_data["hospital_electric_load_kw"]
+#     + demand_data["equipment_baseline_power_kw"]
+# )
+#
+# # AVAILABLE PV SURPLUS
+# demand_data["pv_surplus_kw"] = np.maximum(
+#     demand_data["pv_gen_kw"]
+#     - demand_data["total_baseline_load_kw"],
+#     0.0
+# )
+#
+# # PREPARE THE CONTROL PROFILES
+# demand_data = prepare_winter_pv_control_profiles(
+#     demand_data,
+#     normal_temperature_c=78.0,
+#     surplus_temperature_c=80.0,
+#     normal_hp_limit_kw=100.0,
+#     maximum_hp_limit_kw=350.0
+# )
+#
+# # CREATE THE CONTROLLED SYSTEM
+# controlled_demand_input = DFData(demand_data.copy())
+#
+# controlled_net_cold, controlled_net_hot = (create_thermal_networks())
+#
+# controlled_prosumer_hd = create_prosumer_heat_demand(
+#     controlled_demand_input,
+#     time_resolution_s,
+#     start,
+#     end,
+#     level=4,
+#     net_hot=controlled_net_hot
+# )
+#
+# controlled_prosumer_cd = create_prosumer_cooling_demand(
+#     controlled_demand_input,
+#     time_resolution_s,
+#     start,
+#     end,
+#     net_cold=controlled_net_cold
+# )
+#
+# (
+#     controlled_prosumer_dhw,
+#     controlled_dhw_storage_index,
+#     controlled_dhw_demand_index,
+#     controlled_dhw_network_demand_index
+# ) = create_prosumer_dhw_system(
+#     controlled_demand_input,
+#     time_resolution_s,
+#     start,
+#     end,
+#     net_hot=controlled_net_hot
+# )
+#
+# (
+#     controlled_prosumer_prod,
+#     controlled_hp_controller_index,
+#     controlled_chiller_controller_index,
+#     controlled_dry_cooler_controller_index
+# ) = create_prosumer_prod(
+#     controlled_demand_input,
+#     time_resolution_s,
+#     start,
+#     end,
+#     level=3,
+#     net_hot=controlled_net_hot,
+#     net_cold=controlled_net_cold
+# )
+#
+#
+# # Apply the hourly HP limit and hot-network temperature
+# add_winter_pv_controllers(
+#     prosumer_prod=controlled_prosumer_prod,
+#     net_hot=controlled_net_hot,
+#     data_source=controlled_demand_input,
+#     hp_controller_index=controlled_hp_controller_index
+# )
+#
+#
+# # RUN THE CONTROLLED SYSTEM
+# controlled_energy_system = _create_energy_system(
+#     [
+#         controlled_net_hot,
+#         controlled_net_cold
+#     ],
+#     [
+#         controlled_prosumer_cd,
+#         controlled_prosumer_hd,
+#         controlled_prosumer_prod,
+#         controlled_prosumer_dhw
+#     ],
+#     name="controlled_winter_energy_system"
+# )
+#
+# print("\nRunning controlled winter scenario...")
+# run_time_series_system(
+#     controlled_energy_system,
+#     period_index=0,
+#     continue_on_divergence=False,
+#     verbose=True,
+#     transient=True,
+#     dt=time_resolution_s,
+#     mode="bidirectional"
+# )
+#
+#
+# # READ THE CONTROLLED RESULTS
+# controlled_hp_results = get_component_results(controlled_prosumer_prod, "hp_controller")
+# controlled_chiller_results = get_component_results(controlled_prosumer_prod, "reversed_hp_controller")
+# controlled_dry_cooler_results = get_component_results(controlled_prosumer_prod, "dry_cooler_controller")
+# controlled_boiler_results = get_component_results(controlled_prosumer_prod, "gb_controller")
+# controlled_dhw_results = get_component_results(controlled_prosumer_dhw, "dhw_demand_controller")
+# controlled_dhw_network_results = get_component_results(controlled_prosumer_dhw, "dhw_network_demand_controller")
+#
+# # ELECTRICAL CONSUMPTION IN THE CONTROLLED RUN
+# demand_data["hp_controlled_power_kw"] = (
+#     controlled_hp_results["p_comp_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["chiller_controlled_power_kw"] = (
+#     controlled_chiller_results["p_comp_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["dry_cooler_controlled_power_kw"] = (
+#     controlled_dry_cooler_results["p_fans_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# demand_data["equipment_controlled_power_kw"] = (
+#     demand_data["hp_controlled_power_kw"]
+#     + demand_data["chiller_controlled_power_kw"]
+#     + demand_data["dry_cooler_controlled_power_kw"]
+# )
+#
+# demand_data["total_controlled_load_kw"] = (
+#     demand_data["hospital_electric_load_kw"]
+#     + demand_data["equipment_controlled_power_kw"]
+# )
+#
+# demand_data["controlled_balance_kw"] = (
+#     demand_data["pv_gen_kw"]
+#     - demand_data["total_controlled_load_kw"]
+# )
+#
+# demand_data["unused_pv_kw"] = np.maximum(
+#     demand_data["controlled_balance_kw"], 0.0
+# )
+#
+# demand_data["grid_import_kw"] = np.maximum(
+#     -demand_data["controlled_balance_kw"], 0.0
+# )
+#
+# # THERMAL RESULTS
+# heating_demand_kw = demand_data["Heating demand (kW)"].fillna(0.0)
+#
+# controlled_dhw_request_kw = (
+#     controlled_dhw_results["q_uncovered_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+#     .clip(lower=0.0)
+# )
+#
+# controlled_dhw_received_kw = (
+#     controlled_dhw_network_results["q_received_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+#     .clip(lower=0.0)
+# )
+#
+# controlled_dhw_unmet_kw = (
+#     controlled_dhw_network_results["q_uncovered_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+#     .clip(lower=0.0)
+# )
+#
+# baseline_hp_heat_kw = (
+#     hp_results["q_cond_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# controlled_hp_heat_kw = (
+#     controlled_hp_results["q_cond_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# baseline_boiler_heat_kw = (
+#     baseline_boiler_results["q_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# controlled_boiler_heat_kw = (
+#     controlled_boiler_results["q_kw"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# # MASS FLOWS
+# baseline_hp_mdot_kg_s = (
+#     hp_results["mdot_cond_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# controlled_hp_mdot_kg_s = (
+#     controlled_hp_results["mdot_cond_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# baseline_boiler_mdot_kg_s = (
+#     baseline_boiler_results["mdot_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# controlled_boiler_mdot_kg_s = (
+#     controlled_boiler_results["mdot_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# baseline_gas_mdot_kg_s = (
+#     baseline_boiler_results["mdot_gas_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+# controlled_gas_mdot_kg_s = (
+#     controlled_boiler_results["mdot_gas_kg_per_s"]
+#     .reindex(demand_data.index)
+#     .fillna(0.0)
+# )
+#
+#
+# # TOTAL HEAT
+# total_heat_demand_kw = heating_demand_kw + controlled_dhw_request_kw
+# baseline_total_heat_production_kw = baseline_hp_heat_kw + baseline_boiler_heat_kw
+# controlled_total_heat_production_kw = controlled_hp_heat_kw + controlled_boiler_heat_kw
+#
+# # OPERATING STATES
+# surplus_mask = demand_data["pv_surplus_kw"] > 0.0
+# previous_hour_surplus = demand_data["pv_surplus_kw"].shift(1).fillna(0.0)
+#
+# after_surplus_mask = (
+#     (previous_hour_surplus > 0.0)
+#     & (~surplus_mask)
+# )
+#
+#
+# # WEEKLY REPORT
+# weekly_report = pd.DataFrame(index=demand_data.index)
+#
+# weekly_report["Betriebszustand"] = np.select(
+#     [surplus_mask, after_surplus_mask],
+#     ["PV-Überschuss", "Nach PV-Überschuss"],
+#     default="Normalbetrieb"
+# )
+#
+# weekly_report["Raumheizbedarf_kW"] = heating_demand_kw
+# weekly_report["PV_Überschuss_vorher_kW"] = demand_data["pv_surplus_kw"]
+# weekly_report["PV_Überschuss_nachher_kW"] = demand_data["unused_pv_kw"]
+#
+# weekly_report["WP_Rücklauf_normal_C"] = (
+#     hp_results["t_cond_in_c"].reindex(demand_data.index)
+# )
+#
+# weekly_report["WP_Vorlauf_normal_C"] = (
+#     hp_results["t_cond_out_c"].reindex(demand_data.index)
+# )
+#
+# weekly_report["WP_Rücklauf_geregelt_C"] = (
+#     controlled_hp_results["t_cond_in_c"].reindex(demand_data.index)
+# )
+#
+# weekly_report["WP_Vorlauf_geregelt_C"] = (
+#     controlled_hp_results["t_cond_out_c"].reindex(demand_data.index)
+# )
+#
+# weekly_report["WP_Strom_normal_kW"] = demand_data["hp_baseline_power_kw"]
+# weekly_report["WP_Strom_geregelt_kW"] = demand_data["hp_controlled_power_kw"]
+#
+# weekly_report["Warmwasser_Netzbedarf_kW"] = controlled_dhw_request_kw
+# weekly_report["Warmwasser_Netzlieferung_kW"] = controlled_dhw_received_kw
+# weekly_report["Warmwasser_Restbedarf_kW"] = controlled_dhw_unmet_kw
+#
+# weekly_report["Gesamtwärmebedarf_kW"] = total_heat_demand_kw
+#
+# weekly_report["WP_Wärme_normal_kW"] = baseline_hp_heat_kw
+# weekly_report["Kesselwärme_normal_kW"] = baseline_boiler_heat_kw
+# weekly_report["Gesamterzeugung_normal_kW"] = baseline_total_heat_production_kw
+#
+# weekly_report["WP_Wärme_geregelt_kW"] = controlled_hp_heat_kw
+# weekly_report["Kesselwärme_geregelt_kW"] = controlled_boiler_heat_kw
+# weekly_report["Gesamterzeugung_geregelt_kW"] = controlled_total_heat_production_kw
+#
+# weekly_report["WP_Massenstrom_normal_kg_s"] = baseline_hp_mdot_kg_s
+# weekly_report["WP_Massenstrom_geregelt_kg_s"] = controlled_hp_mdot_kg_s
+# weekly_report["Kessel_Massenstrom_normal_kg_s"] = baseline_boiler_mdot_kg_s
+# weekly_report["Kessel_Massenstrom_geregelt_kg_s"] = controlled_boiler_mdot_kg_s
+#
+#
+# print(
+#     "\n"
+#     "============================================================\n"
+#     "WOCHENBERICHT: NORMALBETRIEB UND GEREGELTER BETRIEB\n"
+#     "============================================================"
+# )
+#
+# print(weekly_report.round(4).to_string())
+#
