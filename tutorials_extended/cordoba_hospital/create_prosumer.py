@@ -519,7 +519,7 @@ def create_prosumer_dhw_system(
 
     prosumer = create_empty_prosumer_container(
         "dhw_system",
-        # check_order=False
+        check_order=False
     )
 
     period = create_period(
@@ -559,7 +559,7 @@ def create_prosumer_dhw_system(
         init_soc=0.5,
         period=period,
         name="dhw_heat_storage",
-        level=dhw_prosumer_level,
+        level=prosumer_dmd_level_hot,
         order=0
     )
 
@@ -568,7 +568,7 @@ def create_prosumer_dhw_system(
         prosumer,
         period=period,
         name="dhw_demand_controller",
-        level=dhw_prosumer_level,
+        level=prosumer_dmd_level_hot,
         order=1
     )
 
@@ -577,7 +577,7 @@ def create_prosumer_dhw_system(
             prosumer,
             period=period,
             name="dhw_network_demand_controller",
-            level=dhw_prosumer_level,
+            level=prosumer_dmd_level_hot,
             order=2
         )
     )
@@ -670,7 +670,7 @@ def create_prosumer_dhw_system(
     )
 
     GenericEnergySystemMapping(
-        container=net_hot,
+        container=prosumer,
         initiator_id=dhw_demand_controller_index,
         initiator_column="q_uncovered_kw",
         responder_net=net_hot,
