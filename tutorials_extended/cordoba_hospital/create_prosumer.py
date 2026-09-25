@@ -563,6 +563,63 @@ def create_prosumer_dhw_system(
         order=0
     )
 
+
+    dhw_demand_controller_index = create_controlled_heat_demand(
+        prosumer,
+        period=period,
+        name="dhw_demand_controller",
+        level=dhw_prosumer_level,
+        order=1
+    )
+
+    dhw_network_demand_controller_index = (
+        create_controlled_heat_demand(
+            prosumer,
+            period=period,
+            name="dhw_network_demand_controller",
+            level=dhw_prosumer_level,
+            order=2
+        )
+    )
+
+    dhw_backup_element_index = get_element_index(
+        net_hot,
+        "heat_consumer",
+        "dhw_backup_demand_coupling"
+    )
+
+    nc_read_dhw_backup_index = (
+        create_controlled_network_coupling(
+            net_hot,
+            dhw_backup_element_index,
+            element_name="heat_consumer",
+            result_columns=[
+                "t_from_k",
+                "t_to_k",
+                "mdot_from_kg_per_s"
+            ],
+            temp_fluid_map_output_idx=0,
+            mdot_fluid_map_output_idx=2,
+            level=nc_read_level_hot,
+            order=0,
+            name="nc_read_dhw_backup"
+        )
+    )
+
+
+
+    nc_write_dhw_backup_index = (
+        create_controlled_network_coupling(
+            net_hot,
+            dhw_backup_element_index,
+            element_name="heat_consumer",
+            input_columns=["qext_w"],
+            level=nc_write_level_hot,
+            order=1,
+            name="nc_write_dhw_backup"
+        )
+    )
+
     # Solar thermal charges the storage.
     GenericMapping(
         container=prosumer,
@@ -573,41 +630,20 @@ def create_prosumer_dhw_system(
         order=0
     )
 
-
-    dhw_demand_controller_index = create_controlled_heat_demand(
-        prosumer,
-        period=period,
-        name="dhw_demand_controller",
-        level=dhw_prosumer_level,
-        order=1
-    )
-
-
     GenericMapping(
         container=prosumer,
-        initiator_id=dhw_storage_controller_index,
-        initiator_column="q_delivered_kw",
+        initiator_id=solar_dhw_cp_index,
+        initiator_column=[
+            "t_dhw_hot_c_cp",
+            "t_dhw_cold_c_cp"
+        ],
         responder_id=dhw_demand_controller_index,
-        responder_column="q_received_kw",
-        order=0,
-        no_chain=False
+        responder_column=[
+            "t_feed_demand_c",
+            "t_return_demand_c"
+        ],
+        order=0
     )
-
-
-    # GenericMapping(
-    #     container=prosumer,
-    #     initiator_id=solar_dhw_cp_index,
-    #     initiator_column=[
-    #         "t_dhw_hot_c_cp",
-    #         "t_dhw_cold_c_cp"
-    #     ],
-    #     responder_id=dhw_demand_controller_index,
-    #     responder_column=[
-    #         "t_feed_demand_c",
-    #         "t_return_demand_c"
-    #     ],
-    #     order=0
-    # )
 
 
     GenericMapping(
@@ -623,25 +659,15 @@ def create_prosumer_dhw_system(
     )
 
 
-    dhw_backup_element_index = get_element_index(
-        net_hot,
-        "heat_exchanger",
-        "dhw_backup_demand_coupling"
+    GenericMapping(
+        container=prosumer,
+        initiator_id=dhw_storage_controller_index,
+        initiator_column="q_delivered_kw",
+        responder_id=dhw_demand_controller_index,
+        responder_column="q_received_kw",
+        order=0,
+        no_chain=False
     )
-
-
-    nc_write_dhw_backup_index = (
-        create_controlled_network_coupling(
-            net_hot,
-            dhw_backup_element_index,
-            element_name="heat_exchanger",
-            input_columns=["qext_w"],
-            level=nc_write_level_hot,
-            order=1,
-            name="nc_write_dhw_backup"
-        )
-    )
-
 
     GenericEnergySystemMapping(
         container=net_hot,
@@ -658,93 +684,62 @@ def create_prosumer_dhw_system(
     )
 
 
-    # nc_read_dhw_backup_index = (
-    #     create_controlled_network_coupling(
-    #         net_hot,
-    #         dhw_backup_element_index,
-    #         element_name="heat_consumer",
-    #         result_columns=[
-    #             "t_from_k",
-    #             "t_to_k",
-    #             "mdot_from_kg_per_s"
-    #         ],
-    #         temp_fluid_map_output_idx=0,
-    #         mdot_fluid_map_output_idx=2,
-    #         level=nc_read_level_hot,
-    #         order=0,
-    #         name="nc_read_dhw_backup"
-    #     )
-    # )
-    #
-    #
-    #
-    # dhw_network_demand_controller_index = (
-    #     create_controlled_heat_demand(
-    #         prosumer,
-    #         period=period,
-    #         name="dhw_network_demand_controller",
-    #         level=prosumer_dmd_level_hot,
-    #         order=0
-    #     )
-    # )
-    #
-    #
-    # GenericMapping(
-    #     container=prosumer,
-    #     initiator_id=dhw_demand_controller_index,
-    #     initiator_column="q_uncovered_kw",
-    #     responder_id=dhw_network_demand_controller_index,
-    #     responder_column="q_demand_kw",
-    #     order=0,
-    #     no_chain=True,
-    #     conversion_function=lambda q_kw: (
-    #         np.maximum(q_kw, 0.0)
-    #     )
-    # )
-    #
-    #
-    # FluidMixEnergySystemMapping(
-    #     container=net_hot,
-    #     initiator_id=nc_read_dhw_backup_index,
-    #     responder_net=prosumer,
-    #     responder_id=dhw_network_demand_controller_index,
-    #     order=0,
-    #     no_chain=False
-    # )
-    #
-    # GenericEnergySystemMapping(
-    #     container=net_hot,
-    #     initiator_id=nc_read_dhw_backup_index,
-    #     initiator_column="t_from_k",
-    #     responder_net=prosumer,
-    #     responder_id=dhw_network_demand_controller_index,
-    #     responder_column="t_feed_demand_c",
-    #     order=1,
-    #     no_chain=False,
-    #     conversion_function=lambda t_k: (
-    #         np.asarray(t_k) - 273.15
-    #     )
-    # )
-    #
-    # GenericEnergySystemMapping(
-    #     container=net_hot,
-    #     initiator_id=nc_read_dhw_backup_index,
-    #     initiator_column="t_to_k",
-    #     responder_net=prosumer,
-    #     responder_id=dhw_network_demand_controller_index,
-    #     responder_column="t_return_demand_c",
-    #     order=2,
-    #     no_chain=False,
-    #     conversion_function=lambda t_k: (
-    #         np.asarray(t_k) - 273.15
-    #     )
-    # )
+    GenericMapping(
+        container=prosumer,
+        initiator_id=dhw_demand_controller_index,
+        initiator_column="q_uncovered_kw",
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="q_demand_kw",
+        order=0,
+        no_chain=True,
+        conversion_function=lambda q_kw: (
+            np.maximum(q_kw, 0.0)
+        )
+    )
+
+
+    FluidMixEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        order=0,
+        no_chain=False
+    )
+
+    GenericEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        initiator_column="t_from_k",
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="t_feed_demand_c",
+        order=1,
+        no_chain=False,
+        conversion_function=lambda t_k: (
+            np.asarray(t_k) - 273.15
+        )
+    )
+
+    GenericEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_dhw_backup_index,
+        initiator_column="t_to_k",
+        responder_net=prosumer,
+        responder_id=dhw_network_demand_controller_index,
+        responder_column="t_return_demand_c",
+        order=2,
+        no_chain=False,
+        conversion_function=lambda t_k: (
+            np.asarray(t_k) - 273.15
+        )
+    )
 
     return (
         prosumer,
         dhw_storage_controller_index,
         dhw_demand_controller_index,
-        # dhw_network_demand_controller_index
+        dhw_network_demand_controller_index
     )
 
 

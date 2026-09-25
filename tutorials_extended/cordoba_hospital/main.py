@@ -95,7 +95,7 @@ prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start
     prosumer_dhw,
     dhw_storage_controller_index,
     dhw_demand_controller_index,
-    # dhw_network_demand_controller_index
+    dhw_network_demand_controller_index
 ) = create_prosumer_dhw_system(
     demand_input,
     time_resolution_s,
