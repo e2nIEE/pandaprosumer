@@ -363,12 +363,17 @@ class HeatExchangerController(BasicProsumerController):
         assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
         if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
-            # If the secondary mass flow is too low, no heat is exchanged
+            # If the secondary mass flow is too low, no heat is exchanged.
+            # The secondary must then leave at its INLET temperature, not at the
+            # requested outlet: with the primary idle (mdot_1 = 0, q_exchanged = 0)
+            # a warm secondary would let the downstream demand book heat this
+            # exchanger never delivered (Paris CPCU<->BET boundary, 0.0006 K at
+            # 18.78 kg/s -> 0.049 kW created on the first step of an ON ramp).
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
             mdot_2_kg_per_s = mdot_2_required_kg_per_s
             t_2_in_c = t_in_2_required_c
-            t_2_out_c = t_out_2_required_c
+            t_2_out_c = t_in_2_required_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
             
