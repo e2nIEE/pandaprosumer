@@ -7,6 +7,9 @@ from pandaprosumer.create_controlled import (create_controlled_network_coupling,
                                              create_controlled_const_profile)
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
 from pandaprosumer.mapping import FluidMixEnergySystemMapping, GenericEnergySystemMapping
+from pandaprosumer.create import create_heat_pump
+from pandaprosumer.controller.data_model import HeatPumpControllerData
+from controller import CoupledHeatPumpController
 from pandapower import get_element_index
 import numpy as np
 
@@ -71,17 +74,21 @@ class ColdSideHpToChillerMapping(FluidMixMapping):
         }
 
 cp_level = 0
-nc_read_level_hot = 3
-prosumer_prod_level_hot = 4
-prosumer_dmd_level_hot = 5
-nc_write_level_hot = 2
-dhw_prosumer_level = 1
+nc_read_level_hot = 2
+prosumer_prod_level_hot = 2
+prosumer_dmd_level_hot = 2
+nc_write_level_hot = 1
+nc_write_circ_pump_hot = 2
+prosumer_dhw_level = 1
 
-nc_read_level_cold = 3
-# prosumer_prod_level_cold = 2
+nc_read_level_cold = 2
+prosumer_prod_level_cold = 2
 # prosumer_dmd_level_cold = 3
-# nc_write_level_cold = 4
+nc_write_level_cold = 1
+nc_write_chiller_cold = 2
 
+
+HOT_LOOP_LEVEL = 2
 
 
 def create_prosumer_heat_demand(data_source, time_res, start, end, net_hot):
@@ -95,7 +102,7 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, net_hot):
 
     cp_controller_index = create_controlled_const_profile(prosumer, cp_input_columns, cp_result_columns, data_source,
                                                           period, level=cp_level, order=0)
-    hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=prosumer_dmd_level_hot, order=0, **hd_params)
+    hd_controller_index = create_controlled_heat_demand(prosumer, period=period, level=prosumer_dmd_level_hot, order=9, **hd_params)
 
     GenericMapping(container=prosumer,
                    initiator_id=cp_controller_index,
@@ -109,23 +116,25 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, net_hot):
     # Controller that reads the temperatures and deands from the net
     nc_read_dmd_index = create_controlled_network_coupling(net_hot,
                                                            consumer_elmt_index,
+                                                           name="read_heating_demand",
                                                            element_name='heat_consumer',
                                                            result_columns=['t_from_k', 't_to_k',
                                                                            'mdot_from_kg_per_s'],
                                                            temp_fluid_map_output_idx=0,
                                                            mdot_fluid_map_output_idx=2,
                                                            level=nc_read_level_hot,
-                                                           order=0)
+                                                           order=8)
 
     # Controller that writes the demand (q_kw and mdot_kg_per_s) to the net
     nc_write_dmd_index = create_controlled_network_coupling(net_hot,
                                                             consumer_elmt_index,
+                                                            name="write_heating_demand",
                                                             element_name='heat_consumer',
                                                             input_columns=['qext_w', 'controlled_mdot_kg_per_s'],
                                                             level=nc_write_level_hot,
                                                             order=0)
 
-    #Mapping of t_feed and mdot from the read_dmd to the heat_demand
+    # Mapping of t_feed and mdot from the read_dmd to the heat_demand
     FluidMixEnergySystemMapping(container=net_hot,
                                 initiator_id=nc_read_dmd_index,
                                 responder_net=prosumer,
@@ -143,7 +152,7 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, net_hot):
                                order=1,
                                conversion_function=lambda t_k: t_k - 273.15)  # K -> °C, siehe Hinweis unten
 
-    #Mapping of q_demand_kw from the heat_demand to the write dmd conteoller
+    #Mapping of q_demand_kw from the heat_demand to the write dmd controller
     GenericEnergySystemMapping(container=prosumer,
                                initiator_id=cp_controller_index,  # Direkt vom ConstProfile
                                initiator_column='q_demand_kw_cp',  # Die ausgelesene kW-Spalte
@@ -169,7 +178,7 @@ def create_prosumer_heat_demand(data_source, time_res, start, end, net_hot):
 def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     prosumer = create_empty_prosumer_container(
         "producer",
-        # check_order=False
+        check_order=False
     )
     period = create_period(prosumer, time_res, start, end, 'utc', 'default')
 
@@ -179,10 +188,31 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
                  'max_p_comp_kw': 100}
 
 
-    hp_controller_index = create_controlled_heat_pump(prosumer, period=period, name='hp_controller',
-                                                      level=prosumer_prod_level_hot, order=1, **hp_params)
+    # hp_controller_index = create_controlled_heat_pump(prosumer, period=period, name='hp_controller',
+    #                                                   level=prosumer_prod_level_hot, order=1, **hp_params)
+    heat_pump_index = create_heat_pump(
+        prosumer,
+        **hp_params
+    )
+
+    heat_pump_controller_data = HeatPumpControllerData(
+        element_name='heat_pump',
+        element_index=[heat_pump_index],
+        period_index=period
+    )
+
+    hp_controller = CoupledHeatPumpController(
+        prosumer,
+        heat_pump_controller_data,
+        order=2,
+        level=prosumer_prod_level_hot,
+        name='hp_controller'
+    )
+
+    hp_controller_index = hp_controller.index
+
     gb_controller_index = create_controlled_gas_boiler(prosumer, period=period, max_q_kw=2000, name='gb_controller',
-                                                       level=prosumer_prod_level_hot, order=2)
+                                                       level=prosumer_prod_level_hot, order=3)
 
 
     pump_elmt_index = get_element_index(net_hot, 'circ_pump_pressure', 'pump_hp_coupling')
@@ -190,11 +220,12 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     # Controller that writes the flow temperature and massflow of the heat generator to the net
     nc_write_pump_index = create_controlled_network_coupling(net_hot,
                             pump_elmt_index,
+                            name="write_fluidmix_heating_network",
                             element_name = 'circ_pump_pressure',
                             temp_fluid_map_input_col = ['t_flow_k'],
                             mdot_fluid_map_input_col = ['mdot_flow_kg_per_s'],
-                            level = nc_write_level_hot,
-                            order = 3)
+                            level=nc_write_circ_pump_hot,
+                            order=4)
      # Mapping of teperatuer and massflow from the heat pump to the writ pump controller
     FluidMixEnergySystemMapping(container=prosumer,
                                 initiator_id=hp_controller_index,
@@ -210,7 +241,35 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
                                 order=0,
                                 no_chain=False)
 
-    #### ----------- Cooling side -------------------------------------
+    nc_read_pump_hot_index = create_controlled_network_coupling(
+        net_hot,
+        pump_elmt_index,
+        name="read_hot_return",
+        element_name="circ_pump_pressure",
+        result_columns=[
+            "t_from_k",
+            "t_to_k",
+            "mdot_from_kg_per_s"
+        ],
+        temp_fluid_map_output_idx=0,
+        mdot_fluid_map_output_idx=2,
+        level=prosumer_prod_level_hot,
+        order=1
+    )
+
+    GenericEnergySystemMapping(
+        container=net_hot,
+        initiator_id=nc_read_pump_hot_index,
+        initiator_column="t_from_k",
+        responder_net=prosumer,
+        responder_id=hp_controller_index,
+        responder_column="t_cond_in_c",
+        order=1,
+        no_chain=False,
+        conversion_function=lambda value: np.asarray(value) - 273.15
+    )
+
+    #### ----------- Cooling side -----------------------------
 
     pump_cold_elmt_index = get_element_index(net_cold, 'circ_pump_pressure', 'pump_hp_coupling')
 
@@ -226,41 +285,63 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
         name='nc_read_pump_cold'
     )
 
-    FluidMixEnergySystemMapping(container=net_cold,
-                                initiator_id=nc_read_pump_cold_index,
-                                responder_net=prosumer,
-                                responder_id=hp_controller_index,
-                                order=0,
-                                no_chain=False)  # analog zur Verbraucher-Kopplung
-    #
-    # # GenericEnergySystemMapping(
-    # #     container=net_cold,
-    # #     initiator_id=nc_read_pump_cold_index,
-    # #     initiator_column="t_from_k",
-    # #     responder_net=prosumer,
-    # #     responder_id=hp_controller_index,
-    # #     responder_column="t_evap_in_c",
-    # #     order=0,
-    # #     no_chain=True,
-    # #     conversion_function=lambda t_k: (
-    # #         np.asarray(t_k) - 273.15
-    # #     )
-    # # )
-    #
-    # dry_cooler_cp_index = create_controlled_const_profile(
-    #     prosumer,
-    #     input_columns=["dry_cooler_t_in_c", "dry_cooler_t_out_c", "t_ambient_c", "phi_air_in_percent"],
-    #     result_columns=["dry_cooler_t_in_c_cp", "dry_cooler_t_out_c_cp", "t_ambient_c_cp", "phi_air_in_percent_cp"],
-    #     data_source=data_source,
-    #     period=period,
-    #     level=cp_level,
-    #     order=0
-    # )
-    # chiller_carnot_efficiency = 0.5
-    # chiller_pinch_c = 5
-    # target_cold_supply_c = 10
-    # chiller_max_p_comp_kw = 1000
-    #
+    # FluidMixEnergySystemMapping(container=net_cold,
+    #                             initiator_id=nc_read_pump_cold_index,
+    #                             responder_net=prosumer,
+    #                             responder_id=hp_controller_index,
+    #                             order=0,
+    #                             no_chain=True)  # analog zur Verbraucher-Kopplung
+    GenericEnergySystemMapping(container=net_cold,
+                               initiator_id=nc_read_pump_cold_index,
+                               initiator_column='t_from_k',
+                               responder_net=prosumer,
+                               responder_id=hp_controller_index,
+                               responder_column='t_evap_in_c',
+                               order=0,
+                               conversion_function=lambda t_k: t_k - 273.15)
+
+
+    dry_cooler_cp_index = create_controlled_const_profile(
+        prosumer,
+        input_columns=["dry_cooler_t_in_c", "dry_cooler_t_out_c", "t_ambient_c", "phi_air_in_percent"],
+        result_columns=["dry_cooler_t_in_c_cp", "dry_cooler_t_out_c_cp", "t_ambient_c_cp", "phi_air_in_percent_cp"],
+        data_source=data_source,
+        period=period,
+        level=cp_level,
+        order=0
+    )
+    chiller_carnot_efficiency = 0.5
+    chiller_pinch_c = 5
+    target_cold_supply_c = 10
+    chiller_max_p_comp_kw = 1000
+    chiller_params = {
+        "carnot_efficiency": chiller_carnot_efficiency,
+        "pinch_c": chiller_pinch_c,
+        "delta_t_evap_c": 8,  # oder gewünschter Wert
+        "max_p_comp_kw": chiller_max_p_comp_kw,
+    }
+
+    chiller_index = create_heat_pump(
+        prosumer,
+        **chiller_params
+    )
+
+    chiller_controller_data = HeatPumpControllerData(
+        element_name='heat_pump',
+        element_index=[chiller_index],
+        period_index=period
+    )
+
+    chiller_controller = CoupledHeatPumpController(
+        prosumer,
+        chiller_controller_data,
+        order=5,
+        level=prosumer_prod_level_cold,
+        name='reversed_hp_controller'
+    )
+
+    chiller_controller_index = chiller_controller.index
+
     # chiller_controller_index = create_controlled_heat_pump(
     #     prosumer,
     #     period=period,
@@ -272,42 +353,42 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     #     level=prosumer_prod_level_cold,
     #     order=4
     # )
-    # dry_cooler_controller_index = create_controlled_dry_cooler(
-    #     prosumer,
-    #     period=period,
-    #     name="dry_cooler_controller",
-    #
-    #     # Assumed aggregate nominal fan data
-    #     n_nom_rpm=730.0,
-    #     p_fan_nom_kw=40.0,
-    #     qair_nom_m3_per_h=3_000_000.0,
-    #
-    #     # Nominal operating point
-    #     t_air_in_nom_c=25.0,
-    #     t_air_out_nom_c=30.0,
-    #     t_fluid_in_nom_c=35.0,
-    #     t_fluid_out_nom_c=30.0,
-    #
-    #     fans_number=10,
-    #     adiabatic_mode=False,
-    #     min_delta_t_air_c=1.0,
-    #
-    #     level=prosumer_prod_level_cold,
-    #     order=5
-    # )
-    #
-    # chiller_pump_cold_index = get_element_index(
-    #     net_cold,
-    #     "circ_pump_pressure",
-    #     "pump_hp_coupling"
-    # )
-    #
+    dry_cooler_controller_index = create_controlled_dry_cooler(
+        prosumer,
+        period=period,
+        name="dry_cooler_controller",
+
+        # Assumed aggregate nominal fan data
+        n_nom_rpm=730.0,
+        p_fan_nom_kw=40.0,
+        qair_nom_m3_per_h=3_000_000.0,
+
+        # Nominal operating point
+        t_air_in_nom_c=25.0,
+        t_air_out_nom_c=30.0,
+        t_fluid_in_nom_c=35.0,
+        t_fluid_out_nom_c=30.0,
+
+        fans_number=10,
+        adiabatic_mode=False,
+        min_delta_t_air_c=1.0,
+
+        level=prosumer_prod_level_cold,
+        order=6
+    )
+
+    chiller_pump_cold_index = get_element_index(
+        net_cold,
+        "circ_pump_pressure",
+        "pump_hp_coupling"
+    )
+
     # cooling_flow_index = get_element_index(
     #     net_cold,
     #     "flow_control",
     #     "cooling_demand_flow_control"
     # )
-    #
+
     # ColdSideHpToChillerMapping(
     #     container=prosumer,
     #     initiator_id=hp_controller_index,
@@ -317,27 +398,73 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     #     order=0,
     #     no_chain=True
     # )
-    #
-    # # Send temperatures and ambient conditions to the Dry Cooler.
-    # GenericMapping(
-    #     container=prosumer,
-    #     initiator_id=dry_cooler_cp_index,
-    #     initiator_column=[
-    #         "dry_cooler_t_in_c_cp",
-    #         "dry_cooler_t_out_c_cp",
-    #         "t_ambient_c_cp",
-    #         "phi_air_in_percent_cp"
-    #     ],
-    #     responder_id=dry_cooler_controller_index,
-    #     responder_column=[
-    #         "t_in_c",
-    #         "t_out_c",
-    #         "t_air_in_c",
-    #         "phi_air_in_percent"
-    #     ],
-    #     order=0
-    # )
-    #
+
+    GenericEnergySystemMapping(container=net_cold,
+                               initiator_id=nc_read_pump_cold_index,
+                               initiator_column='t_from_k',
+                               responder_net=prosumer,
+                               responder_id=chiller_controller_index,
+                               responder_column='t_evap_in_c',
+                               order=0,
+                               conversion_function=lambda t_k: t_k - 273.15)
+
+    # Write the chiller outlet temperature into the cold network.
+    nc_write_chiller_index = create_controlled_network_coupling(
+        net_cold,
+        chiller_pump_cold_index,
+        element_name="circ_pump_pressure",
+        temp_fluid_map_input_col=['t_flow_k'],
+        mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
+        level=nc_write_chiller_cold,
+        order=7,
+        name="nc_write_chiller_evaporator"
+    )
+
+
+    FluidMixEnergySystemMapping(container=prosumer,
+                                initiator_id=hp_controller_index,
+                                responder_net=net_cold,
+                                responder_id=nc_write_chiller_index,
+                                order=1,
+                                no_chain=False)
+
+    # Send temperatures and ambient conditions to the Dry Cooler.
+    GenericMapping(
+        container=prosumer,
+        initiator_id=dry_cooler_cp_index,
+        initiator_column=[
+            "dry_cooler_t_in_c_cp",
+            "dry_cooler_t_out_c_cp",
+            "t_ambient_c_cp",
+            "phi_air_in_percent_cp"
+        ],
+        responder_id=dry_cooler_controller_index,
+        responder_column=[
+            "t_in_c",
+            "t_out_c",
+            "t_air_in_c",
+            "phi_air_in_percent"
+        ],
+        order=0
+    )
+
+    FluidMixMapping(
+        container=prosumer,
+        initiator_id=chiller_controller_index,
+        responder_id=dry_cooler_controller_index,
+        order=0,
+        no_chain=False
+    )
+
+    FluidMixEnergySystemMapping(
+        container=prosumer,
+        initiator_id=chiller_controller_index,
+        responder_net=net_cold,
+        responder_id=nc_write_chiller_index,
+        order=1,
+        no_chain=False
+    )
+
     # def calculate_required_mdot_cond_kg_per_s(t_after_hp_c):
     #     """
     #     Calculate the condenser-water flow required for the chiller
@@ -446,24 +573,8 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     # )
     #
     # # Connect the chiller condenser to the Dry Cooler.
-    # FluidMixMapping(
-    #     container=prosumer,
-    #     initiator_id=chiller_controller_index,
-    #     responder_id=dry_cooler_controller_index,
-    #     order=0,
-    #     no_chain=False
-    # )
+
     #
-    # # Write the chiller outlet temperature into the cold network.
-    # nc_write_chiller_index = create_controlled_network_coupling(
-    #     net_cold,
-    #     chiller_pump_cold_index,
-    #     element_name="circ_pump_pressure",
-    #     input_columns=["t_flow_k"],
-    #     level=nc_write_level_cold,
-    #     order=6,
-    #     name="nc_write_chiller_evaporator"
-    # )
     #
     # # Überschreibt die bisherige Vorlauftemperatur mit der Chiller-Austrittstemperatur.
     # def overwrite_cold_supply_temperature(t_c):
@@ -507,7 +618,7 @@ def create_prosumer_prod(data_source, time_res, start, end, net_hot, net_cold):
     #     conversion_function=overwrite_cold_supply_temperature
     # )
 
-    return prosumer, hp_controller_index#, chiller_controller_index, dry_cooler_controller_index
+    return prosumer, hp_controller_index, chiller_controller_index, dry_cooler_controller_index
 
 def create_prosumer_dhw_system(
         data_source,
@@ -559,7 +670,7 @@ def create_prosumer_dhw_system(
         init_soc=0.5,
         period=period,
         name="dhw_heat_storage",
-        level=prosumer_dmd_level_hot,
+        level=prosumer_dhw_level,
         order=0
     )
 
@@ -568,7 +679,7 @@ def create_prosumer_dhw_system(
         prosumer,
         period=period,
         name="dhw_demand_controller",
-        level=prosumer_dmd_level_hot,
+        level=prosumer_dhw_level,
         order=1
     )
 
@@ -578,7 +689,7 @@ def create_prosumer_dhw_system(
             period=period,
             name="dhw_network_demand_controller",
             level=prosumer_dmd_level_hot,
-            order=2
+            order=1
         )
     )
 
@@ -615,7 +726,7 @@ def create_prosumer_dhw_system(
             element_name="heat_consumer",
             input_columns=["qext_w"],
             level=nc_write_level_hot,
-            order=1,
+            order=2,
             name="nc_write_dhw_backup"
         )
     )
@@ -829,84 +940,84 @@ def prepare_winter_pv_control_profiles(
 #     return hp_power_controller, temperature_controller
 
 
-# def create_prosumer_cooling_demand(data_source, time_res, start, end, net_cold):
-#
-#     prosumer = create_empty_prosumer_container(
-#         "cooling_demand_prosumer"
-#     )
-#
-#     period = create_period(prosumer, time_res, start, end, "utc", "default")
-#
-#     # Read the hourly cooling demand from the Excel file.
-#     cp_controller_index = create_controlled_const_profile(
-#         prosumer,
-#         input_columns=["Cooling demand (kW)"],
-#         result_columns=["cooling_demand_kw_cp"],
-#         data_source=data_source ,
-#         period=period,
-#         level=cp_level,
-#         order=0
-#     )
-#
-#     cooling_hx_index = get_element_index(
-#         net_cold,
-#         "heat_exchanger",
-#         "cooling_demand_heat_exchanger"
-#     )
-#
-#     # Write the cooling demand into the cold-network heat exchanger.
-#     nc_write_cooling_index = create_controlled_network_coupling(
-#         net_cold,
-#         cooling_hx_index,
-#         element_name="heat_exchanger",
-#         input_columns=["qext_w"],
-#         level=nc_write_level_cold,
-#         order=0,
-#         name="nc_write_cooling_demand"
-#     )
-#
-#     GenericEnergySystemMapping(
-#         container=prosumer,
-#         initiator_id=cp_controller_index,
-#         initiator_column="cooling_demand_kw_cp",
-#         responder_net=net_cold,
-#         responder_id=nc_write_cooling_index,
-#         responder_column="qext_w",
-#         order=0,
-#         no_chain=True,
-#         conversion_function=lambda q_kw: -q_kw * 1000
-#     )
-#
-#     cooling_flow_index = get_element_index(
-#         net_cold,
-#         "flow_control",
-#         "cooling_demand_flow_control"
-#     )
-#
-#     # Controller that writes the required mass flow into the cold network.
-#     nc_write_flow_index = create_controlled_network_coupling(
-#         net_cold,
-#         cooling_flow_index,
-#         element_name="flow_control",
-#         input_columns=["controlled_mdot_kg_per_s"],
-#         level=nc_write_level_cold,
-#         order=1,
-#         name="nc_write_cooling_mass_flow"
-#     )
-#
-#     # Convert cooling demand from kW to the required mass flow.
-#     GenericEnergySystemMapping(
-#         container=prosumer,
-#         initiator_id=cp_controller_index,
-#         initiator_column="cooling_demand_kw_cp",
-#         responder_net=net_cold,
-#         responder_id=nc_write_flow_index,
-#         responder_column="controlled_mdot_kg_per_s",
-#         order=1,
-#         no_chain=True,
-#         conversion_function=lambda q_kw: (
-#             q_kw * 1000 / (4182 * 5.0)
-#         )
-#     )
-#
-#     return prosumer
+def create_prosumer_cooling_demand(data_source, time_res, start, end, net_cold):
+
+    prosumer = create_empty_prosumer_container(
+        "cooling_demand_prosumer"
+    )
+
+    period = create_period(prosumer, time_res, start, end, "utc", "default")
+
+    # Read the hourly cooling demand from the Excel file.
+    cp_controller_index = create_controlled_const_profile(
+        prosumer,
+        input_columns=["Cooling demand (kW)"],
+        result_columns=["cooling_demand_kw_cp"],
+        data_source=data_source ,
+        period=period,
+        level=cp_level,
+        order=0
+    )
+
+    cooling_hx_index = get_element_index(
+        net_cold,
+        "heat_exchanger",
+        "cooling_demand_heat_exchanger"
+    )
+
+    # Write the cooling demand into the cold-network heat exchanger.
+    nc_write_cooling_index = create_controlled_network_coupling(
+        net_cold,
+        cooling_hx_index,
+        element_name="heat_exchanger",
+        input_columns=["qext_w"],
+        level=nc_write_level_cold,
+        order=0,
+        name="nc_write_cooling_demand"
+    )
+
+    GenericEnergySystemMapping(
+        container=prosumer,
+        initiator_id=cp_controller_index,
+        initiator_column="cooling_demand_kw_cp",
+        responder_net=net_cold,
+        responder_id=nc_write_cooling_index,
+        responder_column="qext_w",
+        order=0,
+        no_chain=True,
+        conversion_function=lambda q_kw: -q_kw * 1000
+    )
+
+    cooling_flow_index = get_element_index(
+        net_cold,
+        "flow_control",
+        "cooling_demand_flow_control"
+    )
+
+    # Controller that writes the required mass flow into the cold network.
+    nc_write_flow_index = create_controlled_network_coupling(
+        net_cold,
+        cooling_flow_index,
+        element_name="flow_control",
+        input_columns=["controlled_mdot_kg_per_s"],
+        level=nc_write_level_cold,
+        order=1,
+        name="nc_write_cooling_mass_flow"
+    )
+
+    # Convert cooling demand from kW to the required mass flow.
+    GenericEnergySystemMapping(
+        container=prosumer,
+        initiator_id=cp_controller_index,
+        initiator_column="cooling_demand_kw_cp",
+        responder_net=net_cold,
+        responder_id=nc_write_flow_index,
+        responder_column="controlled_mdot_kg_per_s",
+        order=1,
+        no_chain=True,
+        conversion_function=lambda q_kw: (
+            q_kw * 1000 / (4182 * 5.0)
+        )
+    )
+
+    return prosumer

@@ -90,23 +90,23 @@ demand_input = DFData(demand_data)
 net_cold, net_hot = create_thermal_networks()
 
 prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, net_hot=net_hot)
-# prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
-(
-    prosumer_dhw,
-    dhw_storage_controller_index,
-    dhw_demand_controller_index,
-    dhw_network_demand_controller_index
-) = create_prosumer_dhw_system(
-    demand_input,
-    time_resolution_s,
-    start,
-    end,
-    net_hot=net_hot
-)
-prosumer_prod, hp_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, net_hot=net_hot, net_cold=net_cold) #, chiller_controller_index, dry_cooler_controller_index
+prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
+# (
+#     prosumer_dhw,
+#     dhw_storage_controller_index,
+#     dhw_demand_controller_index,
+#     dhw_network_demand_controller_index
+# ) = create_prosumer_dhw_system(
+#     demand_input,
+#     time_resolution_s,
+#     start,
+#     end,
+#     net_hot=net_hot
+# )
+prosumer_prod, hp_controller_index, chiller_controller_index, dry_cooler_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, net_hot=net_hot, net_cold=net_cold) #, chiller_controller_index, dry_cooler_controller_index
 
-# prosumer = [ prosumer_cd, prosumer_hd, prosumer_prod, prosumer_dhw]
-prosumer = [prosumer_hd, prosumer_prod, prosumer_dhw]
+prosumer = [ prosumer_cd, prosumer_hd, prosumer_prod]#, prosumer_dhw]
+# prosumer = [prosumer_hd, prosumer_prod, prosumer_dhw]
 
 energy_system = _create_energy_system([net_hot, net_cold],prosumer , name="test_energy_system")
 
@@ -144,7 +144,7 @@ ow_net_cold = OutputWriter(
 period_index = 0
 run_time_series_system(energy_system,
                        period_index=period_index, continue_on_divergence=False, verbose=True,
-                       transient=True, dt=time_resolution_s, initial_run=True, mode="bidirectional")
+                       transient=False, dt=time_resolution_s, initial_run=True, mode="bidirectional")
 #
 # def get_component_results(prosumer, component_name):
 #     component_row = prosumer.time_series.loc[

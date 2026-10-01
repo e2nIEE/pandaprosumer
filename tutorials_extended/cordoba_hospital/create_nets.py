@@ -75,6 +75,7 @@ def create_thermal_networks():
     ppi.create_heat_consumer(net_hot, from_junction=j_h_cons_in, to_junction=j_h_cons_out,
                              qext_w=800000, deltat_k=8, #treturn_k=343.15,
                              name='heat_consumer_demand_coupling')
+    # ppi.create_ext_grid(net_hot, junction=j_h_supply, t_k=351.15, type="t")
 
     net_hot.pipe["u_w_per_m2k"] = 0
 
