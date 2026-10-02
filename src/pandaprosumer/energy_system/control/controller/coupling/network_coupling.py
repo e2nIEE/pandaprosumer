@@ -31,6 +31,9 @@ class NetworkCouplingControl(BasicProsumerController):
         self.mdot_fluid_map_input_col = mdot_fluid_map_input_col
         self.temp_fluid_map_output_idx = temp_fluid_map_output_idx
         self.mdot_fluid_map_output_idx = mdot_fluid_map_output_idx
+
+        self.trigger_run_func = False
+
         if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
             if not (len(self.result_columns) > temp_fluid_map_output_idx
                     and len(self.result_columns) > mdot_fluid_map_output_idx):
@@ -57,6 +60,22 @@ class NetworkCouplingControl(BasicProsumerController):
         super().control_step(net)
         # EnergySystem Generic mappings inputs and outputs
         # Replace NaNs with 0
+        import pandas as pd
+
+        inputs_all_missing = np.asarray(pd.isna(self.inputs)).all()
+
+        mass_flow_all_missing = (
+                not self.input_mass_flow_with_temp
+                or all(
+            np.asarray(pd.isna(value)).all()
+            for value in self.input_mass_flow_with_temp.values()
+        )
+        )
+
+        self.trigger_run_func = not (
+                inputs_all_missing and mass_flow_all_missing
+        )
+
         clean_inputs = np.nan_to_num(self.inputs, nan=0.)  # FixMe: should avoid nan case
         net[self.element_name].loc[self.element_index, self.input_columns] = clean_inputs
 

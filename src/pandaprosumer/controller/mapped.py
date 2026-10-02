@@ -401,6 +401,10 @@ class MappedController(Controller):
         # Recursive unapply all the controllers for which this controller is the initiator
         # so they will be re-executed
         for responder in self._get_mapped_responders(container):
+            # The responder belongs to another container/network.
+            # Do not recursively unapply it here.
+            if container.controller.loc[container.controller.object == responder].empty:
+                continue
             responder_level = container.controller.loc[container.controller.object == responder].level.values[0]
             self_level = container.controller.loc[container.controller.object == self].level.values[0]
             if responder_level == self_level and responder.applied:

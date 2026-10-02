@@ -11,6 +11,7 @@ import numpy as np
 import sys
 import os
 from pandapower.timeseries.data_sources.frame_data import DFData
+from pandapower.control import ConstControl
 from pandaprosumer.energy_system.timeseries.run_time_series_energy_system import \
 run_timeseries as run_time_series_system
 from pandapower.control.basic_controller import Controller
@@ -46,9 +47,9 @@ dur = pd.date_range(
 )
 
 demand_data.index = dur
-demand_data["t_flow_cold_c"] = 10
+demand_data["t_flow_cold_c"] = 12 + 273.15
 demand_data["t_return_cold_c"] = 15
-demand_data["t_flow_hot_c"] = 78
+demand_data["t_flow_hot_c"] = 75 + 273.15
 demand_data["t_return_hot_c"] = 70
 # Assumed domestic-hot-water temperatures
 demand_data["t_dhw_cold_c"] = 15.0
@@ -89,23 +90,31 @@ demand_input = DFData(demand_data)
 
 net_cold, net_hot = create_thermal_networks()
 
+const_t_flow_hot = ConstControl(net_hot, element='circ_pump_pressure', variable='t_flow_k',
+                                  element_index=net_hot.circ_pump_pressure.index.values, data_source=demand_input,
+                                  profile_name="t_flow_hot_c")
+
+const_t_flow_cold = ConstControl(net_cold, element='circ_pump_pressure', variable='t_flow_k',
+                                  element_index=net_cold.circ_pump_pressure.index.values, data_source=demand_input,
+                                  profile_name="t_flow_cold_c")
+
 prosumer_hd = create_prosumer_heat_demand(demand_input, time_resolution_s, start, end, net_hot=net_hot)
 prosumer_cd = create_prosumer_cooling_demand(demand_input, time_resolution_s, start, end, net_cold=net_cold)
-# (
-#     prosumer_dhw,
-#     dhw_storage_controller_index,
-#     dhw_demand_controller_index,
-#     dhw_network_demand_controller_index
-# ) = create_prosumer_dhw_system(
-#     demand_input,
-#     time_resolution_s,
-#     start,
-#     end,
-#     net_hot=net_hot
-# )
+(
+    prosumer_dhw,
+    dhw_storage_controller_index,
+    dhw_demand_controller_index,
+    dhw_network_demand_controller_index
+) = create_prosumer_dhw_system(
+    demand_input,
+    time_resolution_s,
+    start,
+    end,
+    net_hot=net_hot
+)
 prosumer_prod, hp_controller_index, chiller_controller_index, dry_cooler_controller_index = create_prosumer_prod(demand_input, time_resolution_s, start, end, net_hot=net_hot, net_cold=net_cold) #, chiller_controller_index, dry_cooler_controller_index
 
-prosumer = [ prosumer_cd, prosumer_hd, prosumer_prod]#, prosumer_dhw]
+prosumer = [ prosumer_cd, prosumer_hd, prosumer_prod, prosumer_dhw]
 # prosumer = [prosumer_hd, prosumer_prod, prosumer_dhw]
 
 energy_system = _create_energy_system([net_hot, net_cold],prosumer , name="test_energy_system")
@@ -144,7 +153,7 @@ ow_net_cold = OutputWriter(
 period_index = 0
 run_time_series_system(energy_system,
                        period_index=period_index, continue_on_divergence=False, verbose=True,
-                       transient=False, dt=time_resolution_s, initial_run=True, mode="bidirectional")
+                       transient=True, dt=time_resolution_s, initial_run=False, mode="bidirectional")
 #
 # def get_component_results(prosumer, component_name):
 #     component_row = prosumer.time_series.loc[

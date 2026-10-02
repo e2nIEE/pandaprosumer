@@ -10,7 +10,7 @@ from pandapower.timeseries.run_time_series import controller_not_converged, fina
 from pandapipes.multinet.control.run_control_multinet import prepare_ctrl_variables_for_net, _evaluate_multinet, \
     net_initialization_multinet
 from pandapower.control.run_control import control_initialization, \
-    control_finalization, \
+    control_finalization, _evaluate_net,\
     control_implementation, get_controller_order, NetCalculationNotConverged, ControllerNotConverged
 from pandaprosumer.run_control import prepare_run_ctrl as prepare_run_ctrl_ppros
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer
@@ -27,6 +27,71 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+
+def _evaluate_energy_system(energy_system, levelorder, ctrl_variables, **kwargs):
+    """
+    Within a control loop after all controllers applied their their action "_evaluate_multinet"
+    checks if all nets affectd in one level did converge or not
+
+    :param multinet: multinet with multinet controllers, net distinct controllers and several \
+        pandapipes/pandapower nets
+    :type multinet: pandapipes.Multinet
+    :param levelorder: list of tuples given the correct order of the different controllers within \
+        one level
+    :type levelorder: list
+    :param ctrl_variables: contains all relevant information and boundaries required for a \
+        successful control run
+    :type ctrl_variables: dict
+    :param kwargs: additional keyword arguments handed to each run function
+    :type kwargs: dict
+    :return: as the ctrl_variables are adapted they are returned
+    :rtype: dict
+    """
+    levelorder = np.array(levelorder)
+    multinet_converged = []
+    rel_nets = _relevant_nets(energy_system, levelorder)
+    for net_name in energy_system['nets'].keys():
+        net = energy_system['nets'][net_name]
+        rel_levelorder = levelorder[rel_nets[net_name]]
+        ctrl_variables['nets'][net_name] = _evaluate_net(
+            net, rel_levelorder, ctrl_variables['nets'][net_name], **kwargs) if np.any(
+            rel_nets[net_name]) else ctrl_variables['nets'][net_name]
+        multinet_converged += [ctrl_variables['nets'][net_name]['converged']]
+    ctrl_variables['converged'] = np.all(multinet_converged)
+    return ctrl_variables
+
+
+def _relevant_nets(multinet, levelorder):
+    """
+    Bestimmt, für welche Netze im aktuellen Level die Run-Funktion
+    ausgeführt werden muss.
+    """
+    levelorder = np.asarray(levelorder, dtype=object)
+    net_names = {}
+
+    def triggers_run(ctrl):
+        # NetworkCouplingControl verwendet sein Flag.
+        # Controller ohne Flag lösen weiterhin einen Netzlauf aus.
+        return bool(getattr(ctrl, "trigger_run_func", False))
+
+    for net_name, net in multinet["nets"].items():
+        # Controller, die direkt dem Netz zugeordnet sind
+        direct_net_relevant = any(
+            controlled_object is net and triggers_run(ctrl)
+            for ctrl, controlled_object in levelorder
+        )
+
+        # Controller, die dem Multinet zugeordnet sind und dieses Netz betreffen
+        multinet_relevant = any(
+            controlled_object is multinet
+            and net_name in ctrl.get_all_net_names()
+            and triggers_run(ctrl)
+            for ctrl, controlled_object in levelorder
+        )
+
+        net_names[net_name] = direct_net_relevant or multinet_relevant
+
+    return net_names
 
 def control_time_step(controller_order, time_step):
     for levelorder in controller_order:
@@ -88,7 +153,17 @@ def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
     :return: runs an entire control loop
     :rtype: None
     """
+    # Controller-Option entnehmen, damit sie nicht an pipeflow gelangt
+    initial_run_override = kwargs.pop("initial_run", None)
+
     ctrl_variables = prepare_run_ctrl(energy_system, ctrl_variables)
+
+    # initial_run für alle Netze explizit überschreiben
+    if initial_run_override is not None:
+        for net_name in energy_system["nets"]:
+            ctrl_variables["nets"][net_name]["initial_run"] = bool(
+                initial_run_override
+            )
 
     controller_order = ctrl_variables['controller_order']
 
@@ -100,7 +175,7 @@ def run_control(energy_system, ctrl_variables=None, max_iter=30, **kwargs):
 
     # run each controller step in given controller order
     control_implementation(energy_system, controller_order, ctrl_variables, max_iter,
-                           evaluate_net_fct=_evaluate_multinet, **kwargs)
+                           evaluate_net_fct=_evaluate_energy_system, **kwargs)
 
     # call finalize function of each controller
     control_finalization(controller_order)

@@ -89,6 +89,11 @@ def create_thermal_networks():
         name="dhw_backup_demand_coupling"
     )
 
+    time_resolution_s = 3600
+
+    ppi.pipeflow(net_hot, transient=True, simulation_time_step=0, dt=time_resolution_s, mode="bidirectional")
+    ppi.pipeflow(net_cold, transient=True,simulation_time_step=0, dt=time_resolution_s, mode="bidirectional")
+
     return net_cold, net_hot
 
 
