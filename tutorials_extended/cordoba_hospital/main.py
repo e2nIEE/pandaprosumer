@@ -83,9 +83,6 @@ demand_data["pv_gen_kw"] = pd.to_numeric(
 # Temporary hospital electricity consumption
 demand_data["hospital_electric_load_kw"] = hospital_base_load_kw
 
-
-
-
 demand_input = DFData(demand_data)
 
 net_cold, net_hot = create_thermal_networks()
