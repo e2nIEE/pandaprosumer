@@ -64,6 +64,22 @@ Input Static Data
 Input Time Series
 -------------------
 
+Both inputs are optional dispatch setpoints for an external controller (e.g. a MILP supervisor, or an optimiser
+result replayed through a :ref:`ConstProfileController <const_profile_controller>` and a :ref:`GenericMapping <GenericMapping>`).
+When an input is not mapped (NaN) or negative, no setpoint applies and the storage uses its own charge/discharge logic
+for that timestep. ``0.0`` is a setpoint (force no charge / no discharge). The setpoint is taken into account both in
+the mass flow the storage requests from its upstream producer and in the charge / bypass / discharge split, so the
+mass and energy balances at both FluidMix interfaces still close.
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "mdot_charge_setpoint_kg_per_s ", "Imposed charge mass flow. Clamped to the mass flow actually received from\ upstream, ignored when the tank is full. The discharge (if free) is then sized to\ cover the remaining demand energy.", "kg/s"
+    "mdot_discharge_setpoint_kg_per_s ", "Imposed discharge mass flow from the top of the storage. Clamped to zero\ when the top layer is not warmer than the demand return. The bypass (if free) is\ then sized to cover the remaining demand energy and the surplus received charges the tank.", "kg/s"
+
+Output Time Series
+-------------------
+
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 

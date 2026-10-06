@@ -203,7 +203,7 @@ class TestStratifiedHeatStorage:
                                                                        **_default_argument())
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
-        input_columns_expected = []
+        input_columns_expected = ["mdot_charge_setpoint_kg_per_s", "mdot_discharge_setpoint_kg_per_s"]
         result_columns_expected = [
             "mdot_received_kg_per_s", "t_received_in_c", "t_received_out_c", "q_received_kw",
             "mdot_charge_kg_per_s", "t_charge_in_c", "t_charge_out_c", "q_charge_kw",
