@@ -507,7 +507,8 @@ def scan_ses_windows(ses_data_1h, window_days=WINDOW_DAYS):
 
     if scan_df.empty:
         raise RuntimeError("SES data too short to form even one full window.")
-
+    #PM_1: why do we take the sum over 192 hrs if we need the min/max within a time-window? Check for inconsistency between import and export
+    # best_export_row = scan_df.loc[scan_df["residual_peak_export_kw"].idxmin()]
     best_export_row = scan_df.loc[scan_df["residual_sum_kwh"].idxmin()]
     best_import_row = scan_df.loc[scan_df["residual_peak_import_kw"].idxmax()]
 
@@ -520,7 +521,7 @@ def load_and_scan_ses_data(path, window_days=WINDOW_DAYS):
     ses_data_1h_full = load_full_ses_data(path)
     scan_df, best_export_row, best_import_row = scan_ses_windows(ses_data_1h_full, window_days=window_days)
     return ses_data_1h_full, scan_df, best_export_row, best_import_row
-
+#PM_2: delete unused arg
 def build_time_series_data(residual_mall_load_kw, start, n_steps, heat_data_file):
     time_series_data = pd.read_excel(heat_data_file)
     if len(time_series_data) < n_steps:
@@ -539,7 +540,7 @@ def build_time_series_data(residual_mall_load_kw, start, n_steps, heat_data_file
 ##############################################################################################
 # 3. pprosumer model (unchanged from the closed-loop model: previous
 # controller results and CHP downtime are carried across timesteps)
-#PM: TODO: check if the addition of the el. battery storage would make sense for case when mall flex is insufficient
+#PM_3: TODO: check if the addition of the el. battery storage would make sense for case when mall flex is insufficient
 #################################################################################################
 
 def build_mall_prosumer(time_series_data_base, flex_target_kw, start,
@@ -1075,7 +1076,6 @@ class FeederTopology:
 
         return downstream_sgen_idx, downstream_load_idx, downstream_buses
 
-#PM#2: check why the switches are set to False when build_feeder_graph(net) to create this nx graph sets it to TRUE
     @staticmethod
     def compute_hierarchical_layout(net, leaf_step=SLD_LEAF_STEP, depth_step=SLD_DEPTH_STEP):
         """Fills in net.bus.geo (in place) for any bus missing geo data, using a
@@ -1531,7 +1531,7 @@ class GridStressCalibration:
 #####################################################################################################################
 # 10. OPF results row + closed-loop scenario runner
 #####################################################################################################################
-#PM#1: check why the plot stors only mall_feeder_line_loading_before_pct(after_pct), this should plot the overloads on all net.res_line
+#PM_4: check why the plot stors only mall_feeder_line_loading_before_pct(after_pct), this should plot the overloads on all net.res_line
 # net.res_line.loading_percent.max()
 class OpfTimeseriesRunner:
     @staticmethod
@@ -2117,6 +2117,7 @@ class SldPlotter:
         sub = violation_details_df[violation_details_df["phase"] == phase]
         if sub.empty:
             return None
+        #PM_7: violations should be distinguished and calculate by how much does it deviate from standard
         worst = (sub.sort_values("value", ascending=False)
                   .drop_duplicates(subset=["violation_type", "location"])
                   .head(top_n))
@@ -2771,6 +2772,7 @@ class ScenarioHtmlReport:
         ax = axes[0]
         ax.plot(opf_results_df.index, opf_results_df["p_base_mw"], label="Baseline import (no flex)",
                 linestyle="--", color="tab:gray")
+        #PM_4: (minimal) change the label to setpoint
         ax.plot(opf_results_df.index, opf_results_df["p_opf_mw"], label="Actual setpoint (closed loop)",
                 color="tab:blue")
         ax.axhline(0, color="black", linewidth=0.8)
@@ -2780,6 +2782,7 @@ class ScenarioHtmlReport:
                    f"[{scenario_label}] Baseline vs. flexibility-adjusted dispatch")
 
         ax = axes[1]
+        #PM_6: check that plotting is now showing all line-loading violations
         ax.plot(opf_results_df.index, opf_results_df["mall_feeder_line_loading_before_pct"],
                 label="Feeder loading before OPF", linestyle="--", color="tab:gray")
         ax.plot(opf_results_df.index, opf_results_df["mall_feeder_line_loading_after_pct"],
@@ -2823,7 +2826,7 @@ class ScenarioHtmlReport:
 
         plt.tight_layout()
         return fig
-
+    #PM_8: check that after the OPF result is applied by pandaprosumer, the violation table should not report "resolved" for pf failure and also for flex bounds infeasible scenario
     @staticmethod
     def build_violation_event_table(violation_details_df):
         """Pivots the flat (time, phase, type, location, value) violation log
@@ -3770,7 +3773,7 @@ class HyperCapSldPlotter:
                 ha="right", va="bottom", zorder=30,
                 bbox=dict(boxstyle="round,pad=0.45", facecolor="white",
                           edgecolor="#999999", alpha=0.94))
-#PM#5: check why the internal buses and boundary buses are still being check for in the original grid
+
     @staticmethod
     def plot_hypercap_reduced_sld(net, case_id, case_metadata, savepath, dpi=220,
                                    leaf_step=SLD_LEAF_STEP, depth_step=SLD_DEPTH_STEP,
