@@ -7,6 +7,7 @@ import numpy as np
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.power_cap import _capped, _setpoint
 
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, 
@@ -146,9 +147,7 @@ class ElectricBoilerController(BasicProsumerController):
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
-        max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-        if np.isnan(max_p_kw):
-            max_p_kw = None
+        max_p_kw = _capped(self._get_element_param(prosumer, 'max_p_kw'), _setpoint(self, 'max_p_kw_setpoint'))
         min_p_kw = self._get_element_param(prosumer, 'min_p_kw')
         if np.isnan(min_p_kw):
             min_p_kw = None

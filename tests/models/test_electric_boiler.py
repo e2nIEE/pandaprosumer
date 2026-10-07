@@ -123,7 +123,7 @@ class TestElectricBoiler:
                                                                period=_default_period(prosumer),
                                                                **_default_argument())
         elb_controller = prosumer.controller.iloc[elb_controller_idx].object
-        input_columns_expected = []
+        input_columns_expected = ['max_p_kw_setpoint']
         result_columns_expected = ['q_kw', 'mdot_kg_per_s', 't_in_c', 't_out_c', 'p_kw']
 
         assert elb_controller.input_columns == input_columns_expected
@@ -487,3 +487,16 @@ class TestElectricBoiler:
         assert mdot_result > 0, "Mass flow should be non-zero when t_in_c < max_t_out_c"
         assert q_fluid_kw > 0, "Heat output should be non-zero when t_in_c < max_t_out_c"
         assert p_el_consumed > 0, "Electric power should be non-zero when t_in_c < max_t_out_c"
+
+
+@pytest.mark.parametrize("setpoint, expected_p_kw", [(np.nan, 500), (-1, 500), (200, 200), (900, 500), (0, 0)])
+def test_controller_max_p_kw_setpoint_caps_the_power(setpoint, expected_p_kw):
+    """A mapped ``max_p_kw_setpoint`` lowers the power for the step; negative or NaN = no cap."""
+    prosumer = create_empty_prosumer_container()
+    idx = create_controlled_electric_boiler(prosumer, period=_default_period(prosumer), max_p_kw=500, order=0)
+    controller = prosumer.controller.iloc[idx].object
+    controller.t_m_to_deliver = lambda x: (80, 20, [4])
+    controller.time_step(prosumer, "2020-01-01 00:00:00")
+    controller.inputs[0, controller.input_columns.index("max_p_kw_setpoint")] = setpoint
+    controller.control_step(prosumer)
+    assert controller.step_results[0][4] == pytest.approx(expected_p_kw, abs=1e-2)

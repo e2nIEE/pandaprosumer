@@ -10,6 +10,7 @@ from pandapipes import call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.power_cap import _capped, _setpoint
 
 
 class HeatPumpController(BasicProsumerController):
@@ -299,9 +300,8 @@ class HeatPumpController(BasicProsumerController):
                                                                                             pinch_c)
                 
 
-        max_p_comp_kw = self._get_element_param(prosumer, 'max_p_comp_kw')
-        if np.isnan(max_p_comp_kw):
-            max_p_comp_kw = None
+        max_p_comp_kw = _capped(self._get_element_param(prosumer, 'max_p_comp_kw'),
+                                _setpoint(self, 'max_p_comp_kw_setpoint'))
         if max_p_comp_kw is not None and p_comp_kw > max_p_comp_kw + 1e-3:
             # If the compressor power is too high, consider that only the condenser mass flow will be affected
             # (not the temperatures) and recalculate everything

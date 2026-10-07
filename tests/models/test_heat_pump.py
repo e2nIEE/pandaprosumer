@@ -101,7 +101,7 @@ class TestHeatPump:
         hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
-        input_columns_expected = ["t_evap_in_c"]
+        input_columns_expected = ["t_evap_in_c", "max_p_comp_kw_setpoint"]
 
     def test_controller_mode_lorenz(self):
         """
@@ -888,3 +888,17 @@ class TestHeatPump:
                     f"({t_cond_out_c}°C, {t_evap_in_c}°C)"
                 )
         
+
+@pytest.mark.parametrize("setpoint, expected_p_comp_kw", [(np.nan, 500.), (-1, 500.), (200, 200.)])
+def test_controller_max_p_comp_kw_setpoint_caps_the_compressor(setpoint, expected_p_comp_kw):
+    """A mapped ``max_p_comp_kw_setpoint`` lowers the compressor power for the step; negative or NaN = no cap."""
+    params = {'carnot_efficiency': 0.5, 'pinch_c': 0, 'delta_t_evap_c': 15, 'max_p_comp_kw': 500,
+              'min_p_comp_kw': .01, 'max_t_cond_out_c': 100, 'max_cop': 10}
+    prosumer = create_empty_prosumer_container()
+    idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **params)
+    controller = prosumer.controller.iloc[idx].object
+    controller.inputs = np.array([[20, setpoint]])
+    controller.t_m_to_deliver = lambda x: (80, 30, [10])
+    controller.time_step(prosumer, "2020-01-01 00:00:00")
+    controller.control_step(prosumer)
+    assert controller.step_results[0][1] == pytest.approx(expected_p_comp_kw, rel=1e-3)
