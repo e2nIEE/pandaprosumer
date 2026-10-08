@@ -9,6 +9,9 @@ from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.controller.power_cap import _capped, _setpoint
 
+#: Required feed below the return by less than this is floating-point noise, not a real inversion.
+TEMPERATURE_NOISE_K = 1e-9
+
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, 
                                     efficiency_percent, max_p_kw, min_p_kw, p_el_consumed_previous_kw,
@@ -200,6 +203,9 @@ class ElectricBoilerController(BasicProsumerController):
         assert not np.isnan(t_out_required_c), f"Electric Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_in_required_c), f"Electric Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_required_kg_per_s).any(), f"Electric Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        if t_in_required_c - TEMPERATURE_NOISE_K <= t_out_required_c < t_in_required_c:
+            # rounding noise of a fully-served responder (e.g. an upstream tank covered it): nothing left to heat
+            t_out_required_c = t_in_required_c
         assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
         rerun = True
