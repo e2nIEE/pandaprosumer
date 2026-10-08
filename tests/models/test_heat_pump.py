@@ -1,7 +1,9 @@
+import warnings
 import pytest
 import numpy as np
 from pandaprosumer import create_empty_prosumer_container, create_period, create_heat_pump, create_controlled_heat_pump
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.controller.models.heat_pump import ShadowedInputWarning
 
 
 def _default_argument():
@@ -888,3 +890,55 @@ class TestHeatPump:
                     f"({t_cond_out_c}°C, {t_evap_in_c}°C)"
                 )
         
+
+class TestHeatPumpShadowedEvapInput:
+    """
+    A fluid on the evaporator shadows a mapped t_evap_in_c: warn once per controller.
+    """
+
+    @staticmethod
+    def _controller(t_mapped_c, t_fluid_c, mdot_fluid_kg_per_s=np.nan, **params):
+        prosumer = create_empty_prosumer_container()
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **{**_default_argument(), **params})
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        hp_controller.inputs = np.array([[t_mapped_c]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_fluid_c
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = mdot_fluid_kg_per_s
+        hp_controller.t_m_to_deliver = lambda x: (80, 30, [2])
+        return prosumer, hp_controller
+
+    @staticmethod
+    def _run(prosumer, hp_controller):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+            hp_controller.control_step(prosumer)
+        return [w for w in caught if issubclass(w.category, ShadowedInputWarning)]
+
+    def test_warns_when_fluid_and_mapped_temperature_both_set(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=5, t_fluid_c=20)
+        shadowed = self._run(prosumer, hp_controller)
+        assert len(shadowed) == 1
+        assert "t_evap_in_c is ignored" in str(shadowed[0].message)
+        # The fluid's temperature is the one used (index 8 = t_evap_in_c of the step results)
+        assert hp_controller.step_results[0][8] == pytest.approx(20.)
+
+    def test_warns_only_once_per_controller(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=5, t_fluid_c=20)
+        assert len(self._run(prosumer, hp_controller)) == 1
+        hp_controller.inputs = np.array([[5]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_with_mapped_temperature_only(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=20, t_fluid_c=np.nan)
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_with_fluid_only(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=np.nan, t_fluid_c=20)
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_for_static_parameter_default(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=np.nan, t_fluid_c=20, t_evap_in_c=5)
+        assert self._run(prosumer, hp_controller) == []

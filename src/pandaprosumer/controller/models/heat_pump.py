@@ -4,12 +4,25 @@ Module containing the HeatPumpController class.
 
 import numpy as np
 from math import log
+from warnings import warn
 
 from pandapipes import call_lib
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
+
+
+class ShadowedInputWarning(UserWarning):
+    """
+    Raised when a heat pump's evaporator receives both a FluidMixMapping (``fluid_evap``) and a mapped
+    ``t_evap_in_c`` value. The fluid's temperature takes precedence whenever it is set, so the mapped
+    ``t_evap_in_c`` is silently ignored - usually a wiring mistake (e.g. a source temperature profile
+    left connected next to a source fluid). Emitted once per controller.
+
+    Filter with ``warnings.simplefilter("ignore", ShadowedInputWarning)`` if both inputs are intended
+    (``t_evap_in_c`` as a fallback for the steps where the fluid delivers nothing).
+    """
 
 
 class HeatPumpController(BasicProsumerController):
@@ -52,6 +65,8 @@ class HeatPumpController(BasicProsumerController):
         
         # Store the previous compressor power for applying ramp up / ramp down speed constraints
         self.p_comp_previous_kw = np.nan
+        # Whether the ShadowedInputWarning was already emitted (once per controller, not once per step)
+        self._warned_shadowed_t_evap_in = False
 
     @property
     def _t_evap_in_c(self):
@@ -59,6 +74,28 @@ class HeatPumpController(BasicProsumerController):
             return self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         else:
             return self._get_input("t_evap_in_c")
+
+    def _warn_if_t_evap_in_shadowed(self):
+        """
+        Warn (once) when both the evaporator fluid and the mapped ``t_evap_in_c`` input are set: the
+        fluid's temperature wins and the mapped value is ignored. A ``t_evap_in_c`` given as a static
+        element parameter is not reported - it is a default, not a conflicting mapping.
+        """
+        if self._warned_shadowed_t_evap_in:
+            return
+        t_fluid_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
+        t_mapped_c = self._get_input("t_evap_in_c")
+        if np.isnan(t_fluid_c) or np.isnan(t_mapped_c):
+            return
+        self._warned_shadowed_t_evap_in = True
+        warn(
+            (f"{self.name_class()} '{self.name}' at timestep {self.time}: the evaporator receives both a fluid "
+             f"(t={t_fluid_c:.2f} C) and a mapped t_evap_in_c ({t_mapped_c:.2f} C). The fluid's temperature "
+             f"takes precedence; t_evap_in_c is ignored whenever the fluid is set. Disconnect one of the two "
+             f"inputs unless t_evap_in_c is meant as a fallback. (Reported once for this controller.)"),
+            ShadowedInputWarning,
+            stacklevel=2,
+        )
 
     @property
     def _mdot_evap_in_kg_per_s(self):
@@ -453,6 +490,7 @@ class HeatPumpController(BasicProsumerController):
         assert not np.isnan(t_cond_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(self._t_evap_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._warn_if_t_evap_in_shadowed()
         assert t_cond_out_required_c >= t_cond_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_cond_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
