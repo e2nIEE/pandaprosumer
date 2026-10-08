@@ -235,3 +235,26 @@ class TestChiller:
 
 
 
+
+    def test_running_chiller_takes_its_temperatures_in_celsius(self):
+        """
+        The ``*_c`` inputs are °C (as their names say): a 7 °C set point, 12 °C chilled-water return
+        and 30 °C condenser inlet run the chiller with a plausible EER, and the outlets stay in °C.
+        """
+        prosumer = create_empty_prosumer_container()
+        idx = create_controlled_chiller(prosumer, order=0, period=_default_period(prosumer), n_ref="R410A",
+                                        w_evap_pump=0.0, w_cond_pump=0.0)  # the refrigeration cycle alone
+        chiller = prosumer.controller.iloc[idx].object
+        chiller.q_to_deliver_kw = lambda _prosumer: 100.0  # a cooling demand of 100 kW
+
+        # t_set_pt_c, t_in_ev_c, t_in_cond_c, dt_cond_c, q_load_kw, n_is, q_max_kw, ctrl
+        chiller.inputs = np.array([[7.0, 12.0, 30.0, 5.0, 100.0, 0.7, 200.0, 1]])
+        chiller.time_step(prosumer, prosumer.period.iloc[0]["start"])
+        chiller.control_step(prosumer)
+
+        q_evap, _, w_in_tot, eer, _, t_out_ev, t_out_cond, _, _, q_cond = chiller.step_results[0]
+        assert q_evap == pytest.approx(100.0)
+        assert 2.0 < eer < 8.0
+        assert q_cond > q_evap  # the condenser rejects the cooling plus the compressor work
+        assert t_out_ev == pytest.approx(7.0)
+        assert t_out_cond == pytest.approx(35.0)
