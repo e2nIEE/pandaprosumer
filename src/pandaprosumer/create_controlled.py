@@ -883,7 +883,7 @@ def create_controlled_ice_chp(prosumer,
        EXAMPLE:
            create_controlled_ice_chp(prosumer, 350, "ng", 0, "example_ice_chp")
        """
-    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, name, in_service, index, **kwargs)
+    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, in_service=in_service, name=name, index=index, **kwargs)
     ice_chp_controller_data = IceChpControllerData(
         element_name='ice_chp',
         element_index=[ice_chp_index],
