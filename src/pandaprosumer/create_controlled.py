@@ -1,6 +1,7 @@
 import numpy as np
 
 from pandaprosumer.create import (
+    create_battery_storage,
     create_booster_heat_pump,
     create_chiller,
     create_converter,
@@ -19,6 +20,8 @@ from pandaprosumer.create import (
     create_stratified_heat_storage,
 )
 from pandaprosumer.controller import (
+    BatteryStorageController,
+    BatteryStorageControllerData,
     BoosterHeatPumpController,
     BoosterHeatPumpControllerData,
     ChillerController,
@@ -1240,3 +1243,64 @@ def create_controlled_pv_production(
     )
 
     return pv_controller.index
+
+
+def create_controlled_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    init_soc=0.5,
+    name=None,
+    index=None,
+    in_service=True,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    """
+    Creates a battery storage element and its controller.
+
+    The controller reads a signed ``p_requested_kw`` input (positive = discharge, negative = charge),
+    clips it to the power and state-of-charge limits and reports what it did (``p_storage_kw``, ``soc``, ...).
+
+    Parameters are those of :func:`create_battery_storage`, plus ``init_soc`` (initial state of charge,
+    default 0.5), ``period``, ``level`` and ``order``.
+
+    Returns
+    -------
+    int
+        Index of the created battery storage controller.
+    """
+    battery_index = create_battery_storage(
+        prosumer,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        name=name,
+        index=index,
+        in_service=in_service,
+        **kwargs,
+    )
+    battery_storage_object = BatteryStorageControllerData(element_index=[battery_index], period_index=period)
+    controller = BatteryStorageController(
+        prosumer,
+        battery_storage_object,
+        order=order,
+        level=level,
+        init_soc=init_soc,
+        in_service=in_service,
+        name=name,
+    )
+    return controller.index
