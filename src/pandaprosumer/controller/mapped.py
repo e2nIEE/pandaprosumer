@@ -318,9 +318,15 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        responders = [prosumer.controller.loc[item.responder]["object"] for item in
-                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                      [["object", "responder"]].itertuples()]
+        mappings = prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+        responders = []
+        for mapping_obj, responder in mappings[["object", "responder"]].itertuples(index=False):
+            # A mapping into another container (e.g. an electric output coupled to a
+            # pandapower net) indexes that container's controllers, not this prosumer's;
+            # and a network coupling has no heat to request anyway.
+            if getattr(mapping_obj, "responder_net", prosumer) is not prosumer:
+                continue
+            responders.append(prosumer.controller.loc[responder]["object"])
         return [responder for responder in responders if not responder.is_supervisor()]
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
