@@ -9,6 +9,1064 @@ from pyomo.opt import SolverStatus, TerminationCondition
 from pandaprosumer.controller.base import BasicProsumerController
 
 
+class ElectricalOptimizationControllerMPC(BasicProsumerController):
+    """
+    MPC controller for CHP units, batteries, PV generation and grid import.
+
+    Positive battery power represents discharging.
+    Negative battery power represents charging.
+    """
+
+    def __init__(
+        self,
+        prosumer,
+        optimization_object,
+        order,
+        level,
+        in_service=True,
+        index=None,
+        solver_name="appsi_highs",
+        horizon_steps=12,
+        contract_penalty_eur_per_mwh=10000.0,
+        chp_start_cost_eur=5.0,
+        flex_revenue_eur_per_mwh=200.0,
+        chp_eta_el=0.36,
+        request_tolerance_kw=1e-6,
+        soc_target=0.90,
+        weight_soc=1e5,
+        forecast_data=None,
+        pad_forecast_end=False,
+        **kwargs,
+    ):
+        super().__init__(
+            prosumer,
+            optimization_object,
+            order=order,
+            level=level,
+            in_service=in_service,
+            index=index,
+            **kwargs,
+        )
+
+        self.solver_name = solver_name
+        self.horizon_steps = int(horizon_steps)
+
+        if self.horizon_steps < 1:
+            raise ValueError(
+                "horizon_steps must be at least 1."
+            )
+
+        self.contract_penalty_eur_per_mwh = float(
+            contract_penalty_eur_per_mwh
+        )
+        self.chp_start_cost_eur = float(chp_start_cost_eur)
+        self.flex_revenue_eur_per_mwh = float(
+            flex_revenue_eur_per_mwh
+        )
+        self.chp_eta_el = float(chp_eta_el)
+        self.request_tolerance_kw = float(
+            request_tolerance_kw
+        )
+        self.soc_target = float(soc_target)
+        self.weight_soc = float(weight_soc)
+
+        if self.chp_eta_el <= 0.0:
+            raise ValueError(
+                "The electrical CHP efficiency must be positive."
+            )
+
+        if forecast_data is None:
+            raise ValueError(
+                "forecast_data is required for MPC optimization."
+            )
+
+        if forecast_data.empty:
+            raise ValueError(
+                "forecast_data must not be empty."
+            )
+
+        forecast_data = forecast_data.copy()
+        forecast_data.index = pd.to_datetime(
+            forecast_data.index,
+            errors="raise",
+            utc=True,
+        )
+
+        if forecast_data.index.duplicated().any():
+            raise ValueError(
+                "forecast_data contains duplicate timestamps."
+            )
+
+        self.forecast_data = forecast_data.sort_index()
+        self.pad_forecast_end = bool(pad_forecast_end)
+        self.current_time = None
+
+    @staticmethod
+    def _first_scalar(value):
+        values = np.asarray(
+            value,
+            dtype=float,
+        ).reshape(-1)
+
+        if values.size == 0:
+            raise ValueError(
+                "A scalar value was expected, but the input is empty."
+            )
+
+        return float(values[0])
+
+    def time_step(self, prosumer, time):
+        index = self.forecast_data.index
+
+        if isinstance(time, (int, np.integer)):
+            position = int(time)
+
+            if position < 0 or position >= len(index):
+                raise IndexError(
+                    f"Time step {position} is outside the "
+                    f"forecast data."
+                )
+
+            self.current_time = index[position]
+
+        else:
+            current_time = pd.Timestamp(time)
+
+            if current_time.tzinfo is None:
+                current_time = current_time.tz_localize(index.tz)
+            else:
+                current_time = current_time.tz_convert(index.tz)
+
+            self.current_time = current_time
+
+        return super().time_step(prosumer, time)
+
+    def extract_horizon(self, column):
+        if self.current_time is None:
+            raise RuntimeError(
+                "The current simulation time has not been set."
+            )
+
+        if column not in self.forecast_data.columns:
+            raise KeyError(
+                f"Column '{column}' is missing in forecast_data."
+            )
+
+        series = pd.to_numeric(
+            self.forecast_data[column],
+            errors="coerce",
+        )
+
+        frequency = pd.to_timedelta(
+            self.resol,
+            unit="s",
+        )
+
+        horizon_index = pd.date_range(
+            start=self.current_time,
+            periods=self.horizon_steps,
+            freq=frequency,
+        )
+
+        horizon = series.reindex(horizon_index)
+
+        if self.pad_forecast_end:
+            after_forecast_end = (
+                horizon.index > series.index[-1]
+            )
+            horizon.loc[after_forecast_end] = series.iloc[-1]
+
+        if horizon.isna().any():
+            first_missing = horizon.index[horizon.isna()][0]
+
+            raise ValueError(
+                f"Missing forecast value for {first_missing} "
+                f"in column '{column}'."
+            )
+
+        return horizon.to_numpy(dtype=float)
+
+    def model_optimization(
+        self,
+        prosumer,
+        p_flex_kw,
+    ):
+        dt_hours = self.resol / 3600.0
+        energy_factor = dt_hours / 1000.0
+
+        demand = self.extract_horizon(
+            "p_el_demand_kw"
+        )
+        pv = self.extract_horizon(
+            "p_pv_in_kw"
+        )
+        ev = self.extract_horizon(
+            "p_ev_charge_kw"
+        )
+        contract = self.extract_horizon(
+            "p_contract_kw"
+        )
+        electricity_price = self.extract_horizon(
+            "electricity_price_eur_per_mwh"
+        )
+        gas_price = self.extract_horizon(
+            "gas_price_eur_per_mwh"
+        )
+
+        p_flex_request_kw = self._first_scalar(
+            p_flex_kw
+        )
+
+        if (
+            not np.isfinite(p_flex_request_kw)
+            or p_flex_request_kw < 0.0
+        ):
+            raise ValueError(
+                "p_flex_kw must be finite and non-negative."
+            )
+
+        p_grid_baseline_kw = max(
+            0.0,
+            float(demand[0] + ev[0] - pv[0]),
+        )
+
+        model = pyo.ConcreteModel()
+        model.T = pyo.RangeSet(
+            0,
+            self.horizon_steps - 1,
+        )
+
+        t0 = model.T.first()
+
+        chp_indices = []
+        battery_indices = []
+
+        for index, row in prosumer.controller.iterrows():
+            controller_name = (
+                row["object"].__class__.__name__
+            )
+
+            if controller_name == "IceChpController":
+                chp_indices.append(index)
+            elif controller_name == "BatteryStorageController":
+                battery_indices.append(index)
+
+        model.chp_index = pyo.Set(
+            initialize=chp_indices
+        )
+        model.battery_index = pyo.Set(
+            initialize=battery_indices
+        )
+
+        model.chp = pyo.Block(model.chp_index)
+        model.battery = pyo.Block(model.battery_index)
+
+        for index in model.chp_index:
+            self._add_chp(
+                prosumer,
+                model.chp[index],
+                index,
+            )
+
+        for index in model.battery_index:
+            self._add_battery(
+                prosumer,
+                model.battery[index],
+                index,
+            )
+
+        total_charge_max_kw = sum(
+            float(
+                pyo.value(
+                    model.battery[index].p_charge_max
+                )
+            )
+            for index in model.battery_index
+        )
+
+        grid_max = (
+            demand
+            + ev
+            + total_charge_max_kw
+        )
+
+        model.p_grid_kw = pyo.Var(
+            model.T,
+            domain=pyo.NonNegativeReals,
+            bounds=lambda _, t: (
+                0.0,
+                float(grid_max[t]),
+            ),
+        )
+
+        model.p_pv_used_kw = pyo.Var(
+            model.T,
+            domain=pyo.NonNegativeReals,
+            bounds=lambda _, t: (
+                0.0,
+                float(pv[t]),
+            ),
+        )
+
+        def power_balance_rule(m, t):
+            return (
+                m.p_grid_kw[t]
+                + m.p_pv_used_kw[t]
+                + pyo.quicksum(
+                    m.chp[index].p_el[t]
+                    for index in m.chp_index
+                )
+                + pyo.quicksum(
+                    m.battery[index].p_discharge[t]
+                    for index in m.battery_index
+                )
+                ==
+                float(demand[t] + ev[t])
+                + pyo.quicksum(
+                    m.battery[index].p_charge[t]
+                    for index in m.battery_index
+                )
+            )
+
+        model.power_balance = pyo.Constraint(
+            model.T,
+            rule=power_balance_rule,
+        )
+
+        model.contract_violation_kw = pyo.Var(
+            model.T,
+            domain=pyo.NonNegativeReals,
+        )
+
+        def contract_rule(m, t):
+            if np.isfinite(contract[t]):
+                return (
+                    m.p_grid_kw[t]
+                    <= float(contract[t])
+                    + m.contract_violation_kw[t]
+                )
+
+            return m.contract_violation_kw[t] == 0.0
+
+        model.contract_limit = pyo.Constraint(
+            model.T,
+            rule=contract_rule,
+        )
+
+        max_flex_kw = min(
+            p_flex_request_kw,
+            p_grid_baseline_kw,
+        )
+
+        model.p_flex_delivered_kw = pyo.Var(
+            domain=pyo.NonNegativeReals,
+            bounds=(0.0, max_flex_kw),
+        )
+
+        if max_flex_kw > self.request_tolerance_kw:
+            model.flex_delivery = pyo.Constraint(
+                expr=(
+                    model.p_grid_kw[t0]
+                    + model.p_flex_delivered_kw
+                    <= p_grid_baseline_kw
+                )
+            )
+        else:
+            model.p_flex_delivered_kw.fix(0.0)
+
+        # Operating costs for each MPC time step.
+        model.grid_cost_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                energy_factor
+                * float(electricity_price[t])
+                * m.p_grid_kw[t]
+            ),
+        )
+
+        model.gas_cost_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                energy_factor
+                * float(gas_price[t])
+                * pyo.quicksum(
+                    m.chp[index].p_el[t]
+                    / self.chp_eta_el
+                    for index in m.chp_index
+                )
+            ),
+        )
+
+        model.contract_cost_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                energy_factor
+                * self.contract_penalty_eur_per_mwh
+                * m.contract_violation_kw[t]
+            ),
+        )
+
+        # model.startup_cost_t = pyo.Expression(
+        #     model.T,
+        #     rule=lambda m, t: (
+        #         self.chp_start_cost_eur
+        #         * pyo.quicksum(
+        #             m.chp[index].startup[t]
+        #             for index in m.chp_index
+        #         )
+        #     ),
+        # )
+
+        # Flexibility is rewarded only for the current MPC step.
+        model.flex_revenue_current_eur = pyo.Expression(
+            expr=(
+                energy_factor
+                * self.flex_revenue_eur_per_mwh
+                * model.p_flex_delivered_kw
+            )
+        )
+
+        model.grid_cost_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.grid_cost_t[t]
+                for t in model.T
+            )
+        )
+
+        model.gas_cost_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.gas_cost_t[t]
+                for t in model.T
+            )
+        )
+
+        model.contract_cost_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.contract_cost_t[t]
+                for t in model.T
+            )
+        )
+
+        # model.startup_cost_horizon_eur = pyo.Expression(
+        #     expr=pyo.quicksum(
+        #         model.startup_cost_t[t]
+        #         for t in model.T
+        #     )
+        # )
+
+        model.soc_terminal_cost_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.battery[index].soc_terminal_cost
+                for index in model.battery_index
+            )
+        )
+
+        # Actual operating costs of the current MPC step.
+        model.cost_current_step_eur = pyo.Expression(
+            expr=(
+                model.grid_cost_t[t0]
+                + model.gas_cost_t[t0]
+                + model.contract_cost_t[t0]
+                # + model.startup_cost_t[t0]
+                - model.flex_revenue_current_eur
+            )
+        )
+
+        model.operating_cost_horizon_eur = pyo.Expression(
+            expr=(
+                model.grid_cost_horizon_eur
+                + model.gas_cost_horizon_eur
+                + model.contract_cost_horizon_eur
+                # + model.startup_cost_horizon_eur
+                - model.flex_revenue_current_eur
+            )
+        )
+
+        model.objective = pyo.Objective(
+            expr=(
+                model.operating_cost_horizon_eur
+                + model.soc_terminal_cost_eur
+            ),
+            sense=pyo.minimize,
+        )
+
+        solver = pyo.SolverFactory(
+            self.solver_name
+        )
+
+        if not solver.available(False):
+            raise RuntimeError(
+                f"Solver '{self.solver_name}' is not available."
+            )
+
+        solver_result = solver.solve(
+            model,
+            tee=False,
+        )
+
+        termination_condition = (
+            solver_result.solver.termination_condition
+        )
+
+        if (
+            termination_condition
+            != TerminationCondition.optimal
+        ):
+            raise RuntimeError(
+                "Optimization failed: "
+                f"status={solver_result.solver.status}, "
+                f"termination={termination_condition}."
+            )
+
+        def value(expression):
+            return float(pyo.value(expression))
+
+        p_el_chp_kw = sum(
+            value(model.chp[index].p_el[t0])
+            for index in model.chp_index
+        )
+
+        p_battery_charge_kw = sum(
+            value(
+                model.battery[index].p_charge[t0]
+            )
+            for index in model.battery_index
+        )
+
+        p_battery_discharge_kw = sum(
+            value(
+                model.battery[index].p_discharge[t0]
+            )
+            for index in model.battery_index
+        )
+
+        p_battery_kw = (
+            p_battery_discharge_kw
+            - p_battery_charge_kw
+        )
+
+        p_grid_dispatch_kw = value(
+            model.p_grid_kw[t0]
+        )
+        p_pv_used_kw = value(
+            model.p_pv_used_kw[t0]
+        )
+        p_flex_delivered_kw = value(
+            model.p_flex_delivered_kw
+        )
+
+        battery_soc_values = [
+            value(
+                model.battery[index].soc[t0 + 1]
+            )
+            for index in model.battery_index
+        ]
+
+        battery_soc = (
+            float(np.mean(battery_soc_values))
+            if battery_soc_values
+            else np.nan
+        )
+
+        contract_violation_kw = (
+            max(
+                0.0,
+                p_grid_dispatch_kw
+                - float(contract[t0]),
+            )
+            if np.isfinite(contract[t0])
+            else 0.0
+        )
+
+        optimized_results = {
+            "feasible": True,
+            "electricity_price_eur_per_mwh": float(
+                electricity_price[t0]
+            ),
+            "gas_price_eur_per_mwh": float(
+                gas_price[t0]
+            ),
+            "p_el_demand_kw": float(demand[t0]),
+            "p_ev_charge_kw": float(ev[t0]),
+            "p_pv_in_kw": float(pv[t0]),
+            "p_contract_kw": float(contract[t0]),
+            "p_flex_request_kw": float(
+                p_flex_request_kw
+            ),
+            "p_flex_delivered_kw": float(
+                p_flex_delivered_kw
+            ),
+            "p_grid_baseline_kw": float(
+                p_grid_baseline_kw
+            ),
+            "p_grid_dispatch_kw": float(
+                p_grid_dispatch_kw
+            ),
+            "contract_violation_kw": float(
+                contract_violation_kw
+            ),
+            "dispatch_p_el_chp_kw": float(
+                p_el_chp_kw
+            ),
+            "dispatch_p_battery_kw": float(
+                p_battery_kw
+            ),
+            "dispatch_p_battery_charge_kw": float(
+                p_battery_charge_kw
+            ),
+            "dispatch_p_battery_discharge_kw": float(
+                p_battery_discharge_kw
+            ),
+            "dispatch_battery_soc": float(
+                battery_soc
+            ),
+            "dispatch_p_pv_used_kw": float(
+                p_pv_used_kw
+            ),
+            "dispatch_p_pv_curtailed_kw": max(
+                0.0,
+                float(pv[t0]) - p_pv_used_kw,
+            ),
+            "cost_current_step_eur": value(
+                model.cost_current_step_eur
+            ),
+            "cost_grid_current_eur": value(
+                model.grid_cost_t[t0]
+            ),
+            "cost_gas_current_eur": value(
+                model.gas_cost_t[t0]
+            ),
+            "cost_contract_current_eur": value(
+                model.contract_cost_t[t0]
+            ),
+            # "cost_startup_current_eur": value(
+            #     model.startup_cost_t[t0]
+            # ),
+            "revenue_flex_current_eur": value(
+                model.flex_revenue_current_eur
+            ),
+            "objective_horizon_eur": value(
+                model.objective
+            ),
+            "operating_cost_horizon_eur": value(
+                model.operating_cost_horizon_eur
+            ),
+            "soc_terminal_cost_eur": value(
+                model.soc_terminal_cost_eur
+            ),
+            "solver_status": str(
+                solver_result.solver.status
+            ),
+            "termination_condition": str(
+                termination_condition
+            ),
+        }
+
+        return (
+            p_battery_kw,
+            p_el_chp_kw,
+            optimized_results,
+        )
+
+    def control_step(self, prosumer):
+        super().control_step(prosumer)
+
+        if not hasattr(
+            prosumer,
+            "controller_results",
+        ):
+            prosumer.controller_results = {}
+
+        p_flex_kw = self._get_input(
+            "p_flex_kw"
+        )
+
+        (
+            p_battery_kw,
+            p_el_chp_kw,
+            optimized_results,
+        ) = self.model_optimization(
+            prosumer=prosumer,
+            p_flex_kw=p_flex_kw,
+        )
+
+        self.last_result = optimized_results
+
+        if not hasattr(
+            prosumer,
+            "optimizer_controller_results",
+        ):
+            prosumer.optimizer_controller_results = {}
+
+        prosumer.optimizer_controller_results[
+            self.time
+        ] = optimized_results
+
+        result = np.array(
+            [[p_battery_kw, p_el_chp_kw]],
+            dtype=float,
+        )
+
+        self.finalize(
+            prosumer,
+            result,
+        )
+        self.applied = True
+
+    def is_converged(self, container):
+        return self.applied
+
+    def _add_chp(
+        self,
+        prosumer,
+        block,
+        index,
+    ):
+        controller = (
+            prosumer.controller.loc[index]["object"]
+        )
+
+        size_kw = float(
+            controller.element_instance["size"].iloc[0]
+        )
+
+        path = os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "library",
+                "chp_maps",
+                "ice_chp_maps.json",
+            )
+        )
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            data = json.load(file)
+
+        chp_map = next(
+            item
+            for item in data["chp_ice_map"]
+            if np.isclose(
+                item["__chp_nominal_size_kw__"],
+                size_kw,
+            )
+        )
+
+        load_min, load_max = chp_map[
+            "load_limits_percent"
+        ]
+
+        p_el_min = (
+            load_min / 100.0 * size_kw
+        )
+        p_el_max = (
+            load_max / 100.0 * size_kw
+        )
+
+        previous_time = self.time - pd.Timedelta(
+            seconds=self.resol
+        )
+
+        previous_results = getattr(
+            prosumer,
+            "controller_results",
+            {},
+        )
+
+        previous_output = (
+            previous_results
+            .get(previous_time, {})
+            .get(index, {})
+            .get("p_el_out_kw", 0.0)
+        )
+
+        p_previous = self._first_scalar(
+            previous_output
+        )
+
+        previous_on = int(
+            p_previous > 1e-6
+        )
+
+        time_steps = range(
+            self.horizon_steps
+        )
+
+        block.p_el = pyo.Var(
+            time_steps,
+            domain=pyo.NonNegativeReals,
+        )
+        block.y = pyo.Var(
+            time_steps,
+            domain=pyo.Binary,
+        )
+        # block.startup = pyo.Var(
+        #     time_steps,
+        #     domain=pyo.Binary,
+        # )
+
+        block.minimum_power = pyo.Constraint(
+            time_steps,
+            rule=lambda b, t: (
+                b.p_el[t]
+                >= p_el_min * b.y[t]
+            ),
+        )
+
+        block.maximum_power = pyo.Constraint(
+            time_steps,
+            rule=lambda b, t: (
+                b.p_el[t]
+                <= p_el_max * b.y[t]
+            ),
+        )
+
+        # def startup_rule(b, t):
+        #     previous_state = (
+        #         previous_on
+        #         if t == 0
+        #         else b.y[t - 1]
+        #     )
+        #
+        #     return (
+        #         b.startup[t]
+        #         >= b.y[t] - previous_state
+        #     )
+        #
+        # block.startup_constraint = pyo.Constraint(
+        #     time_steps,
+        #     rule=startup_rule,
+        # )
+
+    def _add_battery(
+        self,
+        prosumer,
+        block,
+        index,
+    ):
+        controller = (
+            prosumer.controller.loc[index]["object"]
+        )
+        element = controller.element_instance
+
+        capacity_kwh = float(
+            element["e_capacity_kwh"].iloc[0]
+        )
+        eta_charge = float(
+            element["eta_charge"].iloc[0]
+        )
+        eta_discharge = float(
+            element["eta_discharge"].iloc[0]
+        )
+        soc_min = float(
+            element["soc_min"].iloc[0]
+        )
+        soc_max = float(
+            element["soc_max"].iloc[0]
+        )
+        self_discharge = float(
+            element[
+                "self_discharge_per_hour"
+            ].iloc[0]
+        )
+        p_charge_max = float(
+            element["p_charge_max_kw"].iloc[0]
+        )
+        p_discharge_max = float(
+            element["p_discharge_max_kw"].iloc[0]
+        )
+
+        soc_previous = float(
+            controller.soc
+        )
+        soc_target = self.soc_target
+        weight_soc = self.weight_soc
+
+        if capacity_kwh <= 0.0:
+            raise ValueError(
+                "Battery capacity must be positive."
+            )
+
+        if eta_charge <= 0.0:
+            raise ValueError(
+                "Battery charging efficiency must be positive."
+            )
+
+        if eta_discharge <= 0.0:
+            raise ValueError(
+                "Battery discharging efficiency must be positive."
+            )
+
+        if p_charge_max < 0.0:
+            raise ValueError(
+                "Maximum charging power must be non-negative."
+            )
+
+        if p_discharge_max < 0.0:
+            raise ValueError(
+                "Maximum discharging power must be non-negative."
+            )
+
+        if not soc_min <= soc_previous <= soc_max:
+            raise ValueError(
+                f"Current SOC {soc_previous} is outside "
+                f"the limits [{soc_min}, {soc_max}]."
+            )
+
+        if not soc_min <= soc_target <= soc_max:
+            raise ValueError(
+                f"Target SOC {soc_target} is outside "
+                f"the limits [{soc_min}, {soc_max}]."
+            )
+
+        horizon = self.horizon_steps
+        dt_hours = self.resol / 3600.0
+
+        loss_factor = (
+            1.0
+            - self_discharge * dt_hours
+        )
+
+        # Power variables use t = 0, ..., H - 1.
+        block.T = pyo.RangeSet(
+            0,
+            horizon - 1,
+        )
+
+        # State variables use t = 0, ..., H.
+        block.T_soc = pyo.RangeSet(
+            0,
+            horizon,
+        )
+
+        block.p_charge_max = pyo.Param(
+            initialize=p_charge_max,
+            within=pyo.NonNegativeReals,
+        )
+        block.p_discharge_max = pyo.Param(
+            initialize=p_discharge_max,
+            within=pyo.NonNegativeReals,
+        )
+        block.soc_initial_value = pyo.Param(
+            initialize=soc_previous,
+        )
+        block.soc_target = pyo.Param(
+            initialize=soc_target,
+        )
+        block.weight_soc = pyo.Param(
+            initialize=weight_soc,
+            within=pyo.NonNegativeReals,
+        )
+
+        block.p_charge = pyo.Var(
+            block.T,
+            domain=pyo.NonNegativeReals,
+        )
+        block.p_discharge = pyo.Var(
+            block.T,
+            domain=pyo.NonNegativeReals,
+        )
+        block.soc = pyo.Var(
+            block.T_soc,
+            bounds=(soc_min, soc_max),
+        )
+        block.y_charge = pyo.Var(
+            block.T,
+            domain=pyo.Binary,
+        )
+        block.y_discharge = pyo.Var(
+            block.T,
+            domain=pyo.Binary,
+        )
+
+        block.charge_discharge = pyo.Constraint(
+            block.T,
+            rule=lambda b, t: (
+                b.y_charge[t]
+                + b.y_discharge[t]
+                <= 1
+            ),
+        )
+
+        block.charge_limit = pyo.Constraint(
+            block.T,
+            rule=lambda b, t: (
+                b.p_charge[t]
+                <= b.p_charge_max
+                * b.y_charge[t]
+            ),
+        )
+
+        block.discharge_limit = pyo.Constraint(
+            block.T,
+            rule=lambda b, t: (
+                b.p_discharge[t]
+                <= b.p_discharge_max
+                * b.y_discharge[t]
+            ),
+        )
+
+        block.soc_initial = pyo.Constraint(
+            expr=(
+                block.soc[0]
+                == block.soc_initial_value
+            )
+        )
+
+        # Update the SOC from time step t to t + 1.
+        def soc_rule(b, t):
+            return (
+                b.soc[t + 1]
+                ==
+                loss_factor * b.soc[t]
+                + (
+                    eta_charge
+                    * b.p_charge[t]
+                    - b.p_discharge[t]
+                    / eta_discharge
+                )
+                * dt_hours
+                / capacity_kwh
+            )
+
+        block.soc_balance = pyo.Constraint(
+            block.T,
+            rule=soc_rule,
+        )
+
+        block.soc_deviation_positive = pyo.Var(
+            domain=pyo.NonNegativeReals,
+        )
+        block.soc_deviation_negative = pyo.Var(
+            domain=pyo.NonNegativeReals,
+        )
+
+        block.soc_terminal_deviation = pyo.Constraint(
+            expr=(
+                block.soc[horizon]
+                - block.soc_target
+                ==
+                block.soc_deviation_positive
+                - block.soc_deviation_negative
+            )
+        )
+
+        block.soc_terminal_cost = pyo.Expression(
+            expr=(
+                block.weight_soc
+                * (
+                    block.soc_deviation_positive
+                    + block.soc_deviation_negative
+                )
+            )
+        )
+
+
 class ElectricalOptimizationController(BasicProsumerController):
     """
     Electrical optimization controller for CHP and battery dispatch
@@ -262,8 +1320,8 @@ class ElectricalOptimizationController(BasicProsumerController):
         # Term 3: Device preference objective based on 3 factors
         # 1. Previous CHP state (ON) - to ensure continuous operation instead of frequent change of state
         # 2. Previous CHP state (OFF) - P_request_kw is greater than requested threshold, request is large or sustained -> CHP is preferred
-        #                             - P_request_kw is smaller than requested threshold, request is short -> prefer battery discharge    
-        
+        #                             - P_request_kw is smaller than requested threshold, request is short -> prefer battery discharge
+
         previous_chp_state = sum(model.chp[index].p_previous for index in model.chp_index)
 
         previous_chp_state_on = (pyo.value(previous_chp_state) > 1e-6)

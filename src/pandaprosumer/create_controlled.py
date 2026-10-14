@@ -1352,6 +1352,40 @@ def create_controlled_electrical_optimization(
 
     return controller.index
 
+def create_controlled_electrical_optimization_mpc(
+    prosumer,
+    in_service=True,
+    name=None,
+    index=None,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    optimization_index = create_electrical_optimization(
+        prosumer=prosumer,
+        in_service=in_service,
+        name=name,
+        index=index,
+    )
+
+    controller_data = ElectricalOptimizationControllerData(
+        element_name="electrical_optimization",
+        element_index=[optimization_index],
+        period_index=period,
+    )
+
+    controller = ElectricalOptimizationControllerMPC(
+        prosumer,
+        controller_data,
+        order=order,
+        level=level,
+        in_service=in_service,
+        name=name,
+        **kwargs,
+    )
+
+    return controller.index
 
 def create_controlled_battery_storage(
     prosumer,

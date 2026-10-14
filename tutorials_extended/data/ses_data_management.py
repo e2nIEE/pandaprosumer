@@ -150,44 +150,44 @@ ses_data_df["P grid target [kW]"] = (ses_data_df["P grid baseline [kW]"] - ses_d
 # PLOTTING DATAFRAMES:
 ses_data_df_subset = ses_data_df.loc["2025-07-08" : "2025-07-10"]
 
-fig, ax = plt.subplots(figsize=(10, 5))
+# fig, ax = plt.subplots(figsize=(10, 5))
+# #
+# ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el total [kW]"], label="P el total [kW]")
+# #ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el sc [kW]"], label="P el sc [kW]")
+# ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el contr [kW]"], label="P el contr [kW]")
+# #ax.plot(ses_data_df_subset.index, ses_data_df_subset["P pv [kW]"], label="P pv [kW]")
+# ax.plot(ses_data_df_subset.index, ses_data_df_subset["P grid baseline [kW]"], label="Baseline grid import")
+# ax.plot(ses_data_df_subset.index, ses_data_df_subset["P grid target [kW]"], label="Requested grid target")
+# ax.set_ylabel("P [kW]")
+# ax.set_title("Shopping centre + EV consumption + flexibility")
+# #
+# ax.legend(
+#     loc="upper center",
+#     bbox_to_anchor=(0.5, -0.22),
+#     ncol=5,
+#     frameon=False
+# )
+# #
+# fig.subplots_adjust(bottom=0.25)
+# plt.show()
 #
-ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el total [kW]"], label="P el total [kW]")
-#ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el sc [kW]"], label="P el sc [kW]")
-ax.plot(ses_data_df_subset.index, ses_data_df_subset["P el contr [kW]"], label="P el contr [kW]")
-#ax.plot(ses_data_df_subset.index, ses_data_df_subset["P pv [kW]"], label="P pv [kW]")
-ax.plot(ses_data_df_subset.index, ses_data_df_subset["P grid baseline [kW]"], label="Baseline grid import")
-ax.plot(ses_data_df_subset.index, ses_data_df_subset["P grid target [kW]"], label="Requested grid target")
-ax.set_ylabel("P [kW]")
-ax.set_title("Shopping centre + EV consumption + flexibility")
 #
-ax.legend(
-    loc="upper center",
-    bbox_to_anchor=(0.5, -0.22),
-    ncol=5,
-    frameon=False
-)
-#
-fig.subplots_adjust(bottom=0.25)
-plt.show()
-
-
-fig, ax = plt.subplots(figsize=(10, 5))
-#
-ax.plot(ses_data_df.index, ses_data_df["P el sc [kW]"], label="P el sc [kW]")
-ax.plot(ses_data_df.index, ses_data_df["P el contr [kW]"], label="P el contr [kW]")
-#ax.plot(ses_data_df_subset.index, ses_data_df_subset["P pv [kW]"], label="P pv [kW]")
-#ax.plot(ses_data_df_subset.index, ses_data_df_subset["P flex total [kW]"], linestyle="--", linewidth=2, label="P flex total [kW]")    # dashed line
-#
-ax.set_ylabel("P [kW]")
-#ax.set_title("Shopping centre")
-#
-ax.legend(
-    loc="upper center",
-    bbox_to_anchor=(0.5, -0.1),
-    ncol=5,
-    frameon=False
-)
-#
-fig.subplots_adjust(bottom=0.25)
-plt.show()
+# fig, ax = plt.subplots(figsize=(10, 5))
+# #
+# ax.plot(ses_data_df.index, ses_data_df["P el sc [kW]"], label="P el sc [kW]")
+# ax.plot(ses_data_df.index, ses_data_df["P el contr [kW]"], label="P el contr [kW]")
+# #ax.plot(ses_data_df_subset.index, ses_data_df_subset["P pv [kW]"], label="P pv [kW]")
+# #ax.plot(ses_data_df_subset.index, ses_data_df_subset["P flex total [kW]"], linestyle="--", linewidth=2, label="P flex total [kW]")    # dashed line
+# #
+# ax.set_ylabel("P [kW]")
+# #ax.set_title("Shopping centre")
+# #
+# ax.legend(
+#     loc="upper center",
+#     bbox_to_anchor=(0.5, -0.1),
+#     ncol=5,
+#     frameon=False
+# )
+# #
+# fig.subplots_adjust(bottom=0.25)
+# plt.show()

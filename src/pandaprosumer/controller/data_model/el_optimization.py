@@ -11,11 +11,11 @@ class ElectricalOptimizationControllerData:
         default_factory=lambda: [
             "p_el_demand_kw",
             "p_pv_in_kw",
+            "p_ev_charge_kw",
             "p_contract_kw",
             "p_flex_kw",
-            "p_grid_target_kw",
             "electricity_price_eur_per_mwh",
-            "gas_price_eur_per_mwh"
+            "gas_price_eur_per_mwh",
         ]
     )
 
