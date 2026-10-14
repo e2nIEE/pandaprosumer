@@ -65,3 +65,17 @@ def test_the_plain_coupling_still_hands_over_the_flow():
     controller.control_step(net)
     [output] = controller.result_mass_flow_with_temp
     assert output[FluidMixMapping.MASS_FLOW_KEY] == pytest.approx(10.0)
+
+
+def test_the_controller_diagnostic_tells_the_coupling_kinds_apart():
+    """pandapower's diagnostic groups by isinstance: the coupling kinds must not overlap, in any creation order."""
+    from pandapower.control import control_diagnostic
+
+    from pandaprosumer.create_controlled import create_controlled_network_coupling, create_controlled_plant_pump_coupling
+
+    net, consumer = _line_net()
+    create_controlled_substation_supply_coupling(net, consumer)
+    create_controlled_network_coupling(net, consumer, element_name="heat_consumer",
+                                       input_columns=["qext_w", "controlled_mdot_kg_per_s"])
+    create_controlled_plant_pump_coupling(net, 0)
+    control_diagnostic(net)

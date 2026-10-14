@@ -18,8 +18,15 @@ class NetworkCouplingControl(BasicProsumerController):
     def __init__(self, net, elmt_ctrl_object, in_service=True, order=0, level=0,
                  temp_fluid_map_input_col=None, mdot_fluid_map_input_col=None,
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
+        # pandapower's control_diagnostic groups controllers by isinstance, so a subclass always falls inside the
+        # plain class's group and the groups overlap. The exact class name and the element make them a
+        # partition, whatever the creation order.
+        kwargs.setdefault("matching_params", {"element_name": elmt_ctrl_object.element_name,
+                                              "element_index": list(elmt_ctrl_object.element_index),
+                                              "coupling_type": type(self).__name__})
         super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
+        self.coupling_type = type(self).__name__
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
         self.treturn_required_k = 't_from_k'
