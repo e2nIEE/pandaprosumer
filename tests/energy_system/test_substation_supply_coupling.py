@@ -67,15 +67,37 @@ def test_the_plain_coupling_still_hands_over_the_flow():
     assert output[FluidMixMapping.MASS_FLOW_KEY] == pytest.approx(10.0)
 
 
+def _three_consumer_net():
+    """One pump feeding three heat consumers on parallel feed/return pipe pairs, solved."""
+    net = pandapipes.create_empty_network(fluid="water")
+    jf, jr = (pandapipes.create_junction(net, pn_bar=6, tfluid_k=358.15) for _ in range(2))
+    pandapipes.create_circ_pump_const_pressure(net, flow_junction=jf, return_junction=jr, p_flow_bar=6,
+                                               plift_bar=1, t_flow_k=358.15, type="pt")
+    consumers = []
+    for _ in range(3):
+        j1, r1 = (pandapipes.create_junction(net, pn_bar=6, tfluid_k=358.15) for _ in range(2))
+        for a, b in ((jf, j1), (r1, jr)):
+            pandapipes.create_pipe_from_parameters(net, a, b, length_km=0.5, diameter_m=0.2, k_mm=0.01,
+                                                   u_w_per_m2k=0.4, text_k=283.15)
+        consumers.append(pandapipes.create_heat_consumer(net, j1, r1, qext_w=300e3, controlled_mdot_kg_per_s=3))
+    pandapipes.set_user_pf_options(net, mode="bidirectional", ambient_temperature=283.15)
+    pandapipes.pipeflow(net)
+    return net, consumers
+
+
 def test_the_controller_diagnostic_tells_the_coupling_kinds_apart():
-    """pandapower's diagnostic groups by isinstance: the coupling kinds must not overlap, in any creation order."""
+    """
+    pandapower's diagnostic groups by isinstance: the coupling kinds must not overlap. Same creation order as
+    run.py (per substation the supply read then the plain write, the plant pump last).
+    """
     from pandapower.control import control_diagnostic
 
     from pandaprosumer.create_controlled import create_controlled_network_coupling, create_controlled_plant_pump_coupling
 
-    net, consumer = _line_net()
-    create_controlled_substation_supply_coupling(net, consumer)
-    create_controlled_network_coupling(net, consumer, element_name="heat_consumer",
-                                       input_columns=["qext_w", "controlled_mdot_kg_per_s"])
+    net, consumers = _three_consumer_net()
+    for consumer in consumers:
+        create_controlled_substation_supply_coupling(net, consumer)
+        create_controlled_network_coupling(net, consumer, element_name="heat_consumer",
+                                           input_columns=["qext_w", "controlled_mdot_kg_per_s"])
     create_controlled_plant_pump_coupling(net, 0)
     control_diagnostic(net)
