@@ -52,6 +52,7 @@ from pandaprosumer.controller import (
 )
 from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.plant_pump_coupling import PlantPumpCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
@@ -87,6 +88,29 @@ def create_controlled_network_coupling(net,
                                temp_fluid_map_output_idx=temp_fluid_map_output_idx,
                                mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
                                level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_plant_pump_coupling(net, circ_pump_index, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN plant to the network's circulation pump (`circ_pump_pressure`) and return
+    its controller index.
+
+    Unlike a plain network coupling, the pump injects exactly the heat the plant produced (see
+    `PlantPumpCouplingControl`): the plant's outlet temperature and mass flow (FluidMix mapping) set the pump's
+    `t_flow_k` so that the network receives `Q_plant`, capped at the plant's temperature.
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(circ_pump_index)],
+                                          element_name='circ_pump_pressure',
+                                          input_columns=[],
+                                          result_columns=[])
+
+    n = PlantPumpCouplingControl(net,
+                                 networkcoupling,
+                                 temp_fluid_map_input_col=['t_flow_k'],
+                                 mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
+                                 level=level, order=order, name=name)
 
     return n.index
 
