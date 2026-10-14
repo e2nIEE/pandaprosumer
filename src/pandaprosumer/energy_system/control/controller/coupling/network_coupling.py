@@ -68,11 +68,15 @@ class NetworkCouplingControl(BasicProsumerController):
                     net[self.element_name].loc[self.element_index, self.mdot_fluid_map_input_col] = mdot_in_kg_per_s
 
         # EnergySystem FluidMix mapping outputs to prosumers
-        if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
-            result_fluid_mix = [
-                {FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
-                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]
-            self.finalize(net, results, result_fluid_mix)
-        else:
-            self.finalize(net, results)
+        self.finalize(net, results, self._fluid_mix_outputs(results))
         self.applied = True
+
+    def _fluid_mix_outputs(self, results):
+        """
+        The fluid outputs (FluidMix mappings) built from this step's results, or None when the coupling
+        declares none. Subclasses override it to hand over something else than the solved (temperature, flow).
+        """
+        if self.temp_fluid_map_output_idx is None or self.mdot_fluid_map_output_idx is None:
+            return None
+        return [{FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
+                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]

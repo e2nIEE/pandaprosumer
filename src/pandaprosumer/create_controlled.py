@@ -56,6 +56,7 @@ from pandaprosumer.controller import (
 from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
 from pandaprosumer.energy_system.control.controller.coupling.plant_pump_coupling import PlantPumpCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.substation_supply_coupling import SubstationSupplyCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
@@ -114,6 +115,29 @@ def create_controlled_plant_pump_coupling(net, circ_pump_index, level=0, order=0
                                  temp_fluid_map_input_col=['t_flow_k'],
                                  mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
                                  level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_substation_supply_coupling(net, heat_consumer_index, n_outputs=1, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN substation to the network's supply at a `heat_consumer` and return its
+    controller index.
+
+    Unlike a plain network coupling, only the supply temperature reaches the substation (see
+    `SubstationSupplyCouplingControl`): its mass flow comes from its own demand chain. `n_outputs` is the number
+    of substation elements fed from this consumer (one FluidMix mapping each, orders 0..n_outputs-1).
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(heat_consumer_index)],
+                                          element_name='heat_consumer',
+                                          input_columns=[],
+                                          result_columns=['t_from_k', 't_to_k', 'mdot_from_kg_per_s'])
+
+    n = SubstationSupplyCouplingControl(net,
+                                        networkcoupling,
+                                        temp_fluid_map_output_idx=0,
+                                        n_outputs=n_outputs,
+                                        level=level, order=order, name=name)
 
     return n.index
 
