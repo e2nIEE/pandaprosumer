@@ -380,3 +380,15 @@ class TestIceChp:
         elif cycle_test == 2:
             assert ice_chp_controller.step_results[0,3] == pytest.approx(np.array(expected_p_th_out_2))
 
+
+
+def test_create_controlled_ice_chp_keeps_name_and_in_service_apart():
+    """Regression: name and in_service were passed positionally in swapped order to create_ice_chp."""
+    from pandaprosumer.create import create_empty_prosumer_container, create_period
+    from pandaprosumer.create_controlled import create_controlled_ice_chp
+
+    prosumer = create_empty_prosumer_container()
+    period = create_period(prosumer, 3600, start="2020-01-01 00:00:00", end="2020-01-01 03:59:59", timezone="utc")
+    create_controlled_ice_chp(prosumer, 350, "ng", 0, name="Engine", period=period)
+    assert prosumer.ice_chp.at[0, "name"] == "Engine"
+    assert bool(prosumer.ice_chp.at[0, "in_service"]) is True
