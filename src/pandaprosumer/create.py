@@ -5,6 +5,7 @@ from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
 from pandaprosumer.element import (
+    BatteryStorageElementData,
     BoosterHeatPumpElementData,
     ChillerElementData,
     ConverterElementData,
@@ -1183,4 +1184,68 @@ def create_pv_production(
     )
 
     _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs
+):
+    """
+    Adds a battery storage element (electrical, no fluid) to the prosumer.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer container.
+    e_capacity_kwh : float
+        Energy capacity [kWh].
+    p_charge_max_kw, p_discharge_max_kw : float
+        Maximum charging / discharging power [kW].
+    eta_charge, eta_discharge : float, optional
+        Charging / discharging efficiencies in (0, 1], default 0.95.
+    soc_min, soc_max : float, optional
+        State-of-charge limits, default 0.1 / 0.9.
+    self_discharge_per_hour : float, optional
+        Fraction of the stored energy lost per hour, default 0.
+    in_service : bool, optional
+        Whether the element is in service, default True.
+    index : int, optional
+        Force a specified element index.
+    name : str, optional
+        Name of the element.
+
+    Returns
+    -------
+    int
+        Index of the created element in the ``battery_storage`` table.
+    """
+    add_new_element(prosumer, BatteryStorageElementData)
+    index = _get_index_with_check(prosumer, "battery_storage", index)
+    if name is None:
+        name = f"battery_storage_{index}"
+    entries = dict(
+        name=name,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        in_service=in_service,
+    )
+    _set_entries(prosumer, "battery_storage", index, **entries, **kwargs)
     return int(index)
