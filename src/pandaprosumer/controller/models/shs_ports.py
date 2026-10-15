@@ -21,6 +21,11 @@ Each is placed at a fixed height (``height_<port>_m``) or automatically (listed 
 * ``discharge_out`` in ``auto`` draws the lowest layer still at least at the demand's feed temperature (the
   hottest water is kept for later), the top when none is;
 * ``charge_out`` in ``auto`` draws the coldest layer (the best return for a heat pump).
+
+Water that ends up warmer than the layer above it (a hot return sent to the bottom, a cold charge at the top, a
+mid-height inflow colder than its layer) does not stay there in a real tank: it rises or sinks within minutes.
+After every sub-step the inverted layers are mixed with their neighbours until the profile is monotone again
+(``mix_inverted_layers``, the inversion mixing of TRNSYS Type 4 / Modelica Buildings), at constant energy.
 """
 
 import numpy as np
@@ -79,6 +84,37 @@ def _superbee(r):
 
 
 @njit
+def mix_inverted_layers(layer_temps_c):
+    """
+    The layers after buoyancy has undone every inversion: wherever a layer is warmer than the one above it, the
+    two are mixed (equal masses), and the mixed block keeps absorbing its neighbours while it is still warmer
+    than the layer above or colder than the layer below. The result is the monotone profile closest to the
+    input (pool-adjacent-violators); its heat is the input's. A monotone profile is returned unchanged.
+    """
+    n = layer_temps_c.size
+    block_sum = np.empty(n)
+    block_len = np.empty(n, dtype=np.int64)
+    n_blocks = 0
+    for i in range(n):
+        block_sum[n_blocks] = layer_temps_c[i]
+        block_len[n_blocks] = 1
+        n_blocks += 1
+        while n_blocks > 1 and (block_sum[n_blocks - 2] / block_len[n_blocks - 2]
+                                > block_sum[n_blocks - 1] / block_len[n_blocks - 1]):
+            block_sum[n_blocks - 2] += block_sum[n_blocks - 1]
+            block_len[n_blocks - 2] += block_len[n_blocks - 1]
+            n_blocks -= 1
+    mixed = np.empty(n)
+    i = 0
+    for b in range(n_blocks):
+        t_c = block_sum[b] / block_len[b]
+        for _ in range(block_len[b]):
+            mixed[i] = t_c
+            i += 1
+    return mixed
+
+
+@njit
 def ports_convection_step(layer_temps_c, charge_in, charge_out, discharge_out, discharge_in,
                           mdot_charge_kg_per_s, t_charge_c, mdot_discharge_kg_per_s, t_return_c,
                           t_ext_c, cp_j_per_kgk, rho_kg_per_m3, A_m2, dz_m, Sl_m2, S1_m2, SN_m2,
@@ -91,7 +127,8 @@ def ports_convection_step(layer_temps_c, charge_in, charge_out, discharge_out, d
     layer's, corrected towards the downwind one by the superbee limiter (second order where the profile is
     smooth, first order at a front -- the scheme of ``tvd_convection_step``, interface by interface).
     Inflows enter at their own temperature, outflows leave at their layer's, so the heat the layers gain is
-    exactly the heat the connections bring minus what they take, the wall losses and nothing else.
+    exactly the heat the connections bring minus what they take, the wall losses and nothing else. The layers
+    the step leaves inverted are then mixed by buoyancy (``mix_inverted_layers``).
     """
     T = layer_temps_c
     n = T.size
@@ -148,7 +185,7 @@ def ports_convection_step(layer_temps_c, charge_in, charge_out, discharge_out, d
             advected -= face_flux[i - 1]  # the interface below takes its flow down out of i
         heat_w += cp_j_per_kgk * advected
         new_t[i] = T[i] + dt_s * heat_w / (layer_mass_kg * cp_j_per_kgk)
-    return new_t
+    return mix_inverted_layers(new_t)
 
 
 @njit
