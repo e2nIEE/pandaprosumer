@@ -1154,7 +1154,11 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0 or stagnated:
             # If the actual output temperature is the same as the promised one, the storage is correctly applied.
-            # Also break out when the reapply loop has stagnated -- see comment above.
+            # Also break out when the reapply loop has stagnated -- see comment above. Then the return differs from
+            # the promise the sources booked against: say so (EnergyLeakWarning) rather than lose it silently.
+            self._check_return_contract(prosumer, t_received_out_c, mdot_received_kg_per_s,
+                                        float(self.fluid.get_heat_capacity(
+                                            CELSIUS_TO_K + (t_received_out_c + self.t_keep_return_c) / 2)) / 1e3)
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
             self.t_previous_out_charge_c = np.nan

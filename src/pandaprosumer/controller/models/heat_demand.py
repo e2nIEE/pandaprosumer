@@ -249,8 +249,6 @@ class HeatDemandController(BasicProsumerController):
 
         q_demand_kw, t_feed_demand_c, t_return_demand_c, mdot_demand_kg_per_s = self._demand_q_tf_tr_m(prosumer)
 
-        # ToDo: If t_in < t_out, return t_in, not t_out
-
         if np.isnan(self._t_in_c):
             # Upstream FluidMix initiator (HP, HX, etc.) didn't supply any fluid this
             # step — typically because a source controller was off. Without an inlet
@@ -282,6 +280,11 @@ class HeatDemandController(BasicProsumerController):
         assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
+        if self._t_in_c < t_return_demand_c:
+            # A feed colder than the return cannot heat anything: the water passes through and leaves at the
+            # temperature it came in, not at the contract return (that would book negative heat and hand the
+            # source back water warmer than it delivered). The differing return then reruns the source.
+            t_return_demand_c = self._t_in_c
         t_mean_c = (self._t_in_c + t_return_demand_c) / 2
         cp_kj_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + t_mean_c)) / 1000
         if np.isnan(self._mdot_received_kg_per_s):

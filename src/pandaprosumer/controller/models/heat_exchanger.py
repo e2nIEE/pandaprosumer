@@ -467,7 +467,7 @@ class HeatExchangerController(BasicProsumerController):
                         t_2_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_2_kg_per_s
                     else:
                         t_2_in_new_c = t_in_2_required_c
-                    if abs(t_2_in_new_c - t_in_2_required_c) > 1:
+                    if abs(t_2_in_new_c - t_in_2_required_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
                         # If this recalculation changes the condenser input temperature, rerun the calculation
                         # with the new temperature
                         t_in_2_required_c = t_2_in_new_c

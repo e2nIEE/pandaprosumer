@@ -45,10 +45,12 @@ all four via that helper.
 ## EnergyLeakWarning
 
 `EnergyLeakWarning` (defined in `src/pandaprosumer/controller/mapped.py`) fires when
-a producer's mass flow diverges from the sum dispatched at the FluidMix interface.
-Today it only triggers for a Heat Pump with `overflow_strategy='cap'` when
-`min_p_comp_kw` is hit. If you write a test that intentionally exercises that
-combination, expect the warning: either assert on it with
+energy is booked on one side of a FluidMix boundary only: a producer's mass flow
+diverges from the sum dispatched (Heat Pump with `overflow_strategy='cap'` at
+`min_p_comp_kw`), a producer books more or less heat than its labelled outlet
+stream carries, or a responder finalizes on a return other than the one it promised
+(e.g. a storage fed in parallel with its demand). If you write a test that
+intentionally exercises such a combination, expect the warning: either assert on it with
 `pytest.warns(EnergyLeakWarning)` or silence it with
 `warnings.simplefilter("ignore", EnergyLeakWarning)`. Getting an unexpected
 `EnergyLeakWarning` in any *other* test usually means a real coupling bug, not a

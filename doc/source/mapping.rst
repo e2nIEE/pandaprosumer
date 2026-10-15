@@ -170,13 +170,21 @@ that timestep with:
 - the active ``overflow_strategy``,
 - a hint pointing to ``'dump_on_last'`` or ``'dump_proportional'`` as the fix.
 
-In practice this warning currently fires only when an element is
-explicitly configured with the legacy ``overflow_strategy='cap'`` AND
-its thermal-floor constraint is active (Heat Pump pinned at
-``min_p_comp_kw`` with a demand that requires less). Under the default
-``'dump_proportional'`` (or ``'dump_on_last'``) it never fires. The
-boilers also reconcile via ``t_out_c`` under ``'cap'``, so they stay
-silent under every strategy.
+The same check also compares the booked ``q_kw`` with the heat the
+labelled outlet stream carries, ``mdot * cp * (t_out_c - t_in_c)``
+(when the producer passes its fluid's cp): a producer booking power on a
+stream labelled with the requested temperatures, or with no flow, warns.
+
+On the responder side, ``_check_return_contract`` warns when a controller
+finalizes on a return temperature other than the one it promised its
+initiators (``t_keep_return_c``): they booked their heat against the
+promise. The stratified heat storage and the heat pump evaporator call it
+in the branch that accepts such a mismatch (a stagnated reapply loop, an
+initiator on another level).
+
+Under the default ``'dump_proportional'`` (or ``'dump_on_last'``) the mass
+flow part never fires; the boilers reconcile via ``t_out_c`` under
+``'cap'``.
 
 Example warning message::
 

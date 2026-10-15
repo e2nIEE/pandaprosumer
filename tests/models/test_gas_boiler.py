@@ -320,8 +320,12 @@ class TestGasBoiler:
         gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         gsb_controller.control_step(prosumer)
 
-        # With allow_stop=False, the boiler should maintain minimum power even when demand is very low
+        # With allow_stop=False, the boiler should maintain minimum power even when demand is very low: the outlet
+        # rises until the requested flow carries it, with the fluid's cp at the mean temperature
         t_high_recalculated_c = t_low_c + min_power_kw / (mdot_dmd * 4.186)
+        for _ in range(5):
+            cp_kj_per_kgk = prosumer.fluid.get_heat_capacity(273.15 + (t_high_recalculated_c + t_low_c) / 2) / 1000
+            t_high_recalculated_c = t_low_c + min_power_kw / (mdot_dmd * cp_kj_per_kgk)
         mdot_fuel_expected_kg_per_s = min_power_kw / (lhv * (params['efficiency_percent'] / 100))
         expected = [min_power_kw, mdot_dmd, t_low_c, t_high_recalculated_c, mdot_fuel_expected_kg_per_s]
         assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)

@@ -58,13 +58,26 @@ FluidMix responders must:
 
 ### `EnergyLeakWarning`
 
-Defined in `src/pandaprosumer/controller/mapped.py`. Emitted by
-`_check_fluid_mix_balance` when `producer.mdot != sum(dispatched_mdot)`
-at the FluidMix interface. Currently fires only for HP +
-`overflow_strategy='cap'` + `min_p_comp_kw` triggered. If you write a
-test that intentionally exercises that combination, expect the warning
-and either assert on it (`pytest.warns(EnergyLeakWarning)`) or silence
-it (`warnings.simplefilter("ignore", EnergyLeakWarning)`).
+Defined in `src/pandaprosumer/controller/mapped.py`. Emitted when energy
+is booked on one side of a FluidMix boundary only:
+
+- `_check_fluid_mix_balance` (producer side): `producer.mdot !=
+  sum(dispatched_mdot)` (HP + `overflow_strategy='cap'` + `min_p_comp_kw`),
+  or the booked `q_kw` differs from what the labelled outlet stream
+  carries, `mdot * cp * (t_out - t_in)` (checked when the caller passes
+  the fluid's cp).
+- `_check_return_contract` (responder side): a responder finalizes on a
+  return temperature other than the one it promised (`t_keep_return_c`),
+  e.g. a stratified storage whose reapply loop stagnated, or a source on
+  another level. Known case: HP feeding a demand and a storage in
+  parallel.
+
+Models must book with the temperatures really exchanged: the received
+`input_mass_flow_with_temp`, and returns their responders really give back
+(the reapply / `t_previous_*` mechanism), never the requested feed or the
+promised return. If you write a test that intentionally exercises a
+leaking combination, assert on it (`pytest.warns(EnergyLeakWarning)`) or
+silence it (`warnings.simplefilter("ignore", EnergyLeakWarning)`).
 
 ### Adding a new parameter to a producer element
 
