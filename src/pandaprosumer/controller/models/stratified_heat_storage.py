@@ -9,6 +9,11 @@ from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 
+#: The tank is charged AT min_useful_temp_c, so a full tank sits on that threshold and the first wall
+#: loss leaves its top a few mK below it. The residual-discharge gate accepts a top layer down to this
+#: margin under the threshold, otherwise a full tank refuses to serve exactly when its source falls short.
+MIN_USEFUL_MARGIN_K = 0.5
+
 
 @njit
 def tvd_resolution_in_time(layer_temps_c,
@@ -400,16 +405,23 @@ class StratifiedHeatStorageController(BasicProsumerController):
         Discharge mass flow that carries the residual demand energy ``e_residual_kgk`` (in kg/s·K, i.e.
         mdot·ΔT) at the top-layer temperature, or 0 when the tank is spent.
 
-        Gate on min_useful_temp_c: once the top layer has fallen below the minimum usable temperature the
-        tank is SPENT — the demand goes (honestly) uncovered. Without this gate the divisor
+        Gate on min_useful_temp_c: once the top layer has fallen below the minimum usable temperature
+        (minus ``MIN_USEFUL_MARGIN_K``) the tank is SPENT — the demand goes (honestly) uncovered. Without this gate the divisor
         (t_discharge_out − t_demand_in) → 0 as the tank drains toward the return temperature and the mass
         flow explodes, blowing up the TVD layer solver ("SHS model has diverged" with a negative layer).
+        The flow never carries more over the step than the energy stored above ``t_demand_in_c``.
         """
         t_min_useful_c = self._get_element_param(prosumer, 'min_useful_temp_c')
         if t_min_useful_c is None or np.isnan(t_min_useful_c):
             t_min_useful_c = t_demand_in_c + 1.0  # ≥1 K usable ΔT floor
-        if t_discharge_out_c >= t_min_useful_c and t_discharge_out_c - t_demand_in_c > 0.5:
-            return max(0.0, e_residual_kgk / (t_discharge_out_c - t_demand_in_c))
+        if t_discharge_out_c >= t_min_useful_c - MIN_USEFUL_MARGIN_K and t_discharge_out_c - t_demand_in_c > 0.5:
+            mdot_kg_per_s = max(0.0, e_residual_kgk / (t_discharge_out_c - t_demand_in_c))
+            # The flow is sized on the top layer's temperature for the whole step: a nearly spent tank (a
+            # thin hot top over cold water) would deliver more than it stores. Cap it at the energy stored
+            # above the demand return, spread over the step.
+            stored_kgk = sum(float(self.fluid.get_density(CELSIUS_TO_K + t_c)) * self.A_m2 * self.dz_m
+                             * max(0.0, t_c - t_demand_in_c) for t_c in self._layer_temps_c)
+            return min(mdot_kg_per_s, stored_kgk / (self.resol * (t_discharge_out_c - t_demand_in_c)))
         return 0.0
 
     def _apply_setpoints(self, prosumer, mdot_charge_setpoint_kg_per_s, mdot_discharge_setpoint_kg_per_s,
@@ -807,7 +819,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                     # (Tank spent — top below the usable threshold — gives no
                     # discharge; the demand reports q_uncovered instead.)
                     e_demand = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
-                    e_bypass = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c)
+                    e_bypass = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_in_c)  # iso-energy, as in _apply_setpoints
                     mdot_discharge_kg_per_s = self._residual_discharge_mdot(prosumer, e_demand - e_bypass,
                                                                             t_discharge_out_c, t_demand_in_c)
             else:
