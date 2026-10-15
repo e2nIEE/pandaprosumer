@@ -205,6 +205,19 @@ class HeatPumpController(BasicProsumerController):
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c)
 
+    def _cop_mode(self, prosumer):
+        """
+        The COP calculation mode: 'lorenz' when the parameter is unset (None, NaN or empty), else
+        'carnot' or 'lorenz' (case insensitive).
+        """
+        mode = self._get_element_param(prosumer, 'mode')
+        if mode is None or (isinstance(mode, float) and np.isnan(mode)) or str(mode).strip() == '':
+            return 'lorenz'
+        mode = str(mode).strip().lower()
+        if mode not in ('carnot', 'lorenz'):
+            raise ValueError(f"Heat pump '{self.name}': unknown COP mode '{mode}', expected 'carnot' or 'lorenz'")
+        return mode
+
     def _calculate_heat_pump(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c):
         """
         Main method for Heat Pump physical calculation during one time step
@@ -248,31 +261,19 @@ class HeatPumpController(BasicProsumerController):
                     mdot_cond_kg_per_s, t_cond_in_c, t_cond_in_c,
                     0, t_evap_in_c, t_evap_in_c)
 
-        # 3. Calculate carnot cop
-        # FixMe: Why using the condenser output temperature ?
-        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
-
-        # 4. Calculate cop of heat pump
-        cop_hp = carnot_efficiency * cop_carnot
-
-        # 5. Calculate the compressor power power_comp
+        # 3.-5. COP and compressor power. 'lorenz' (the default) uses the log-mean temperatures of the
+        # condenser and evaporator streams, so a colder return raises the COP; 'carnot' only sees the
+        # condenser outlet temperature
+        if self._cop_mode(prosumer) == 'carnot':
+            cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+            cop_hp = carnot_efficiency * cop_carnot
+        else:
+            # Log-mean temperatures in K (the difference is the same in C and K)
+            mean_th_k = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
+            mean_tc_k = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+            cop_lorenz = mean_th_k / (mean_th_k - mean_tc_k)
+            cop_hp = carnot_efficiency * cop_lorenz
         p_comp_kw = q_cond_kw / cop_hp
-        
-        # Check COP calculation mode
-        mode = self._get_element_param(prosumer, 'mode')
-        if mode:
-            mode = str(mode).lower()  # Make case insensitive
-            if mode == 'lorenz':
-                # Calculate Lorenz cop
-                mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
-                mean_tc_c = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
-                cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
-                # Calculate cop of heat pump with Lorenz
-                cop_hp_lz = carnot_efficiency * cop_lorenz
-                p_comp_lz_kw = q_cond_kw / cop_hp_lz
-                # Use Lorenz compressor power
-                p_comp_kw = p_comp_lz_kw
-            # else: default 'carnot' mode already calculated above
 
         # 6. Calculate power of evaporator Q_evap
         q_evap_kw = q_cond_kw - p_comp_kw

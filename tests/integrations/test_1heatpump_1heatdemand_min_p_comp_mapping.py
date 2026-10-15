@@ -70,6 +70,7 @@ class Test1HeatPump1HeatDemandMinPCompMapping:
         max_p_comp_kw = 100.0
         expected_cop = 3.375  # 0.5 * (76.85+273) / (76.85-25)
         hp_params = {
+            'mode': 'carnot',
             'carnot_efficiency': 0.5,
             'pinch_c': 0,
             'delta_t_evap_c': 5,
