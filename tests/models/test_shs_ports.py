@@ -3,8 +3,8 @@ import numpy as np
 import pytest
 
 from pandaprosumer.controller.models.shs_ports import (
-    auto_discharge_layer, auto_inlet_layer, layer_at_height, parse_auto_ports, plug_order, ports_convection_step,
-    ports_resolution_in_time,
+    auto_discharge_layer, auto_inlet_layer, layer_at_height, mix_inverted_layers, parse_auto_ports, plug_order,
+    ports_convection_step, ports_resolution_in_time,
 )
 
 N = 50
@@ -96,7 +96,7 @@ def test_a_lukewarm_charge_through_an_auto_inlet_leaves_the_hot_top_alone():
     auto_inlet = auto_inlet_layer(STRATIFIED, 50.)
     top_entry, _ = _hour(STRATIFIED, DEFAULT, 1., 50., 0., 30.)
     lance, _ = _hour(STRATIFIED, (auto_inlet, BOTTOM, TOP, BOTTOM), 1., 50., 0., 30.)
-    assert top_entry[-1] < 60.  # the top was cooled by the lukewarm water
+    assert top_entry[-1] < 65.  # the top was cooled by the lukewarm water (mixed with the layers it sank through)
     assert lance[-1] > 79.  # the top is still the hot water it was
 
 
@@ -107,3 +107,63 @@ def test_an_auto_discharge_keeps_the_hottest_water_for_later():
     mid_draw, _ = _hour(STRATIFIED, (TOP, BOTTOM, outlet, BOTTOM), 0., 80., .5, 30.)
     assert mid_draw[-1] == pytest.approx(STRATIFIED[-1], abs=.5)
     assert top_draw[-1] < mid_draw[-1] - 5.
+
+
+def _is_monotone(temps_c, tol_k=1e-9):
+    return bool(np.all(np.diff(temps_c) >= -tol_k))
+
+
+@pytest.mark.parametrize("profile, expected", [
+    ([30., 50., 80.], [30., 50., 80.]),  # already stratified: untouched
+    ([80., 30.], [55., 55.]),  # hot under cold: the two mix
+    ([30., 70., 50., 80.], [30., 60., 60., 80.]),  # one inversion in the middle: a mixed plateau
+    ([80., 70., 60., 50.], [65., 65., 65., 65.]),  # fully inverted: uniform
+    ([30., 90., 40., 50., 80.], [30., 60., 60., 60., 80.]),  # the plateau grows while it is warmer than the next layer
+])
+def test_mix_inverted_layers_gives_the_closest_monotone_profile_at_the_same_heat(profile, expected):
+    mixed = mix_inverted_layers(np.array(profile))
+    np.testing.assert_allclose(mixed, expected)
+    assert mixed.sum() == pytest.approx(sum(profile))
+
+
+def test_an_inverted_tank_mixes_within_one_sub_step():
+    """Hot water under cold water does not stay there: after one step, no layer is warmer than the one above."""
+    inverted = np.linspace(80., 30., N)
+    after = ports_convection_step(inverted, *DEFAULT, 0., 80., 0., 30., dt_s=DT_S, **NO_LOSS)
+    assert _is_monotone(after)
+    assert np.allclose(after, 55.)  # a fully inverted profile ends uniform at its mean
+    assert _energy_kwh(after) == pytest.approx(_energy_kwh(inverted), abs=1e-9)
+
+
+@pytest.mark.parametrize("ports, mdot_charge, t_charge_c, mdot_discharge, t_return_c, what", [
+    (DEFAULT, 0., 80., .5, 60., "a return hotter than the bottom rises through the cold layers"),
+    (DEFAULT, 1., 40., 0., 30., "a charge colder than the top sinks through the hot layers"),
+    ((TOP, BOTTOM, TOP, 25), 0., 80., .5, 40., "a mid-height return colder than its layer sinks"),
+    ((25, BOTTOM, TOP, BOTTOM), 1., 75., 0., 30., "a mid-height charge hotter than its layer rises"),
+])
+def test_inflows_that_invert_the_layers_are_mixed_by_buoyancy(ports, mdot_charge, t_charge_c, mdot_discharge,
+                                                              t_return_c, what):
+    """Every hour-long inflow that would leave warm water under cold water ends with a monotone profile, and the
+    layers still gain exactly what the connections brought (the mixing moves heat, it does not create it)."""
+    temps_c, brought_kwh = _hour(STRATIFIED, ports, mdot_charge, t_charge_c, mdot_discharge, t_return_c)
+    assert _is_monotone(temps_c), what
+    assert _energy_kwh(temps_c) - _energy_kwh(STRATIFIED) == pytest.approx(brought_kwh, abs=0.01)
+    assert temps_c.min() >= min(STRATIFIED.min(), t_charge_c, t_return_c) - 1e-6
+    assert temps_c.max() <= max(STRATIFIED.max(), t_charge_c, t_return_c) + 1e-6
+
+
+def test_a_hot_return_at_the_bottom_warms_the_cold_layers_not_only_the_bottom_one():
+    """60 °C into a 30..80 °C bottom: without buoyancy the 60 °C water would sit under 31 °C water."""
+    temps_c, _ = _hour(STRATIFIED, DEFAULT, 0., 80., .5, 60.)
+    warmed = np.flatnonzero(temps_c > STRATIFIED + 1.)
+    assert warmed.size > 1 and warmed[0] == BOTTOM
+    assert temps_c[BOTTOM] == pytest.approx(temps_c[warmed[-1]], abs=1e-6)  # one mixed block
+    assert temps_c[BOTTOM] < 60.  # mixed with the cold layers it rose through
+
+
+def test_wall_losses_at_the_top_do_not_leave_a_colder_layer_over_a_warmer_one():
+    """The top layer loses through the lid as well; the water it cools sinks instead of staying on top."""
+    uniform = np.full(N, 80.)
+    temps_c, _ = _hour(uniform, DEFAULT, 0., 80., 0., 30., geometry=GEOMETRY)
+    assert _is_monotone(temps_c)
+    assert temps_c[-1] < 80. and temps_c[0] < 80.

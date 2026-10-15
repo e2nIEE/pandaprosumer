@@ -105,7 +105,10 @@ above it minus what leaves them, carried at the upwind layer's temperature with 
 at their own temperature and outflows leave at their layer's. The heat of the layers therefore changes by exactly
 what the connections bring minus the wall losses, whatever the heights and the flows (the scheme used before, a
 uniform net flow with end-layer boundary terms, lost or created a few percent when charging and discharging at
-once, up to 20 % of a step's exchange; ``tests/models/test_shs_ports.py``).
+once, up to 20 % of a step's exchange; ``tests/models/test_shs_ports.py``). A layer left warmer than the one above
+it (a return hotter than the bottom, a charge colder than the top, a mid-height inflow colder than its layer, an
+inverted initial profile) is mixed with its neighbours after every sub-step until the profile is monotone again,
+at constant heat, the way buoyancy undoes an inversion within minutes in a real tank.
 
 Exchanged energy
 -----------------------

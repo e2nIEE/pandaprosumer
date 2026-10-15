@@ -82,8 +82,10 @@ def test_idle_isothermal_tank_loses_ua_delta_t():
     q_w = (e0 - e1) / resol_s
     ua_w_per_k = shs.U_w_per_m2k * (2 * shs.A_m2 + N_LAYERS * 2 * np.pi * R_M * shs.dz_m)
     assert q_w == pytest.approx(ua_w_per_k * (T_TANK_C - T_EXT_C), rel=0.02)
-    # Every layer cooled; the end layers (extra disc) cooled more than the interior ones.
+    # Every layer cooled. The bottom layer (extra disc) cooled more and stays the coldest; the top layer's
+    # extra loss does not leave it colder than the water below (buoyancy mixes it down), so the layers above
+    # the bottom end uniform.
     t = np.asarray(shs._layer_temps_c)
     assert (t < T_TANK_C).all()
-    assert t[0] < t[1] and t[-1] < t[-2]
-    assert t[1:-1] == pytest.approx(t[1], abs=1e-9)
+    assert t[0] < t[1]
+    assert t[1:] == pytest.approx(t[1], abs=1e-9)

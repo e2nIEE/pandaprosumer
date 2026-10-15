@@ -8,8 +8,8 @@ from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.models.shs_ports import (
-    HEIGHT_PARAMS, PORTS, auto_discharge_layer, auto_inlet_layer, layer_at_height, parse_auto_ports, plug_order,
-    ports_resolution_in_time,
+    HEIGHT_PARAMS, PORTS, auto_discharge_layer, auto_inlet_layer, layer_at_height, mix_inverted_layers,
+    parse_auto_ports, plug_order, ports_resolution_in_time,
 )
 
 #: The tank is charged AT min_useful_temp_c, so a full tank sits on that threshold and the first wall
@@ -69,7 +69,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
         elif not np.iterable(init_layer_temps_c):
             self._layer_temps_c = [float(init_layer_temps_c)] * self.N_l
         else:
-            self._layer_temps_c = init_layer_temps_c
+            self._layer_temps_c = list(init_layer_temps_c)
+        # warm water under cold water does not last in a tank: an inverted initial profile is what it mixes to
+        self._layer_temps_c = [float(t) for t in mix_inverted_layers(np.array(self._layer_temps_c, dtype=float))]
 
         self.fluid = prosumer.fluid
         # TODO: use thermal conductivity of prosumer.fluid

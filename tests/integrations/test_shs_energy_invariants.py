@@ -13,7 +13,9 @@ feeding the demand and the tank in parallel). Every hour must:
 * keep every layer between the ambient (the wall loses towards it) and the hottest water that entered;
 * never leave usable heat in the tank while the demand goes uncovered;
 * report as ``e_stored_kwh`` the heat its layers hold against the initial state, and a usable share
-  ``e_usable_kwh`` between 0 and that.
+  ``e_usable_kwh`` between 0 and that;
+* keep its layers monotone (no layer warmer than the one above it) whatever the inflows: a return hotter than
+  the bottom, a mid-height inflow colder than its layer or an inverted initial profile are mixed by buoyancy.
 """
 import numpy as np
 import pandas as pd
@@ -55,7 +57,7 @@ def _layer_energy_kwh(layers_c, controller, t_ref_c):
                for t_c in layers_c) / 3.6e6
 
 
-def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel, **ports):
+def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel, init_layer_temps_c=None, **ports):
     snapshots = []
     original = shs_module.StratifiedHeatStorageController.time_step
 
@@ -80,7 +82,8 @@ def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel, **ports):
                                                     tank_external_radius_m=.664, insulation_thickness_m=.1,
                                                     n_layers=50, min_useful_temp_c=t_feed_c, t_ext_c=T_EXT_C,
                                                     max_dt_s=10, t_charge_target_c=t_target_c,
-                                                    init_layer_temps_c=[t_return_c] * 50, **ports)
+                                                    init_layer_temps_c=[t_return_c] * 50 if init_layer_temps_c is None
+                                                    else list(init_layer_temps_c), **ports)
     hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=2)
     GenericMapping(prosumer, initiator_id=cp, initiator_column="t_evap_in_c", responder_id=hp,
                    responder_column="t_evap_in_c", order=0)
@@ -181,3 +184,74 @@ def test_shs_energy_invariants_with_moved_connections(monkeypatch, t_feed_c, t_r
     if not np.allclose(shs.q_delivered_kw, hd.q_received_kw, atol=POWER_TOL_KW):
         failures.append("tank q_delivered != demand q_received")
     assert not failures, "\n".join(failures)
+
+
+def _energy_vs_initial_kwh(layers_c, controller):
+    """Internal energy of the tank against its initial profile (kWh), what ``e_stored_kwh`` reports."""
+    return sum(float(controller.fluid.get_density(273.15 + t_c)) * controller.A_m2 * controller.dz_m
+               * float(controller.fluid.get_heat_capacity(273.15 + t_c)) * (t_c - t0_c)
+               for t_c, t0_c in zip(layers_c, controller.init_layer_temps_c)) / 3.6e6
+
+
+def _balance_and_handover_failures(hp, shs, hd, energy, series=True):
+    """``energy`` is the layers' energy against the initial profile, hour by hour (25 values)."""
+    failures = []
+    for h in range(len(DEMAND_KW)):
+        d_u = energy[h + 1] - energy[h]
+        loss = shs.q_charge_kw[h] - shs.q_discharge_kw[h] - d_u
+        tol = BALANCE_TOL_KWH + BALANCE_TOL_SHARE * (shs.q_charge_kw[h] + shs.q_discharge_kw[h])
+        if not -tol <= loss <= MAX_WALL_LOSS_KWH + tol:
+            failures.append(f"h{h}: tank balance off by {loss:.1f} kWh")
+        if series and abs(hp.q_cond_kw[h] - shs.q_received_kw[h]) > POWER_TOL_KW:
+            failures.append(f"h{h}: heat pump q_cond {hp.q_cond_kw[h]:.1f} != tank q_received {shs.q_received_kw[h]:.1f}")
+        if hd.q_uncovered_kw[h] < -POWER_TOL_KW:
+            failures.append(f"h{h}: demand over-served by {-hd.q_uncovered_kw[h]:.1f} kW")
+        if abs(shs.e_stored_kwh[h] - energy[h + 1]) > 0.01 * abs(energy[h + 1]) + 1.0:
+            failures.append(f"h{h}: e_stored {shs.e_stored_kwh[h]:.1f} kWh, layers hold {energy[h + 1]:.1f}")
+    if series and not np.allclose(shs.q_delivered_kw, hd.q_received_kw, atol=POWER_TOL_KW):
+        failures.append("tank q_delivered != demand q_received")
+    return failures
+
+
+INVERSION_CASES = {
+    # the tank starts hot at the bottom and cold at the top
+    "inverted-start": dict(t_feed_c=80.0, t_return_c=40.0, t_target_c=np.nan,
+                           init_layer_temps_c=np.linspace(80.0, 40.0, 50)),
+    # the demand returns at 55 °C into a 30 °C bottom
+    "return-hotter-than-bottom": dict(t_feed_c=60.0, t_return_c=55.0, t_target_c=np.nan,
+                                      init_layer_temps_c=[30.0] * 50),
+    # the demand returns at 50 °C half-way up a 30..80 °C tank, where the water is already warmer
+    "return-into-a-warmer-layer": dict(t_feed_c=70.0, t_return_c=50.0, t_target_c=np.nan,
+                                       init_layer_temps_c=np.linspace(30.0, 80.0, 50), height_discharge_in_m=5.0),
+    # the heat pump charges at 60 °C a tank that is still at 80 °C
+    "charge-colder-than-tank": dict(t_feed_c=60.0, t_return_c=30.0, t_target_c=60.0,
+                                    init_layer_temps_c=[80.0] * 50),
+}
+
+
+@pytest.mark.parametrize("case", list(INVERSION_CASES))
+def test_shs_layers_stay_monotone_when_inflows_would_invert_them(monkeypatch, case):
+    """Warm water never stays under cold water: every hourly profile is monotone, the balance still closes
+    and nothing is over-served. An inverted start mixes to a uniform tank within the first hour."""
+    params = INVERSION_CASES[case]
+    (hp, shs, hd), controller, layers = _run(monkeypatch, parallel=False, **params)
+    energy = [_energy_vs_initial_kwh(t, controller) for t in layers]
+    failures = _balance_and_handover_failures(hp, shs, hd, energy)
+    for h, profile in enumerate(layers[1:]):
+        if np.any(np.diff(profile) < -1e-6):
+            failures.append(f"h{h}: inverted layers, bottom {profile[0]:.2f} °C, top {profile[-1]:.2f} °C, "
+                            f"{int(np.sum(np.diff(profile) < -1e-6))} inversions")
+    assert not failures, "\n".join(failures)
+
+
+def test_an_inverted_start_is_mixed_before_the_tank_is_used(monkeypatch):
+    """80 °C at the bottom under 40 °C at the top holds 60 °C water, not 80 °C water: the tank is mixed before
+    anything is drawn or promised, so it does not serve an 80 °C feed from a cold top nor return 80 °C water to
+    the heat pump while its top is cold."""
+    params = INVERSION_CASES["inverted-start"]
+    (hp, shs, hd), controller, layers = _run(monkeypatch, parallel=False, **params)
+    assert np.all(np.diff(layers[1]) >= -1e-6)
+    assert layers[1].max() <= 80.0 + 0.1
+    assert shs.q_discharge_kw[0] == pytest.approx(0.0, abs=POWER_TOL_KW)  # 60 °C water cannot serve 80 °C
+    assert shs.e_stored_kwh[0] == pytest.approx(_energy_vs_initial_kwh(layers[1], controller), abs=1.0)
+    assert hd.q_uncovered_kw[:7].max() <= POWER_TOL_KW  # the heat pump covers the morning demand meanwhile
