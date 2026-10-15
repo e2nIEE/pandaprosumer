@@ -48,9 +48,10 @@ class TestStratifiedHeatStorage:
                             'insulation_thickness_m', 'n_layers', 'min_useful_temp_c', 'k_fluid_w_per_mk',
                             'k_insu_w_per_mk', 'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c',
                             'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c', 'height_charge_in_m',
-                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service']
+                            'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'auto_ports',
+                            'in_service']
         expected_values = [None, 12., 4., 4.1, .15, 100, 65., .598, .028, 45., 12.5, 22.5,
-                           1, 1e-3, np.nan, np.nan, np.nan, np.nan, 0, np.nan, 0, True]
+                           1, 1e-3, np.nan, np.nan, np.nan, np.nan, 0, np.nan, 0, '', True]
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
         assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -92,9 +93,9 @@ class TestStratifiedHeatStorage:
                             'n_layers', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 't_ext_c',
                             'max_remaining_capacity_kwh', 't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c',
                             'height_charge_in_m', 'height_charge_out_m', 'height_discharge_out_m',
-                            'height_discharge_in_m', 'in_service', 'custom']
+                            'height_discharge_in_m', 'auto_ports', 'in_service', 'custom']
         expected_values = ['foo', 12., 4., 5., .15, 100, 22.5, .598, .028, 45., 12.5, 22.5,
-                           5, 1, 1, np.nan, np.nan, 10, 2, 11, 1, False, 'test']
+                           5, 1, 1, np.nan, np.nan, 10, 2, 11, 1, '', False, 'test']
 
         assert sorted(prosumer.stratified_heat_storage.columns) == sorted(expected_columns)
         assert prosumer.stratified_heat_storage.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -137,9 +138,8 @@ class TestStratifiedHeatStorage:
                       "height_discharge_out_m": 11,
                       "height_discharge_in_m": 1}
 
-        with pytest.raises(ValueError):
-            # height_charge_in_m < height_charge_out_m
-            create_stratified_heat_storage(prosumer, name='foo', **shs_params)
+        # A charge entering below its outlet flows upwards: legal (an auto-placed inlet can land there too)
+        create_stratified_heat_storage(prosumer, name='foo', **shs_params)
 
         shs_params = {"tank_height_m": 12.,
                       "tank_internal_radius_m": 4.,
@@ -156,9 +156,11 @@ class TestStratifiedHeatStorage:
                       "height_discharge_out_m": 4,
                       "height_discharge_in_m": 11}
 
-        with pytest.raises(ValueError):
-            # height_discharge_out_m < height_discharge_in_m
-            create_stratified_heat_storage(prosumer, name='foo', **shs_params)
+        # The demand's return entering above the discharge outlet: legal too
+        create_stratified_heat_storage(prosumer, name='foo', **shs_params)
+
+        with pytest.raises(ValueError, match="auto_ports"):
+            create_stratified_heat_storage(prosumer, name='foo', **{**shs_params, "auto_ports": "charge_in,top"})
 
         shs_params = {"tank_height_m": 12.,
                       "tank_internal_radius_m": 4.,
