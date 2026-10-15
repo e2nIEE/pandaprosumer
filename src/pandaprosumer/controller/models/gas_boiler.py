@@ -5,7 +5,7 @@ Module containing the GasBoilerController class.
 import numpy as np
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
 
 #: Required feed below the return by less than this is floating-point noise, not a real inversion.
@@ -249,7 +249,14 @@ class GasBoilerController(BasicProsumerController):
         assert t_out_required_c >= t_in_required_c, f"Gas Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
+            if nb_runs > MAX_RERUN:
+                raise RuntimeError(
+                    f"Gas Boiler {self.name}: did not converge after {MAX_RERUN} iterations at "
+                    f"timestep {self.time} in prosumer {prosumer.name}"
+                )
             q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
                 prosumer,
                 mdot_required_kg_per_s,
@@ -277,7 +284,7 @@ class GasBoilerController(BasicProsumerController):
                     t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
                 else:
                     t_in_new_c = t_in_required_c
-                if abs(t_in_new_c - t_in_required_c) > 1:
+                if abs(t_in_new_c - t_in_required_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
                     # If this recalculation changes the input temperature, rerun the calculation
                     # with the new temperature
                     t_in_required_c = t_in_new_c
@@ -292,7 +299,10 @@ class GasBoilerController(BasicProsumerController):
         if abs(mdot_delivered_kg_per_s - mdot_used_kg_per_s) > tol:
             cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
             if mdot_used_kg_per_s > tol:
-                t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                # cp re-evaluated at the new mean temperature, so the stream carries exactly q_kw
+                for _ in range(5):
+                    t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                    cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
                 mdot_delivered_kg_per_s = mdot_used_kg_per_s
                 # Reapply max_t_out_c constraint after mass/energy balance adjustment
                 max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')

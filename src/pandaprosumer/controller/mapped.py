@@ -13,6 +13,12 @@ from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
 
+#: Relative tolerance between the heat a producer books and the heat its labelled outlet stream carries (cp evaluated
+#: at slightly different temperatures along a calculation)
+LABEL_REL_TOL = 5e-3
+#: A responder that finalizes on a return differing from its promise by more than this power warns (kW)
+RETURN_CONTRACT_TOL_KW = 1.0
+
 
 class EnergyLeakWarning(UserWarning):
     """
@@ -590,6 +596,17 @@ class MappedController(Controller):
                                      defaults to 4.19 (water) if omitted
         :param tol_kw: Suppress the warning when |gap| < tol_kw
         """
+        if cp_fluid_kj_per_kgk is not None:
+            # The heat booked must be the heat the outlet stream carries: a producer that books power on a stream
+            # it labels with requested temperatures (or that has no flow) books heat nobody receives
+            carried_kw = (0.0 if mdot_kg_per_s is None else float(mdot_kg_per_s)) * cp_fluid_kj_per_kgk \
+                * (float(t_out_c) - float(t_in_c))
+            label_gap_kw = float(q_kw) - carried_kw
+            if abs(label_gap_kw) > max(tol_kw, LABEL_REL_TOL * abs(float(q_kw))):
+                warn((f"{self.name_class()} '{self.name}' at timestep {self.time}: books q_kw={q_kw:.3f} kW but "
+                      f"its outlet stream ({mdot_kg_per_s} kg/s, {t_in_c:.3f} -> {t_out_c:.3f} degC) carries "
+                      f"{carried_kw:.3f} kW: energy leak of {label_gap_kw:.3f} kW at the FluidMix interface."),
+                     EnergyLeakWarning, stacklevel=3)
         if mdot_kg_per_s is None or mdot_kg_per_s <= 1e-9:
             return  # Producer is off
         dispatched_mdot = float(np.sum(result_mdot_tab_kg_per_s)) if len(result_mdot_tab_kg_per_s) else 0.0
@@ -620,6 +637,34 @@ class MappedController(Controller):
             EnergyLeakWarning,
             stacklevel=3,
         )
+
+    def _check_return_contract(self, container, t_return_c, mdot_kg_per_s, cp_fluid_kj_per_kgk,
+                               tol_kw=RETURN_CONTRACT_TOL_KW):
+        """
+        Warn when this responder finalizes with a return temperature that differs from the one it promised its
+        initiators (``t_keep_return_c``, set in ``t_m_to_receive``).
+
+        The initiators booked their heat against the promise; a responder that accepts a different return (a
+        reapply loop that stagnated, an initiator on another level) leaves
+        ``mdot * cp * (t_keep_return - t_return)`` booked on one side of the boundary only. Call it in the branch
+        that finalizes, with the return actually handed back.
+
+        :param container: The prosumer/net/energy_system object
+        :param t_return_c: Return temperature actually handed back to the initiators [°C]
+        :param mdot_kg_per_s: Mass flow received from the initiators [kg/s]
+        :param cp_fluid_kj_per_kgk: Heat capacity of the fluid [kJ/(kg.K)]
+        :param tol_kw: Suppress the warning when the leak is below tol_kw
+        """
+        if np.isnan(self.t_keep_return_c) or mdot_kg_per_s is None or np.isnan(mdot_kg_per_s) \
+                or mdot_kg_per_s <= 1e-9 or np.isnan(t_return_c):
+            return
+        leak_kw = float(mdot_kg_per_s) * cp_fluid_kj_per_kgk * (self.t_keep_return_c - float(t_return_c))
+        if abs(leak_kw) < tol_kw:
+            return
+        warn((f"{self.name_class()} '{self.name}' at timestep {self.time}: finalizes with a return of "
+              f"{t_return_c:.3f} degC to its initiators, which booked against the promised {self.t_keep_return_c:.3f} "
+              f"degC: energy leak of {leak_kw:.3f} kW at the FluidMix interface ({mdot_kg_per_s:.4f} kg/s)."),
+             EnergyLeakWarning, stacklevel=3)
 
     def finalize(self, container, result, result_fluid_mix=None):
         """

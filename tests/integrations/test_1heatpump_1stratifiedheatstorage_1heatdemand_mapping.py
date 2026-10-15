@@ -138,6 +138,10 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         Same test with Heat Pump, Stratified heat Storage and Heat Demand, but with the Heat Pump bypassing the SHS
         (low order direct mapping from the HeatPump directly to the heat Demand
         Should be equivalent to the previous test
+
+        Hour 5 re-baked: the heat pump now re-weights its condenser return by the flows it really delivers
+        down to TEMPERATURE_CONVERGENCE_THRESHOLD_C (it stopped at 1 K and booked 2.15 kW on a 20.4 degC
+        return nobody gave back); the tank then discharges as in hours 6-7.
         """
         prosumer = create_empty_prosumer_container()
         data = pd.DataFrame({"Tin_evap": [25] * 13,
@@ -226,8 +230,8 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
             'p_comp_kw': [100.0, 99.98, 15.62, 0.05, 0.02, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0],
             'q_evap_kw': [221.05, 221.0, 34.52, 0.1, 0.05, 221.05, 221.05, 221.05, 221.05, 221.05, 221.05, 221.05, 221.05],
             'cop': [3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21, 3.21],
-            'mdot_cond_kg_per_s': [1.28, 1.28, 0.36, 0.03, 0.03, 1.29, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28],
-            't_cond_in_c': [20.0, 20.0, 46.4, 78.69, 79.4, 20.4, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
+            'mdot_cond_kg_per_s': [1.28, 1.28, 0.36, 0.03, 0.03, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28, 1.28],
+            't_cond_in_c': [20.0, 20.0, 46.4, 78.69, 79.4, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0, 20.0],
             't_cond_out_c': [80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0, 80.0],
             'mdot_evap_kg_per_s': [10.57, 10.57, 1.65, 0.0, 0.0, 10.57, 10.57, 10.57, 10.57, 10.57, 10.57, 10.57, 10.57],
             't_evap_in_c': [25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0],
@@ -236,10 +240,10 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
         hp_expected = pd.DataFrame(hp_data, index=data.index)
 
         shs_data = {
-            'mdot_discharge_kg_per_s': [0.0, 0.0, 0.0, 0.0, 0.0, 0.71, 0.72, 0.72, 0.0, 0.0, 0.0, 0.0, 0.0],
-            't_discharge_out_c': [20.0, 80.0, 80.0, 79.98, 79.91, 79.85, 79.76, 79.69, 79.62, 79.55, 79.49, 79.42, 79.35],
-            'q_delivered_kw': [0.0, 0.0, 0.0, 0.0, 0.0, 176.8, 178.95, 178.95, 0.0, 0.0, 0.0, 0.0, 0.0],
-            'e_stored_kwh': [313.68, 629.86, 678.05, 677.57, 677.04, 499.44, 321.29, 144.65, 144.61, 144.56, 144.47, 144.37, 144.27],
+            'mdot_discharge_kg_per_s': [0.0, 0.0, 0.0, 0.0, 0.0, 0.72, 0.72, 0.72, 0.0, 0.0, 0.0, 0.0, 0.0],
+            't_discharge_out_c': [20.0, 80.0, 80.0, 79.98, 79.91, 79.85, 79.76, 79.68, 79.62, 79.55, 79.49, 79.42, 79.34],
+            'q_delivered_kw': [0.0, 0.0, 0.0, 0.0, 0.0, 178.95, 178.95, 178.95, 0.0, 0.0, 0.0, 0.0, 0.0],
+            'e_stored_kwh': [313.68, 629.86, 678.05, 677.57, 677.04, 497.28, 319.15, 142.53, 142.49, 142.45, 142.35, 142.25, 142.15],
 
         }
         shs_expected = pd.DataFrame(shs_data, index=data.index)
