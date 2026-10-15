@@ -55,8 +55,11 @@ class StratifiedHeatStorageControllerData:
         Total fluid sent to downstream demand (discharge + bypass mixed). ``t_delivered_in_c``
         is the return temperature from downstream [kg/s, °C, °C, kW].
 
-        **e_stored_kwh** - The total stored heat energy in the storage above the element
-         minimum usefully temperature compared to the initial state [kWh]
+        **e_stored_kwh** - The heat stored in every layer compared to the initial state (negative
+        when the tank is colder than it started) [kWh]
+
+        **e_usable_kwh** - The heat the demand can still draw: the layers not colder than
+        ``min_useful_temp_c`` (minus ``MIN_USEFUL_MARGIN_K``), above the demand's return [kWh]
 
     """
     element_index: List[int]
@@ -69,5 +72,5 @@ class StratifiedHeatStorageControllerData:
         "mdot_charge_kg_per_s", "t_charge_in_c", "t_charge_out_c", "q_charge_kw",
         "mdot_discharge_kg_per_s", "t_discharge_in_c", "t_discharge_out_c", "q_discharge_kw",
         "mdot_delivered_kg_per_s", "t_delivered_in_c", "t_delivered_out_c", "q_delivered_kw",
-        "e_stored_kwh",
+        "e_stored_kwh", "e_usable_kwh",
     ])
