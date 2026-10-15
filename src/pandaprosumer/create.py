@@ -109,7 +109,7 @@ def create_heat_pump(prosumer,
                      max_cop=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
-                     mode='carnot',
+                     mode='lorenz',
                      overflow_strategy='dump_proportional',
                      name=None,
                      index=None,
@@ -153,7 +153,9 @@ def create_heat_pump(prosumer,
         **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
         prosumer's fluid will be used
 
-        **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+        **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+        evaporator temperatures, so a colder return raises the COP) or 'carnot' (condenser outlet temperature \
+        only) (case insensitive)
 
     OUTPUT:
         **index** (int) - The unique ID of the created heat pump

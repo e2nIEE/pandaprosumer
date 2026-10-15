@@ -32,7 +32,7 @@ class Test1HeatPump1HeatDemandMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1_kw", "tdmd_feed1_c", "tdmd_return1_c"]
         cp_result_columns = ["t_evap_in_c", "qdemand_kw", "tdmd_feed_c", "tdmd_return_c"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
@@ -142,6 +142,7 @@ class Test1HeatPump1HeatDemandMapping:
         max_ramp_down = -0.02
         
         hp_params_test = {
+            'mode': 'carnot',
             'carnot_efficiency': 0.5,
             'max_p_comp_kw': 200,
             'delta_t_evap_c': 5,

@@ -227,7 +227,7 @@ def create_controlled_heat_pump(prosumer,
                                 max_cop=np.nan,
                                 cond_fluid=None,
                                 evap_fluid=None,
-                                mode='carnot',
+                                mode='lorenz',
                                 name=None,
                                 index=None,
                                 in_service=True,
@@ -273,7 +273,8 @@ def create_controlled_heat_pump(prosumer,
             **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
             prosumer's fluid will be used
 
-            **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+            **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+            evaporator temperatures) or 'carnot' (condenser outlet temperature only) (case insensitive)
 
             **level** (int, default 0) - The level of the controller
 

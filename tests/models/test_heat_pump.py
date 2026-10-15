@@ -7,7 +7,9 @@ from pandaprosumer.controller.models.heat_pump import ShadowedInputWarning
 
 
 def _default_argument():
-    return {'max_p_comp_kw': 500,
+    # The expected values below were computed with the Carnot COP
+    return {'mode': 'carnot',
+            'max_p_comp_kw': 500,
             'min_p_comp_kw': .01,
             'max_t_cond_out_c': 100,
             'max_cop': 10,
@@ -43,7 +45,7 @@ class TestHeatPump:
                             "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy"]
         expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
-                           'water', 'water', 'carnot', True, 'dump_proportional']
+                           'water', 'water', 'lorenz', True, 'dump_proportional']
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -78,7 +80,7 @@ class TestHeatPump:
                             "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
                             "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy", "custom"]
-        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'carnot',
+        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'lorenz',
                            False, 'dump_proportional', 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
@@ -308,7 +310,7 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand out of working range
         Check that the mass flow and temperature of the fluid dispatched to the demand is at the limit
         """
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -334,7 +336,7 @@ class TestHeatPump:
         Test the Heat Pump controller with 3 demands out of working range
         Test the merit order dispatch logic
         """
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -517,7 +519,7 @@ class TestHeatPump:
         max_ramp_up_kw_per_s = 50
         max_ramp_down_kw_per_s = 60
         resol_s = 1
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -670,7 +672,7 @@ class TestHeatPump:
         
         # Test in Lorenz mode
         hp_controller = prosumer.controller.iloc[hp_controller_index].object
-        prosumer.heat_pump.iloc[0].mode = 'lorenz'
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = 'lorenz'
         
         hp_controller.control_step(prosumer)
         
@@ -779,7 +781,7 @@ class TestHeatPump:
         hp_controller = prosumer.controller.iloc[hp_controller_index].object
         
         # Set the mode
-        prosumer.heat_pump.iloc[0].mode = mode
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = mode
         
         # Test conditions
         t_cond_out_c, t_evap_in_c = 80, 20
@@ -957,3 +959,50 @@ class TestHeatPumpShadowedEvapInput:
     def test_no_warning_for_static_parameter_default(self):
         prosumer, hp_controller = self._controller(t_mapped_c=np.nan, t_fluid_c=20, t_evap_in_c=5)
         assert self._run(prosumer, hp_controller) == []
+
+
+@pytest.mark.parametrize("mode", [None, np.nan, '', 'lorenz', 'LORENZ'])
+def test_lorenz_cop_is_the_default_and_rises_with_a_colder_return(mode):
+    """The default (Lorenz) COP sees the condenser inlet: a colder return gives a higher COP."""
+    def cop_for_return(t_return_c):
+        prosumer = create_empty_prosumer_container()
+        hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                             max_p_comp_kw=500, min_p_comp_kw=.01, max_t_cond_out_c=100,
+                                             pinch_c=0)
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = mode
+        hp_controller = prosumer.controller.iloc[hp_idx].object
+        hp_controller.inputs = np.array([[20]])
+        hp_controller.t_m_to_deliver = lambda x: (80, t_return_c, [1])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+        return hp_controller.step_results[0][3]
+
+    assert cop_for_return(50) > cop_for_return(70)
+
+
+def test_carnot_cop_ignores_the_return():
+    """The 'carnot' mode only sees the condenser outlet temperature."""
+    def cop_for_return(t_return_c):
+        prosumer = create_empty_prosumer_container()
+        hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                             **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_idx].object
+        hp_controller.inputs = np.array([[20]])
+        hp_controller.t_m_to_deliver = lambda x: (80, t_return_c, [1])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+        return hp_controller.step_results[0][3]
+
+    assert cop_for_return(50) == pytest.approx(cop_for_return(70))
+
+
+def test_unknown_cop_mode_is_rejected():
+    prosumer = create_empty_prosumer_container()
+    hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                         max_p_comp_kw=500, mode='rankine')
+    hp_controller = prosumer.controller.iloc[hp_idx].object
+    hp_controller.inputs = np.array([[20]])
+    hp_controller.t_m_to_deliver = lambda x: (80, 50, [1])
+    hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+    with pytest.raises(ValueError, match="unknown COP mode"):
+        hp_controller.control_step(prosumer)

@@ -61,7 +61,7 @@ def _build_chain():
 
     cp_in = ["Tin_evap", "demand_1", "t_feed_demand_c", "t_return_demand_c"]
     cp_out = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
-    hp_params = {"carnot_efficiency": 0.5, "pinch_c": 0, "delta_t_evap_c": 5,
+    hp_params = {"mode": "carnot", "carnot_efficiency": 0.5, "pinch_c": 0, "delta_t_evap_c": 5,
                  "max_p_comp_kw": 100}
     shs_params = {"tank_height_m": 10., "tank_internal_radius_m": .564,
                   "tank_external_radius_m": .664, "insulation_thickness_m": .1,

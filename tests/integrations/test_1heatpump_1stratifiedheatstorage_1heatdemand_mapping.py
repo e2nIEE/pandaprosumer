@@ -35,7 +35,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1", "t_feed_demand_c", "t_return_demand_c"]
         cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
@@ -164,7 +164,7 @@ class Test1HeatPump1StratifiedHeatStorage1HeatDemandMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1", "t_feed_demand_c", "t_return_demand_c"]
         cp_result_columns = ["t_evap_in_c", "qdemand_kw", "t_feed_demand_c", "t_return_demand_c"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
