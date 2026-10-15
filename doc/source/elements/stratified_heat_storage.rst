@@ -89,10 +89,28 @@ Output Time Series
     "e_stored_kwh ", "The heat stored in every layer compared to the initial state (negative when the tank is colder than it started)", "kWh"
     "e_usable_kwh ", "The heat the demand can still draw: the layers not colder than ``min_useful_temp_c`` minus 0.5 K, above the demand's return", "kWh"
 
+Connections
+-----------------------
+The four connections can sit at any height (``shs_ports``). ``height_charge_in_m`` (source feed in, default the
+top), ``height_charge_out_m`` (return to the source, default the bottom), ``height_discharge_out_m`` (to the demand,
+default the top) and ``height_discharge_in_m`` (demand return in, default the bottom) place them on the layer that
+holds that height, the way nozzles sit on a real tank (space heating drawn half-way up, a lukewarm return sent to the
+middle). ``auto_ports`` lists the connections placed by temperature at each step instead: ``charge_in`` and
+``discharge_in`` enter the highest layer not warmer than their water (an ideal stratification lance, leaving the hot
+layers above alone), ``discharge_out`` draws the lowest layer still at the demand's feed temperature (the hottest
+water is kept for later), ``charge_out`` draws the coldest layer (the best return for a heat pump).
+
+The layers are solved in conservative finite volumes: the flow through each interface is what enters the layers
+above it minus what leaves them, carried at the upwind layer's temperature with the superbee limiter, inflows enter
+at their own temperature and outflows leave at their layer's. The heat of the layers therefore changes by exactly
+what the connections bring minus the wall losses, whatever the heights and the flows (the scheme used before, a
+uniform net flow with end-layer boundary terms, lost or created a few percent when charging and discharging at
+once, up to 20 % of a step's exchange; ``tests/models/test_shs_ports.py``).
+
 Exchanged energy
 -----------------------
-Over a step the water leaves the tank as a plug: the charge return is the bottom layers the charge pushes out, the
-discharge is the top layers it draws, both at their mean temperature (beyond the tank's mass, the inflow passes
+Over a step the water leaves the tank as a plug: the charge return is the layers the charge pushes out of its outlet
+(from the outlet towards its inlet), the discharge is the layers it draws from its outlet, both at their mean temperature (beyond the tank's mass, the inflow passes
 through). The storage requests from its source the mass that pushes out every bottom layer still more than 0.5 K
 (``MIN_CHARGE_DELTA_T_K``) under the charge temperature and promises it that plug's mean return; on a reapply pass it
 splits the energy the source actually delivered the same way. A charge no warmer than the water it would push out

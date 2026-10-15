@@ -3,11 +3,14 @@ Module containing the StratifiedHeatStorageController class.
 """
 
 import numpy as np
-from numba import njit
 
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.controller.models.shs_ports import (
+    HEIGHT_PARAMS, PORTS, auto_discharge_layer, auto_inlet_layer, layer_at_height, parse_auto_ports, plug_order,
+    ports_resolution_in_time,
+)
 
 #: The tank is charged AT min_useful_temp_c, so a full tank sits on that threshold and the first wall
 #: loss leaves its top a few mK below it. The residual-discharge gate accepts a top layer down to this
@@ -15,194 +18,6 @@ from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESH
 MIN_USEFUL_MARGIN_K = 0.5
 #: Below this charge ΔT (target − bottom layer) the tank is full: it asks its source for no charge.
 MIN_CHARGE_DELTA_T_K = 0.5
-
-
-@njit
-def tvd_resolution_in_time(layer_temps_c,
-                           mdot_charge_kg_per_s,
-                           t_charge_c,
-                           mdot_discharge_kg_per_s,
-                           t_return_c,
-                           t_ext_c,
-                           cp_j_per_kgk,
-                           rho_kg_per_m3,
-                           A_m2,
-                           dz_m,
-                           Sl_m2,
-                           S1_m2,
-                           SN_m2,
-                           k_star_w_per_mk,
-                           U_w_per_m2k,
-                           U1_w_per_m2k,
-                           UN_w_per_m2k,
-                           resol,
-                           max_dt_s):
-    if resol < max_dt_s:
-        # If the resolution is too small, we use a timestep
-        # that is a multiple of the resolution
-        nb_intervals = 1
-        dt_s = resol
-    else:
-        # Calculate the number of intervals needed to reach the resolution
-        offset = 1 if resol // max_dt_s != resol / max_dt_s else 0
-        nb_intervals = int(resol // max_dt_s + offset)
-        dt_s = resol / nb_intervals
-
-    # Repeat the calculation so the timestep is not too big
-    for i in range(nb_intervals):
-        layer_temps_c = tvd_convection_step(layer_temps_c,
-                                            mdot_charge_kg_per_s,
-                                            t_charge_c,
-                                            mdot_discharge_kg_per_s,
-                                            t_return_c,
-                                            t_ext_c,
-                                            cp_j_per_kgk,
-                                            rho_kg_per_m3,
-                                            A_m2,
-                                            dz_m,
-                                            Sl_m2,
-                                            S1_m2,
-                                            SN_m2,
-                                            k_star_w_per_mk,
-                                            U_w_per_m2k,
-                                            U1_w_per_m2k,
-                                            UN_w_per_m2k,
-                                            dt_s)
-    # layer_temps_c = np.linalg.solve(a, b).tolist()
-    return layer_temps_c
-
-
-@njit
-def phi(r):
-    """
-    For the moment, only superbee is introduced.
-
-    r is the ratio of successive gradients on the solution; see r_{i}={\frac {u_{i}-u_{i-1}}{u_{i+1}-u_{i}}}
-    """
-    limiterName = "superbee"
-    if limiterName == "superbee":
-        return np.maximum(0, np.maximum(np.minimum(1., 2 * r), np.minimum(2., r)))
-    elif limiterName == "vanleer":  # Not used
-        return (r + abs(r)) / (1 + abs(r))
-    else:
-        raise ValueError("only superbee and van Leer are supported")
-
-
-@njit
-def tvd_convection_step(layer_temps_c,
-                        mdot_charge_kg_per_s,
-                        t_charge_c,
-                        mdot_discharge_kg_per_s,
-                        t_return_c,
-                        t_ext_c,
-                        cp_j_per_kgk,
-                        rho_kg_per_m3,
-                        A_m2,
-                        dz_m,
-                        Sl_m2,
-                        S1_m2,
-                        SN_m2,
-                        k_star_w_per_mk,
-                        U_w_per_m2k,
-                        U1_w_per_m2k,
-                        UN_w_per_m2k,
-                        resol):
-    #
-    # We introduce a constant time step
-    #
-    ## bottom layer, see equation (3) in the paper
-    #
-    T = layer_temps_c
-    deltaT = np.diff(T, 1)
-    T_return = t_return_c
-    T_charge = t_charge_c
-    T_amb = t_ext_c
-    T_1 = T[0]
-    T_N = T[-1]
-    m_cC_p = mdot_charge_kg_per_s * cp_j_per_kgk
-    m_dC_p = mdot_discharge_kg_per_s * cp_j_per_kgk
-    m_eC_p = (mdot_charge_kg_per_s - mdot_discharge_kg_per_s) * cp_j_per_kgk
-
-    k_starA_wm_per_k = k_star_w_per_mk * A_m2
-    k_starAoverDz_w_per_k = k_starA_wm_per_k / dz_m
-
-    term_1 = U1_w_per_m2k * S1_m2 * (T_amb - T_1)  # heat losses to the env
-    term_2 = (4 / 3) * k_starAoverDz_w_per_k * deltaT[0]  # diffusive terms
-    # term_3 = m_cC_p * (T_2 - T_1)                                                    # convective terms
-    term_3 = m_cC_p * (deltaT[0])
-    term_4 = m_dC_p * (T_return - T_1)
-    delta_layer_0 = term_1 + term_2 + term_3 + term_4
-
-    theta = np.ones_like(T)
-    limiter = np.ones_like(T)
-    num = np.zeros_like(T)
-    den = np.ones_like(T)
-    den[2:] = -deltaT[1:]
-
-    if m_eC_p > 0:
-        num[:-1] = -deltaT[:]
-    else:
-        num[2:] = -deltaT[:-1]
-
-    eps = 1.e-10
-    den1 = np.abs(den)
-    for i in range(den.size):
-        if den1[i] >= eps:
-            theta[i] = num[i] / den[i]
-
-    limiter = phi(theta)
-
-    # T = np.array(T)
-    deltaT = np.diff(T, 1)
-    term_1 = U_w_per_m2k * Sl_m2 * (t_ext_c - T[1:-1])
-    term_2 = k_starAoverDz_w_per_k * (deltaT[1:] - deltaT[:-1])
-    mass_flow_balance_J_per_K_per_s = (
-            mdot_charge_kg_per_s - mdot_discharge_kg_per_s)  # this term can be negative
-    c = mass_flow_balance_J_per_K_per_s / rho_kg_per_m3 / A_m2
-
-    if c > 0:
-        oneMinusCfl = 1. - (c * resol / dz_m)
-        term_3 = mass_flow_balance_J_per_K_per_s * deltaT[1:]
-        # term_33 =-0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * ((self.T[i - 1] - self.T[i]) * self.limiter[i] - (self.T[i] - self.T[i + 1]) * self.limiter[i + 1] )
-        term_33 = -0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * (
-                -deltaT[:-1] * limiter[1:-1] + deltaT[1:] * limiter[2:])
-    else:
-        oneMinusCfl = 1. - (-c * resol / dz_m)
-        term_3 = mass_flow_balance_J_per_K_per_s * deltaT[:-1]
-        term_33 = +0.5 * mass_flow_balance_J_per_K_per_s * oneMinusCfl * (
-                deltaT[1:] * limiter[1:-1] - deltaT[:-1] * limiter[0:-2])
-
-    layer_temp_deltas = term_1 + term_2 + cp_j_per_kgk * (term_3 + term_33)
-    # layer_temp_deltas = layer_temp_deltas.tolist()
-
-    #
-    term_1 = UN_w_per_m2k * SN_m2 * (T_amb - T_N)  # heat losses to the env
-    # term_2 = (4 / 3) * self.k_starAoverDz * (T_N_minus_1 - T_N)                       # diffusive terms
-    term_2 = -(4 / 3) * k_starAoverDz_w_per_k * deltaT[-1]  # diffusive terms
-
-    # convective terms
-    if m_eC_p > 0:
-        term_3 = m_eC_p * (T_charge - T_N)
-        # delta_layer_N_l = timeStep * (term_1 + term_2 + term_3) * self.denominator
-        delta_layer_N_l = term_1 + term_2 + term_3
-    else:
-        # term_4 = m_dC_p * (T_N_minus_1 - T_N)
-        term_4 = -m_dC_p * deltaT[-1]
-        # delta_layer_N_l = timeStep * (term_1 + term_2 + term_4) * self.denominator
-        delta_layer_N_l = term_1 + term_2 + term_4
-    #
-    # Assuming layer_temp_deltas is a NumPy array
-    new_layer_temp_deltas = np.empty(len(layer_temp_deltas) + 2, dtype=layer_temp_deltas.dtype)
-
-    # Assign the first and last layers
-    new_layer_temp_deltas[0] = delta_layer_0
-    new_layer_temp_deltas[-1] = delta_layer_N_l
-
-    # Copy the original array into the middle
-    new_layer_temp_deltas[1:-1] = layer_temp_deltas
-    #
-    denominator_k_per_j = 1. / (rho_kg_per_m3 * cp_j_per_kgk * A_m2 * dz_m)
-    return T + resol * new_layer_temp_deltas * denominator_k_per_j  # ToDo: Divide ?
 
 
 class StratifiedHeatStorageController(BasicProsumerController):
@@ -281,6 +96,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         self.U1_w_per_m2k = self.UN_w_per_m2k = self.U_w_per_m2k
 
         self.dz_m = self.H_m / self.N_l  # 𝛥z (layer high)
+        self._ports = (self.N_l - 1, 0, self.N_l - 1, 0)  # (charge_in, charge_out, discharge_out, discharge_in)
 
         # Heat exchange areas with the environment: every layer loses through its
         # lateral surface (perimeter · dz); the bottom layer (1) and the top layer
@@ -424,8 +240,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
             # The flow is sized on the top layer's temperature for the whole step: a nearly spent tank (a
             # thin hot top over cold water) would deliver more than it stores. Cap it at the energy stored
             # above the demand return, spread over the step.
-            stored_kgk = float(np.sum(self._layer_masses_kg()
-                                      * np.maximum(0.0, np.asarray(self._layer_temps_c, dtype=float) - t_demand_in_c)))
+            order = self._discharge_order()
+            stored_kgk = float(np.sum(self._layer_masses_kg()[order]
+                                      * np.maximum(0.0, np.asarray(self._layer_temps_c, dtype=float)[order] - t_demand_in_c)))
             return min(mdot_kg_per_s, stored_kgk / (self.resol * (t_discharge_out_c - t_demand_in_c)))
         return 0.0
 
@@ -482,6 +299,41 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         return mdot_charge_kg_per_s, mdot_bypass_kg_per_s, mdot_discharge_kg_per_s
 
+    def _resolve_ports(self, prosumer, t_charge_c, t_return_c, t_feed_c):
+        """
+        The layers of the four connections for this step, ``(charge_in, charge_out, discharge_out,
+        discharge_in)`` (see ``shs_ports``): a fixed height, the tank's end by default, or placed on the
+        current layers for the ports in ``auto_ports`` (an inflow at the layer of its own temperature, the
+        discharge at the lowest layer still at the demand's feed, the return to the source at the coldest).
+        Kept in ``self._ports`` for the plug-flow helpers and the layer solver.
+        """
+        n = self.N_l
+        defaults = {"charge_in": n - 1, "charge_out": 0, "discharge_out": n - 1, "discharge_in": 0}
+        layers = {port: layer_at_height(self._get_element_param(prosumer, HEIGHT_PARAMS[port]), n, self.dz_m, default)
+                  for port, default in defaults.items()}
+        auto = parse_auto_ports(self._get_element_param(prosumer, 'auto_ports'))
+        temps_c = self._layer_temps_c
+        if "charge_in" in auto and not np.isnan(t_charge_c):
+            layers["charge_in"] = auto_inlet_layer(temps_c, t_charge_c)
+        if "discharge_in" in auto and not np.isnan(t_return_c):
+            layers["discharge_in"] = auto_inlet_layer(temps_c, t_return_c)
+        if "discharge_out" in auto and not np.isnan(t_feed_c):
+            layers["discharge_out"] = auto_discharge_layer(temps_c, t_feed_c)
+        if "charge_out" in auto:
+            layers["charge_out"] = int(np.argmin(np.asarray(temps_c, dtype=float)))
+        self._ports = tuple(layers[port] for port in PORTS)
+        return self._ports
+
+    def _charge_order(self):
+        """Layers in the order a charge pushes them out (from its outlet towards its inlet)."""
+        charge_in, charge_out, _, _ = self._ports
+        return plug_order(self.N_l, charge_out, charge_in)
+
+    def _discharge_order(self):
+        """Layers in the order a discharge draws them (from its outlet towards the return inlet)."""
+        _, _, discharge_out, discharge_in = self._ports
+        return plug_order(self.N_l, discharge_out, discharge_in)
+
     def _layer_masses_kg(self):
         """Mass of each layer (kg), bottom first."""
         temps_k = CELSIUS_TO_K + np.asarray(self._layer_temps_c, dtype=float)
@@ -494,10 +346,11 @@ class StratifiedHeatStorageController(BasicProsumerController):
         are full: counting them asked a full tank (layers a few mK under the target) for a whole tank volume
         per step, which the source delivered and the tank could not hold.
         """
-        cold = np.flatnonzero(np.asarray(self._layer_temps_c, dtype=float) < t_charge_in_c - MIN_CHARGE_DELTA_T_K)
+        order = self._charge_order()
+        cold = np.flatnonzero(np.asarray(self._layer_temps_c, dtype=float)[order] < t_charge_in_c - MIN_CHARGE_DELTA_T_K)
         if cold.size == 0:
             return 0.0
-        return float(self._layer_masses_kg()[:cold[-1] + 1].sum()) / self.resol
+        return float(self._layer_masses_kg()[order][:cold[-1] + 1].sum()) / self.resol
 
     def _plug_flow_outlet_c(self, mass_kg, from_top, t_inflow_c):
         """
@@ -507,10 +360,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
         right for a step that moves a fraction of a layer: a step that fills the tank returns warmer water,
         one that drains it delivers colder water.
         """
-        temps_c = list(np.asarray(self._layer_temps_c, dtype=float))
-        masses_kg = list(self._layer_masses_kg())
-        if from_top:
-            temps_c, masses_kg = temps_c[::-1], masses_kg[::-1]
+        order = self._discharge_order() if from_top else self._charge_order()
+        temps_c = list(np.asarray(self._layer_temps_c, dtype=float)[order])
+        masses_kg = list(self._layer_masses_kg()[order])
         if mass_kg <= 0:
             return float(temps_c[0])
         left_kg, heat_kgk = mass_kg, 0.0
@@ -529,8 +381,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
         energy / cp) above ``t_return_c``, plug flow: the inverse of ``_plug_flow_outlet_c`` on the discharge
         side. A tank holding less delivers what it holds (the whole tank's mass at most).
         """
-        temps_c = np.asarray(self._layer_temps_c, dtype=float)[::-1]
-        masses_kg = self._layer_masses_kg()[::-1]
+        order = self._discharge_order()
+        temps_c = np.asarray(self._layer_temps_c, dtype=float)[order]
+        masses_kg = self._layer_masses_kg()[order]
         left_kgk, mass_kg = heat_kgk, 0.0
         for t_c, m_kg in zip(temps_c, masses_kg):
             if left_kgk <= 0:
@@ -545,13 +398,14 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
     def _plug_flow_charge_mass_kg(self, heat_kgk, t_charge_in_c):
         """
-        Mass (kg) a charge at ``t_charge_in_c`` pushes out of the bottom over a step to store ``heat_kgk``
+        Mass (kg) a charge at ``t_charge_in_c`` pushes out of its outlet over a step to store ``heat_kgk``
         (kg·K, i.e. energy / cp), plug flow: the inverse of ``_plug_flow_outlet_c`` on the charge side.
         Beyond what the tank can still take, the rest of the stream passes through at the charge temperature
         and stores nothing, so the mass is capped at the tank's.
         """
+        order = self._charge_order()
         left_kgk, mass_kg = heat_kgk, 0.0
-        for t_c, m_kg in zip(self._layer_temps_c, self._layer_masses_kg()):
+        for t_c, m_kg in zip(np.asarray(self._layer_temps_c, dtype=float)[order], self._layer_masses_kg()[order]):
             gain_kgk_per_kg = t_charge_in_c - t_c
             if left_kgk <= 0:
                 break
@@ -580,12 +434,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # and the reapply loop can only stagnate on an inconsistent state.
         mdot_charge_setpoint_kg_per_s = self._get_setpoint(prosumer, 'mdot_charge_setpoint_kg_per_s')
         mdot_discharge_setpoint_kg_per_s = self._get_setpoint(prosumer, 'mdot_discharge_setpoint_kg_per_s')
+        self._resolve_ports(prosumer, t_charge_in_c, t_demand_in_c, t_demand_out_c)
 
         # Share of the demand the bypass has to serve: all of it, unless a forced
         # discharge already carries part of the demand energy from the top layer.
         mdot_bypass_demand_kg_per_s = mdot_demand_kg_per_s
         if not np.isnan(mdot_discharge_setpoint_kg_per_s):
-            delta_t_discharge_c = self._layer_temps_c[-1] - t_demand_in_c
+            delta_t_discharge_c = self._layer_temps_c[self._ports[2]] - t_demand_in_c
             e_demand_kgk = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
             if delta_t_discharge_c > 0.5 and e_demand_kgk > 0:
                 e_residual_kgk = max(0.0, e_demand_kgk - mdot_discharge_setpoint_kg_per_s * delta_t_discharge_c)
@@ -609,6 +464,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         if t_charge_target_c is not None and not np.isnan(t_charge_target_c):
             t_required_in_c = max(t_required_in_c, float(t_charge_target_c))
 
+        self._resolve_ports(prosumer, t_required_in_c, t_demand_in_c, t_demand_out_c)
         # TODO: Is the return temp the bottom layer temp or the responders' t_return ?
         t_charge_out_c = self._t_charge_out
 
@@ -743,6 +599,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 or mdot_prev_kg_per_s <= 0 or t_in_c - t_keep_prev_c <= 1e-9):
             # No usable delivery to anchor on -- keep the forward request.
             return forward_request
+        self._resolve_ports(prosumer, t_in_c, t_demand_in_c, t_demand_out_c)
 
         if not np.isnan(self.mdot_previous_demand_kg_per_s):
             # Split as the previous pass's split did: a demand already served in parallel takes no bypass.
@@ -806,9 +663,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
     @property
     def _t_charge_out(self):
         """
-        Temperature of the fluid returned to the initiator in °C
+        Temperature of the fluid returned to the initiator in °C (the charge outlet's layer)
         """
-        return self._layer_temps_c[0]
+        return self._layer_temps_c[self._ports[1]]
 
     def _get_max_stored_energy_kwh(self, extraction_temp_c, t_charge_c):
         """
@@ -871,6 +728,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 f"-- downstream demand contract violation at timestep {self.time}."
             )
             t_demand_in_c = float(self._layer_temps_c[0])
+        self._resolve_ports(prosumer, t_received_in_c, t_demand_in_c, t_demand_out_c)
 
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
@@ -1064,25 +922,15 @@ class StratifiedHeatStorageController(BasicProsumerController):
             if mass_kg > 0:
                 t_discharge_out_c = self._plug_flow_outlet_c(mass_kg, True, t_demand_in_c)
 
-        self._layer_temps_c = tvd_resolution_in_time(layer_temps_c=np.array(self._layer_temps_c),
-                                                     mdot_charge_kg_per_s=mdot_charge_tank_kg_per_s,
-                                                     t_charge_c=t_received_in_c,
-                                                     mdot_discharge_kg_per_s=mdot_discharge_kg_per_s,
-                                                     t_return_c=t_demand_in_c,
-                                                     t_ext_c=t_ext_c,
-                                                     cp_j_per_kgk=cp_discharge_j_per_kgk,
-                                                     rho_kg_per_m3=rho_kg_per_m3,
-                                                     A_m2=self.A_m2,
-                                                     dz_m=self.dz_m,
-                                                     Sl_m2=self.Sl_m2,
-                                                     S1_m2=self.S1_m2,
-                                                     SN_m2=self.SN_m2,
-                                                     k_star_w_per_mk=self.k_star_w_per_mk,
-                                                     U_w_per_m2k=self.U_w_per_m2k,
-                                                     U1_w_per_m2k=self.U1_w_per_m2k,
-                                                     UN_w_per_m2k=self.UN_w_per_m2k,
-                                                     resol=self.resol,
-                                                     max_dt_s=max_dt_s)
+        charge_in, charge_out, discharge_out, discharge_in = self._ports
+        self._layer_temps_c = ports_resolution_in_time(np.array(self._layer_temps_c, dtype=float),
+                                                       charge_in, charge_out, discharge_out, discharge_in,
+                                                       mdot_charge_tank_kg_per_s, t_received_in_c,
+                                                       mdot_discharge_kg_per_s, t_demand_in_c,
+                                                       t_ext_c, cp_discharge_j_per_kgk, rho_kg_per_m3,
+                                                       self.A_m2, self.dz_m, self.Sl_m2, self.S1_m2, self.SN_m2,
+                                                       self.k_star_w_per_mk, self.U_w_per_m2k, self.U1_w_per_m2k,
+                                                       self.UN_w_per_m2k, self.resol, max_dt_s)
 
         assert (self._layer_temps_c > 0).all(), (f"The SHS model has diverged - "
                                                  f"Negative temperature in the storage for "
@@ -1172,15 +1020,14 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                               FluidMixMapping.MASS_FLOW_KEY: np.nan}
             return
 
-        # The discharge temperature is the one on top of the storage
-        # Note that the time step should not be too long compared to the volume of this top layer and the mass flow
-        t_discharge_out_c = self._layer_temps_c[-1]
-
         # When discharging, the temperature of the fluid that will be added at the bottom of the storage is the
         # temperature returned by the downstream elements.
         # Simple average of the temperatures but will have to be weighted by the mass flows in the future
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_demand_kg_per_s = sum(mdot_demand_tab_kg_per_s)
+        # The discharge temperature is the one of the discharge outlet's layer (the top by default)
+        self._resolve_ports(prosumer, self._t_received_in_c, t_demand_in_c, t_demand_out_c)
+        t_discharge_out_c = self._layer_temps_c[self._ports[2]]
 
         assert mdot_demand_kg_per_s >= 0, f"SHS {self.name} mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
         assert t_demand_out_c >= t_demand_in_c, f"SHS {self.name} t_demand_out_c < t_demand_in_c is negative ({t_demand_out_c} < {t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"

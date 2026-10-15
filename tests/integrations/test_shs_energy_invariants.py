@@ -36,8 +36,10 @@ from pandaprosumer.run_time_series import run_timeseries
 HP_MAX_P_COMP_KW = 100.0
 #: kW of demand over the day: charge (0), partial load, a peak above the heat pump, idle, a draining peak
 DEMAND_KW = [0] * 4 + [150] * 3 + [500] * 3 + [0] * 3 + [200] * 2 + [800] * 4 + [100] * 5
-#: The balance may miss by this much per hour plus a share of the energy exchanged: the layer solver
-#: diffuses numerically and the booking takes one heat capacity per stream
+#: The balance may miss by this much per hour plus a share of the energy exchanged. The layer solver
+#: conserves energy exactly; the gap is the booking's: what leaves the tank is predicted (plug flow) before
+#: the step and promised to the source, while the solver's front is diffused, so the bottom warms a little
+#: before the front arrives (~2 % of a full-tank charge from cold).
 BALANCE_TOL_KWH = 3.0
 BALANCE_TOL_SHARE = 0.03
 #: kWh per hour a 10 m3 tank may lose through its wall at ~80 °C with the default insulation
@@ -53,7 +55,7 @@ def _layer_energy_kwh(layers_c, controller, t_ref_c):
                for t_c in layers_c) / 3.6e6
 
 
-def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel):
+def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel, **ports):
     snapshots = []
     original = shs_module.StratifiedHeatStorageController.time_step
 
@@ -78,7 +80,7 @@ def _run(monkeypatch, t_feed_c, t_return_c, t_target_c, parallel):
                                                     tank_external_radius_m=.664, insulation_thickness_m=.1,
                                                     n_layers=50, min_useful_temp_c=t_feed_c, t_ext_c=T_EXT_C,
                                                     max_dt_s=10, t_charge_target_c=t_target_c,
-                                                    init_layer_temps_c=[t_return_c] * 50)
+                                                    init_layer_temps_c=[t_return_c] * 50, **ports)
     hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=2)
     GenericMapping(prosumer, initiator_id=cp, initiator_column="t_evap_in_c", responder_id=hp,
                    responder_column="t_evap_in_c", order=0)
@@ -146,4 +148,36 @@ def test_shs_energy_invariants(monkeypatch, t_feed_c, t_return_c, t_target_c, pa
     if not parallel:
         if not np.allclose(shs.q_delivered_kw, hd.q_received_kw, atol=POWER_TOL_KW):
             failures.append("tank q_delivered != demand q_received")
+    assert not failures, "\n".join(failures)
+
+
+PORT_CONFIGS = {
+    "auto": {"auto_ports": "charge_in,charge_out,discharge_out,discharge_in"},
+    "mid-nozzles": {"height_charge_in_m": 8., "height_charge_out_m": 1., "height_discharge_out_m": 7.,
+                    "height_discharge_in_m": 3.},
+}
+
+
+@pytest.mark.parametrize("config", list(PORT_CONFIGS))
+@pytest.mark.parametrize("t_feed_c, t_return_c, t_target_c", [(80.0, 40.0, None), (60.0, 30.0, 70.0)],
+                         ids=["80-40-demand", "60-30-70"])
+def test_shs_energy_invariants_with_moved_connections(monkeypatch, t_feed_c, t_return_c, t_target_c, config):
+    """The same invariants hold with the connections at other heights or placed by temperature."""
+    (hp, shs, hd), controller, layers = _run(monkeypatch, t_feed_c, t_return_c,
+                                             np.nan if t_target_c is None else t_target_c, False,
+                                             **PORT_CONFIGS[config])
+    energy = [_layer_energy_kwh(t, controller, t_return_c) for t in layers]
+    failures = []
+    for h in range(len(DEMAND_KW)):
+        d_u = energy[h + 1] - energy[h]
+        loss = shs.q_charge_kw[h] - shs.q_discharge_kw[h] - d_u
+        tol = BALANCE_TOL_KWH + BALANCE_TOL_SHARE * (shs.q_charge_kw[h] + shs.q_discharge_kw[h])
+        if not -tol <= loss <= MAX_WALL_LOSS_KWH + tol:
+            failures.append(f"h{h}: tank balance off by {loss:.1f} kWh")
+        if abs(hp.q_cond_kw[h] - shs.q_received_kw[h]) > POWER_TOL_KW:
+            failures.append(f"h{h}: heat pump q_cond {hp.q_cond_kw[h]:.1f} != tank q_received {shs.q_received_kw[h]:.1f}")
+        if hd.q_uncovered_kw[h] < -POWER_TOL_KW:
+            failures.append(f"h{h}: demand over-served by {-hd.q_uncovered_kw[h]:.1f} kW")
+    if not np.allclose(shs.q_delivered_kw, hd.q_received_kw, atol=POWER_TOL_KW):
+        failures.append("tank q_delivered != demand q_received")
     assert not failures, "\n".join(failures)

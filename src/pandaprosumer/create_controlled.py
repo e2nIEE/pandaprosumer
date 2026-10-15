@@ -387,6 +387,7 @@ def create_controlled_stratified_heat_storage(prosumer,
                                               height_charge_out_m=0,
                                               height_discharge_out_m=None,
                                               height_discharge_in_m=0,
+                                              auto_ports="",
                                               name=None,
                                               index=None,
                                               in_service=True,
@@ -441,13 +442,9 @@ def create_controlled_stratified_heat_storage(prosumer,
             **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
             Default to the period resolution. May cause divergence of the model if too high. [s]
 
-            **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
-
-            **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
-
-            **height_discharge_out_m** (float, default None) - The height of the outlet discharging point in m.
-
-            **height_discharge_in_m** (float, default None) - The height of the outlet charging point in m.
+            **height_charge_in_m**, **height_charge_out_m**, **height_discharge_out_m**, \
+            **height_discharge_in_m**, **auto_ports** - Where the connections sit, see \
+            ``create_stratified_heat_storage``.
 
             **name** (string, default None) - A custom name for this stratified heat storage
 

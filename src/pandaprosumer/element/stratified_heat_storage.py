@@ -46,6 +46,7 @@ class StratifiedHeatStorageElementData:
         ('height_charge_out_m', 'f8'),
         ('height_discharge_out_m', 'f8'),
         ('height_discharge_in_m', 'f8'),
+        ('auto_ports', dtype(object)),
 
         ('in_service', bool)
     ])
