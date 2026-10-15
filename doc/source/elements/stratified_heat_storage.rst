@@ -45,7 +45,7 @@ Input Static Data
     "tank_external_radius_m  ", "tank_external_radius (without insulation)", "m"
     "insulation_thickness_m  ", "insulation thickness", "m"
     "n_layers  ", " Number of layers used for the calculations", "N/A"
-    "min_useful_temp_c  ", "Temperature used as a threshold to calculate the amount of stored energy", "Degree Celsius"
+    "min_useful_temp_c  ", "Temperature the storage asks its source to charge it at, and the lowest top-layer temperature (minus 0.5 K, ``MIN_USEFUL_MARGIN_K``) it still discharges from", "Degree Celsius"
     "k_fluid_w_per_mk  ", "Thermal conductivity of storage fluid (prosumer.fluid)", "W/(mK)"
     "k_insu_w_per_mk ", "Thermal conductivity of insulation", "W/(mK)"
     "k_wall_w_per_mk  ", "Thermal conductivity of the tank wall", "W/(mK)"
@@ -86,7 +86,20 @@ Output Time Series
     "mdot_discharge_kg_per_s ", "The storage discharge mass flow", "kg/s"
     "t_discharge_c ", "The storage discharge temperature", "Degree Celsius"
     "q_delivered_kw ", "The storage delivered power to the downstream elements (including bypass)", "kW"
-    "e_stored_kwh ", "The total stored heat energy in the storage above the element minimum usefully temperature compared to the initial state", "kWh"
+    "e_stored_kwh ", "The heat stored in every layer compared to the initial state (negative when the tank is colder than it started)", "kWh"
+    "e_usable_kwh ", "The heat the demand can still draw: the layers not colder than ``min_useful_temp_c`` minus 0.5 K, above the demand's return", "kWh"
+
+Exchanged energy
+-----------------------
+Over a step the water leaves the tank as a plug: the charge return is the bottom layers the charge pushes out, the
+discharge is the top layers it draws, both at their mean temperature (beyond the tank's mass, the inflow passes
+through). The storage requests from its source the mass that pushes out every bottom layer still more than 0.5 K
+(``MIN_CHARGE_DELTA_T_K``) under the charge temperature and promises it that plug's mean return; on a reapply pass it
+splits the energy the source actually delivered the same way. A charge no warmer than the water it would push out
+passes by without exchange, what the tank cannot take within a step goes to the demand when there is one, and a
+discharge delivers the energy the split planned (or what the tank holds) by drawing the mass that carries it. So the
+heat the storage books equals the change of its layers' energy, up to the wall losses and the solver's numerical
+diffusion (``tests/integrations/test_shs_energy_invariants.py``).
 
 Mapping
 -----------------------

@@ -209,7 +209,7 @@ class TestStratifiedHeatStorage:
             "mdot_charge_kg_per_s", "t_charge_in_c", "t_charge_out_c", "q_charge_kw",
             "mdot_discharge_kg_per_s", "t_discharge_in_c", "t_discharge_out_c", "q_discharge_kw",
             "mdot_delivered_kg_per_s", "t_delivered_in_c", "t_delivered_out_c", "q_delivered_kw",
-            "e_stored_kwh",
+            "e_stored_kwh", "e_usable_kwh",
         ]
 
         assert shs_controller.input_columns == input_columns_expected
@@ -231,8 +231,9 @@ class TestStratifiedHeatStorage:
         shs_controller.time_step(prosumer, "2020-01-01 00:00:00")
         shs_controller.control_step(prosumer)
 
-        expected = [0., 22.5, 0., 0.]
-        assert _key_results(shs_controller) == pytest.approx(expected)
+        # e_stored counts every layer: the 1 s of 1.5 kg/s at 150 °C into a 22.5 °C tank
+        expected = [0., 22.5, 0., 1.5 * 4.19 * (150 - 22.5) / 3600]
+        assert _key_results(shs_controller) == pytest.approx(expected, rel=1e-2)
 
     def test_controller_run_control_out(self):
         """
@@ -498,7 +499,8 @@ class TestStratifiedHeatStorage:
 
         # Each layer is about 1m^3
         layer_volume_m3 = shs_controller.A_m2 * shs_controller.dz_m
-        layer_mass_kg = prosumer.fluid.get_density(273.15 + np.mean(t_layers_init_c)) * layer_volume_m3
+        # the cold layer's own mass: the request carries the energy that layer misses
+        layer_mass_kg = prosumer.fluid.get_density(273.15 + t_layers_init_c[0]) * layer_volume_m3
         t_feed_demand_c = 80
         t_return_demand_c = 40
         mdot_demand_kg_per_s = 100

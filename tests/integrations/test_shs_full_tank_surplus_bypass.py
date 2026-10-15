@@ -171,11 +171,13 @@ def test_full_tank_surplus_is_conserved_and_bypassed():
     assert np.allclose(q_delivered, hd_received, atol=1.0), \
         "SHS q_delivered must equal the demand's q_received at every step"
 
-    # (3) A full tank stops accumulating energy (it is not silently overheated by
-    #     the surplus): once over-serving begins, e_stored no longer climbs.
+    # (3) The surplus does not silently overheat the tank: its top never exceeds the
+    #     feed, and once over-serving begins it only tops up its last layers (what
+    #     it cannot take within a step goes to the demand, what it can is stored).
+    assert (shs["t_discharge_out_c"].values <= T_FEED_DEMAND + 0.1).all()
     if steady_full.any():
         first_full = int(np.argmax(steady_full))
-        assert e_stored[-1] <= e_stored[first_full] + 1.0, \
+        assert e_stored[-1] <= e_stored[first_full] * 1.01, \
             f"Tank kept storing while full: e_stored {e_stored[first_full]:.1f} -> {e_stored[-1]:.1f} kWh"
 
     # (4) No NET energy vanishes over the run: the source's total delivered
