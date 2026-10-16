@@ -49,7 +49,7 @@ energy is booked on one side of a FluidMix boundary only: a producer's mass flow
 diverges from the sum dispatched (Heat Pump with `overflow_strategy='cap'` at
 `min_p_comp_kw`), a producer books more or less heat than its labelled outlet
 stream carries, or a responder finalizes on a return other than the one it promised
-(e.g. a storage fed in parallel with its demand). If you write a test that
+(e.g. a storage whose reapply loop stagnated). If you write a test that
 intentionally exercises such a combination, expect the warning: either assert on it with
 `pytest.warns(EnergyLeakWarning)` or silence it with
 `warnings.simplefilter("ignore", EnergyLeakWarning)`. Getting an unexpected

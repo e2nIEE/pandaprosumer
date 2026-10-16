@@ -69,8 +69,10 @@ is booked on one side of a FluidMix boundary only:
 - `_check_return_contract` (responder side): a responder finalizes on a
   return temperature other than the one it promised (`t_keep_return_c`),
   e.g. a stratified storage whose reapply loop stagnated, or a source on
-  another level. Known case: HP feeding a demand and a storage in
-  parallel.
+  another level. A storage wired in parallel with its source (HP -> demand
+  and HP -> storage -> demand) must not leak: it requests nothing for a
+  responder its source already feeds directly
+  (`_responders_served_in_parallel`).
 
 Models must book with the temperatures really exchanged: the received
 `input_mass_flow_with_temp`, and returns their responders really give back
