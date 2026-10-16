@@ -37,7 +37,7 @@ time_series_data = time_series_data.loc[
     (time_series_data.index >= week_start)
     & (time_series_data.index < week_end)
 ]
-
+#TODO- resample overall to 15min for the MPC
 hourly_data = pd.DataFrame({
     "p_el_demand_kw": time_series_data["p_el_demand_kw"].resample("1h").mean(),
     "p_pv_in_kw": time_series_data["p_pv_in_kw"].resample("1h").mean(),
@@ -288,7 +288,44 @@ print(optimized_results.head())
 print("\nResults written to:")
 print(output_file)
 
-# Plot results
+# Compare MPC CHP setpoints against physical CHP output
+actual_chp = {}
+
+for timestamp, controller_data in (prosumer.controller_results.items()):
+    chp_data = controller_data.get(ice_chp_index, {})
+    if "p_el_out_kw" in chp_data:
+        actual_chp[pd.Timestamp(timestamp)] = float(np.asarray(chp_data["p_el_out_kw"]).reshape(-1)[0])
+
+actual_chp = pd.Series(actual_chp, dtype=float)
+actual_chp.index = pd.to_datetime(actual_chp.index, utc=True)
+
+optimized_results.index = pd.to_datetime(optimized_results.index, utc=True)
+
+optimized_results["chp_actual_kw"] = (actual_chp.reindex(optimized_results.index))
+
+if optimized_results["chp_actual_kw"].isna().any():
+    raise ValueError("Missing actual CHP output")
+
+optimized_results["chp_tracking_error_kw"] = (optimized_results["chp_actual_kw"] - optimized_results["dispatch_p_el_chp_kw"])
+
+print("Max CHP tracking error [kW]:",optimized_results["chp_tracking_error_kw"].abs().max())
+
+def actual_output(controller_index, key):
+    values = {}
+
+    for timestamp, controllers in prosumer.controller_results.items():
+        data = controllers.get(controller_index, {})
+
+        if key in data:
+            values[pd.Timestamp(timestamp)] = float(
+                np.asarray(data[key], dtype=float).reshape(-1)[0]
+            )
+
+    series = pd.Series(values, dtype=float)
+    series.index = pd.to_datetime(series.index, utc=True)
+
+    return series.reindex(optimized_results.index)
+
 # Plot results
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -335,6 +372,13 @@ battery_power = (
     - results["dispatch_p_battery_charge_kw"]
 )
 
+chp_on = (results["dispatch_p_el_chp_kw"] > 1e-6).astype(int)
+
+# Assumes CHP is initially OFF
+startup_events = (chp_on.diff().fillna(chp_on.iloc[0]) == 1)
+print("CHP startups", int(startup_events.sum()))
+print("Startup cost[€]:",results["cost_startup_current_eur"].sum())
+print("Expected startup cost [€]:", startup_events.sum() * 50.0)
 
 def combined_legend(left_axis, right_axis=None):
     handles, labels = left_axis.get_legend_handles_labels()
@@ -525,7 +569,55 @@ fig.suptitle("Cost Optimization Results")
 fig.tight_layout()
 plt.show()
 
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import numpy as np
 
+r = optimized_results.copy()
+r.index = pd.to_datetime(r.index, utc=True)
+
+fig, ax = plt.subplots(figsize=(15, 5))
+
+x = mdates.date2num(r.index.to_pydatetime())
+width = 0.035  # roughly 50 minutes, in days
+
+positive_bottom = np.zeros(len(r))
+negative_bottom = np.zeros(len(r))
+
+components = {
+    "Electricity": results["cost_grid_current_eur"],
+    "Gas": results["cost_gas_current_eur"],
+    "Contract penalty": results["cost_contract_current_eur"],
+    "CHP startup": r["cost_startup_current_eur"],
+    "Flexibility revenue": -results["revenue_flex_current_eur"],
+}
+
+for name, values in components.items():
+    v = values.to_numpy(dtype=float)
+    bottom = np.where(v >= 0, positive_bottom, negative_bottom)
+
+    ax.bar(x, v, bottom=bottom, width=width, label=name)
+
+    positive_bottom += np.maximum(v, 0)
+    negative_bottom += np.minimum(v, 0)
+
+ax.plot(
+    r.index,
+    results["cost_current_step_eur"],
+    color="black",
+    linewidth=1.2,
+    label="Net operating cost"
+)
+
+ax.xaxis_date()
+ax.xaxis.set_major_locator(mdates.DayLocator())
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%d.%m"))
+ax.set_ylabel("Hourly cost / revenue [€]")
+ax.set_xlabel("Date")
+ax.legend(ncol=3)
+ax.grid(alpha=0.2)
+plt.tight_layout()
+plt.show()
 # fig, ax = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
 #
 # ax[0].plot(optimized_results.index, optimized_results["p_grid_baseline_kw"], label="Baseline grid import")

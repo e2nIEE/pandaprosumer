@@ -406,16 +406,16 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             ),
         )
 
-        # model.startup_cost_t = pyo.Expression(
-        #     model.T,
-        #     rule=lambda m, t: (
-        #         self.chp_start_cost_eur
-        #         * pyo.quicksum(
-        #             m.chp[index].startup[t]
-        #             for index in m.chp_index
-        #         )
-        #     ),
-        # )
+        model.startup_cost_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                self.chp_start_cost_eur
+                * pyo.quicksum(
+                    m.chp[index].startup[t]
+                    for index in m.chp_index
+                )
+            ),
+        )
 
         # Flexibility is rewarded only for the current MPC step.
         model.flex_revenue_current_eur = pyo.Expression(
@@ -447,12 +447,12 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             )
         )
 
-        # model.startup_cost_horizon_eur = pyo.Expression(
-        #     expr=pyo.quicksum(
-        #         model.startup_cost_t[t]
-        #         for t in model.T
-        #     )
-        # )
+        model.startup_cost_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.startup_cost_t[t]
+                for t in model.T
+            )
+        )
 
         model.soc_terminal_cost_eur = pyo.Expression(
             expr=pyo.quicksum(
@@ -467,7 +467,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                 model.grid_cost_t[t0]
                 + model.gas_cost_t[t0]
                 + model.contract_cost_t[t0]
-                # + model.startup_cost_t[t0]
+                + model.startup_cost_t[t0]
                 - model.flex_revenue_current_eur
             )
         )
@@ -477,7 +477,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                 model.grid_cost_horizon_eur
                 + model.gas_cost_horizon_eur
                 + model.contract_cost_horizon_eur
-                # + model.startup_cost_horizon_eur
+                + model.startup_cost_horizon_eur
                 - model.flex_revenue_current_eur
             )
         )
@@ -639,9 +639,9 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             "cost_contract_current_eur": value(
                 model.contract_cost_t[t0]
             ),
-            # "cost_startup_current_eur": value(
-            #     model.startup_cost_t[t0]
-            # ),
+            "cost_startup_current_eur": value(
+                model.startup_cost_t[t0]
+            ),
             "revenue_flex_current_eur": value(
                 model.flex_revenue_current_eur
             ),
@@ -654,6 +654,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             "soc_terminal_cost_eur": value(
                 model.soc_terminal_cost_eur
             ),
+            "predicted_terminal_soc": float(pyo.value(model.battery[next(iter(model.battery_index))].soc[self.horizon_steps])),
             "solver_status": str(
                 solver_result.solver.status
             ),
@@ -805,10 +806,10 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             time_steps,
             domain=pyo.Binary,
         )
-        # block.startup = pyo.Var(
-        #     time_steps,
-        #     domain=pyo.Binary,
-        # )
+        block.startup = pyo.Var(
+            time_steps,
+            domain=pyo.Binary,
+        )
 
         block.minimum_power = pyo.Constraint(
             time_steps,
@@ -826,22 +827,22 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             ),
         )
 
-        # def startup_rule(b, t):
-        #     previous_state = (
-        #         previous_on
-        #         if t == 0
-        #         else b.y[t - 1]
-        #     )
-        #
-        #     return (
-        #         b.startup[t]
-        #         >= b.y[t] - previous_state
-        #     )
-        #
-        # block.startup_constraint = pyo.Constraint(
-        #     time_steps,
-        #     rule=startup_rule,
-        # )
+        def startup_rule(b, t):
+            previous_state = (
+                previous_on
+                if t == 0
+                else b.y[t - 1]
+            )
+
+            return (
+                b.startup[t]
+                >= b.y[t] - previous_state
+            )
+
+        block.startup_constraint = pyo.Constraint(
+            time_steps,
+            rule=startup_rule,
+        )
 
     def _add_battery(
         self,
