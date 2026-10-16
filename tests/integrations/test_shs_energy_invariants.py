@@ -8,7 +8,9 @@ feeding the demand and the tank in parallel). Every hour must:
 * close the tank's energy balance: the change of its internal energy equals the booked charge minus the
   booked discharge minus a small, non-negative wall loss;
 * hand over what it books: heat pump ``q_cond`` == tank ``q_received`` (series), tank ``q_delivered`` ==
-  demand ``q_received``;
+  demand ``q_received``; in parallel the heat pump's direct share ``q_cond - q_received(tank)`` is what the
+  demand receives besides the tank (``q_received(demand) - q_delivered(tank)``), and no ``EnergyLeakWarning``
+  is raised: a full tank must not ask the heat pump again for a demand the heat pump already serves;
 * never over-serve the demand;
 * keep every layer between the ambient (the wall loses towards it) and the hottest water that entered;
 * never leave usable heat in the tank while the demand goes uncovered;
@@ -116,6 +118,7 @@ CASES = [
 ]
 
 
+@pytest.mark.filterwarnings("error::pandaprosumer.controller.mapped.EnergyLeakWarning")
 @pytest.mark.parametrize("parallel", [False, True], ids=["series", "parallel"])
 @pytest.mark.parametrize("t_feed_c, t_return_c, t_target_c", CASES,
                          ids=[f"{f:g}-{r:g}-{'demand' if t is None else f'{t:g}'}" for f, r, t in CASES])
@@ -135,6 +138,10 @@ def test_shs_energy_invariants(monkeypatch, t_feed_c, t_return_c, t_target_c, pa
         if not parallel and abs(hp.q_cond_kw[h] - shs.q_received_kw[h]) > POWER_TOL_KW:
             failures.append(f"h{h}: heat pump q_cond {hp.q_cond_kw[h]:.1f} != tank q_received "
                             f"{shs.q_received_kw[h]:.1f}")
+        if parallel and abs((hp.q_cond_kw[h] - shs.q_received_kw[h])
+                            - (hd.q_received_kw[h] - shs.q_delivered_kw[h])) > POWER_TOL_KW:
+            failures.append(f"h{h}: heat pump direct share {hp.q_cond_kw[h] - shs.q_received_kw[h]:.1f} != "
+                            f"demand share from the heat pump {hd.q_received_kw[h] - shs.q_delivered_kw[h]:.1f}")
         if hd.q_uncovered_kw[h] < -POWER_TOL_KW:
             failures.append(f"h{h}: demand over-served by {-hd.q_uncovered_kw[h]:.1f} kW")
         if not T_EXT_C - 0.1 <= layers[h + 1].min() and layers[h + 1].max() <= t_supply_c + 0.1:

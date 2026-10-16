@@ -223,6 +223,16 @@ class StratifiedHeatStorageController(BasicProsumerController):
         return bool(mdot_demand_kg_per_s > 0
                     and remaining_capacity_kwh < self._get_element_param(prosumer, "max_remaining_capacity_kwh"))
 
+    def _responders_served_in_parallel(self, prosumer):
+        """
+        For each FluidMix responder (in ``t_m_to_deliver`` order), whether one of this storage's own initiators
+        also feeds it directly, i.e. the storage sits in parallel with that source on that responder.
+        """
+        directly_fed = [responder for initiator in self._get_mapped_initiators(prosumer)
+                        for responder in initiator._get_mapped_responders(prosumer) if responder is not self]
+        return np.array([any(responder is fed for fed in directly_fed)
+                         for responder in self._get_mapped_responders(prosumer)], dtype=bool)
+
     def _residual_discharge_mdot(self, prosumer, e_residual_kgk, t_discharge_out_c, t_demand_in_c):
         """
         Discharge mass flow that carries the residual demand energy ``e_residual_kgk`` (in kg/s·K, i.e.
@@ -427,7 +437,17 @@ class StratifiedHeatStorageController(BasicProsumerController):
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
         t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
-        mdot_demand_kg_per_s = np.sum(mdot_demand_tab_required_kg_per_s)
+        has_downstream_demand = np.sum(mdot_demand_tab_required_kg_per_s) >= 1e-6
+        # The tank promises against the downstream demand it will actually serve: a responder its own source
+        # also feeds directly (heat pump -> demand and heat pump -> tank -> demand) is served by that source, so
+        # requesting its flow again would make the source deliver it twice -- a full tank then hands the second
+        # share back unused at the feed temperature, on a return the source booked as delivered. What the
+        # source leaves uncovered is served by the discharge, sized on the demand's residual in control_step.
+        mdot_demand_tab_required_kg_per_s = np.asarray(mdot_demand_tab_required_kg_per_s, dtype=float)
+        served_in_parallel = self._responders_served_in_parallel(prosumer)
+        if served_in_parallel.shape != mdot_demand_tab_required_kg_per_s.shape:
+            served_in_parallel = np.zeros(mdot_demand_tab_required_kg_per_s.shape, dtype=bool)
+        mdot_demand_kg_per_s = float(np.sum(mdot_demand_tab_required_kg_per_s[~served_in_parallel]))
         t_charge_in_c = self._get_element_param(prosumer, 'min_useful_temp_c')  # self._layer_temps_c[-1]
 
         # External dispatch setpoints (NaN = none). They must shape the REQUEST
@@ -449,7 +469,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 mdot_bypass_demand_kg_per_s = mdot_demand_kg_per_s * e_residual_kgk / e_demand_kgk
         # If the required feed downstream temperature is null, it means that there is no downstream mapped controller
         # so ask treturn_required_c charge the storage at the min_useful_temp_c (or current top layer temperature ?)
-        if t_demand_out_c < 1e-6 or mdot_demand_kg_per_s < 1e-6:
+        # (a demand served in parallel still sets the charge temperature: the tank is charged for it)
+        if t_demand_out_c < 1e-6 or not has_downstream_demand:
             t_required_in_c = t_charge_in_c
         else:
             t_required_in_c = t_demand_out_c
