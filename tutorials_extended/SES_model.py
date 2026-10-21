@@ -527,28 +527,17 @@ ax[3].set_ylabel("Flexibility [kW]")
 ax[3].legend(loc="upper left")
 
 
-# 5. Cost of the current MPC step
-ax[4].step(
-    x,
-    results["cost_current_step_eur"],
-    where="post",
-    color="tab:blue",
-    label="Current-step cost",
-)
 
 infeasible = ~results["feasible"].fillna(False).astype(bool)
 
-ax[4].scatter(
-    x[infeasible],
-    results.loc[
-        infeasible,
-        "cost_current_step_eur",
-    ],
-    color="red",
-    marker="x",
-    label="Infeasible",
-    zorder=5,
+ax[4].plot(
+    x,
+    results["dispatch_battery_soc"] * 100.0,
+    color="tab:purple",
+    label="Battery SOC",
 )
+
+ax[4].plot(x, prosumer.time_series.data_source.loc[1].df["soc"] * 100)
 
 ax[4].set_ylabel("Cost [€]")
 ax[4].set_xlabel("Time")
