@@ -31,7 +31,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
         chp_start_cost_eur=5.0,
         flex_revenue_eur_per_mwh=200.0,
         chp_eta_el=0.36,
-        request_tolerance_kw=1e-6,
+        # request_tolerance_kw=1e-6,
         soc_target=0.90,
         weight_soc=1e5,
         forecast_data=None,
@@ -64,9 +64,9 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             flex_revenue_eur_per_mwh
         )
         self.chp_eta_el = float(chp_eta_el)
-        self.request_tolerance_kw = float(
-            request_tolerance_kw
-        )
+        # self.request_tolerance_kw = float(
+        #     request_tolerance_kw
+        # )
         self.soc_target = float(soc_target)
         self.weight_soc = float(weight_soc)
 
@@ -363,7 +363,8 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             bounds=(0.0, max_flex_kw),
         )
 
-        if max_flex_kw > self.request_tolerance_kw:
+        # if max_flex_kw > self.request_tolerance_kw:
+        if max_flex_kw > 0:
             model.flex_delivery = pyo.Constraint(
                 expr=(
                     model.p_grid_kw[t0]

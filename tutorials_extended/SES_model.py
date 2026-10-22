@@ -37,7 +37,7 @@ time_series_data = time_series_data.loc[
     (time_series_data.index >= week_start)
     & (time_series_data.index < week_end)
 ]
-#TODO- resample overall to 15min for the MPC
+
 hourly_data = pd.DataFrame({
     "p_el_demand_kw": time_series_data["p_el_demand_kw"].resample("1h").mean(),
     "p_pv_in_kw": time_series_data["p_pv_in_kw"].resample("1h").mean(),
@@ -83,15 +83,6 @@ electricity_price = (
 hourly_data["electricity_price_eur_per_mwh"] = (
     electricity_price.reindex(hourly_data.index)
 )
-
-if hourly_data["electricity_price_eur_per_mwh"].isna().any():
-    missing = hourly_data.index[
-        hourly_data["electricity_price_eur_per_mwh"].isna()
-    ]
-    raise ValueError(
-        f"Für {len(missing)} Zeitschritte fehlen Strompreise. "
-        f"Erster fehlender Wert: {missing[0]}"
-    )
 
 # Kein EV-Profil vorhanden
 hourly_data["p_ev_charge_kw"] = 0.0
@@ -191,12 +182,11 @@ optimization_index = create_controlled_electrical_optimization_mpc(
     order=0,
     solver_name="appsi_highs",
     horizon_steps=24,
-    contract_penalty_eur_per_mwh=200.0,
+    contract_penalty_eur_per_mwh=300.0,
     chp_start_cost_eur=50.0,
     soc_target=0.80,
     weight_soc=2000.0,
     flex_revenue_eur_per_mwh=200.0,
-    request_tolerance_kw=1e-6,
     forecast_data=time_series_data[forecast_columns].copy(),
     pad_forecast_end=True,
 )
@@ -398,7 +388,7 @@ def combined_legend(left_axis, right_axis=None):
 
 
 fig, ax = plt.subplots(
-    5,
+    4,
     1,
     figsize=(13, 14),
     sharex=True,
@@ -530,18 +520,18 @@ ax[3].legend(loc="upper left")
 
 infeasible = ~results["feasible"].fillna(False).astype(bool)
 
-ax[4].plot(
-    x,
-    results["dispatch_battery_soc"] * 100.0,
-    color="tab:purple",
-    label="Battery SOC",
-)
-
-ax[4].plot(x, prosumer.time_series.data_source.loc[1].df["soc"] * 100)
-
-ax[4].set_ylabel("Cost [€]")
-ax[4].set_xlabel("Time")
-ax[4].legend(loc="upper left")
+# ax[4].plot(
+#     x,
+#     results["dispatch_battery_soc"] * 100.0,
+#     color="tab:purple",
+#     label="Battery SOC",
+# )
+#
+# ax[4].plot(x, prosumer.time_series.data_source.loc[1].df["soc"] * 100)
+#
+# ax[4].set_ylabel("Cost [€]")
+# ax[4].set_xlabel("Time")
+# ax[4].legend(loc="upper left")
 
 
 for axis in ax:
