@@ -650,6 +650,8 @@ def create_gas_boiler(prosumer,
                       efficiency_percent=100,
                       allow_stop=True,
                       max_t_out_c=np.nan,
+                      min_on_time_s=np.nan,
+                      min_off_time_s=np.nan,
                       overflow_strategy='dump_proportional',
                       name=None,
                       index=None,
@@ -678,6 +680,12 @@ def create_gas_boiler(prosumer,
 
         **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
+        **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+            the boiler cannot stop before it has run for this duration. Requires a positive min_q_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+            the boiler cannot restart before it has been stopped for this duration.
+
         **name** (string, default None) - The name for this gas boiler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -695,8 +703,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
-                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "overflow_strategy", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, min_on_time_s, min_off_time_s, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)

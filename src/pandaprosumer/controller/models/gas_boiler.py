@@ -3,6 +3,7 @@ Module containing the GasBoilerController class.
 """
 
 import numpy as np
+import pandas as pd
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
@@ -171,15 +172,78 @@ class GasBoilerController(BasicProsumerController):
         min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
         if not np.isnan(max_q_kw) and not np.isnan(min_q_kw) and min_q_kw > max_q_kw:
             raise ValueError(f"Gas Boiler {self.name} in prosumer {prosumer.name} has min_q_kw > max_q_kw ({min_q_kw} > {max_q_kw})")
+        if self._get_duration_s(prosumer, 'min_on_time_s') > 0 and not min_q_kw > 0:
+            # Without a positive minimum power, there is no power to hold the boiler on
+            raise ValueError(f"Gas Boiler {self.name} in prosumer {prosumer.name} has min_on_time_s but no "
+                             f"positive min_q_kw ({min_q_kw})")
+        self._reset_on_off_state()
 
+    def _get_duration_s(self, prosumer, attr_name):
+        """
+        Read a duration parameter of the element, 0 if it is not set
 
-    def _calculate_gas_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c):
+        :param attr_name: Name of the duration parameter (min_on_time_s or min_off_time_s)
+        """
+        duration_s = self._get_element_param(prosumer, attr_name)
+        if duration_s is None or np.isnan(duration_s):
+            return 0.
+        return float(duration_s)
+
+    def _reset_on_off_state(self):
+        """
+        Forget the on/off history at the start of a run
+        """
+        self.is_on = None
+        # Time step at which the boiler started or stopped, None if it has not switched since the start of the run
+        self.state_start_time = None
+
+    def _time_in_state_s(self):
+        """
+        Duration since the boiler entered its current state (running or stopped), at the start of the current time step [s]
+        """
+        if self.state_start_time is None:
+            # The state of the first time step of the run is assumed to have lasted long enough
+            return np.inf
+        return (pd.Timestamp(self.time) - pd.Timestamp(self.state_start_time)).total_seconds()
+
+    def _is_stop_locked(self, prosumer):
+        """
+        True if the boiler is running but has not run for min_on_time_s yet, so it cannot stop
+        """
+        min_on_time_s = self._get_duration_s(prosumer, 'min_on_time_s')
+        return bool(self.is_on) and self._time_in_state_s() < min_on_time_s - 1e-6
+
+    def _is_start_locked(self, prosumer):
+        """
+        True if the boiler is stopped but has not been stopped for min_off_time_s yet, so it cannot restart
+        """
+        min_off_time_s = self._get_duration_s(prosumer, 'min_off_time_s')
+        return self.is_on is False and self._time_in_state_s() < min_off_time_s - 1e-6
+
+    def time_series_initialization(self, container):
+        self._reset_on_off_state()
+        return super().time_series_initialization(container)
+
+    def finalize_step(self, container, time):
+        """
+        Record the state (running or stopped) of the converged time step, and since when the boiler is in it
+        """
+        super().finalize_step(container, time)
+        if 'q_kw' not in self.last_result:
+            return
+        is_on = bool(self.last_result['q_kw'] > 1e-3)
+        if self.is_on is not None and is_on != self.is_on:
+            self.state_start_time = time
+        self.is_on = is_on
+
+    def _calculate_gas_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c, allow_stop=None):
         """
         Main method for Gas Boiler physical calculation during one time step
 
         :param mdot_kg_per_s: Mass flow rate in kg/s
         :param t_out_c: Output provided temperature to the feed pipe in °C
         :param t_in_c: Input temperature from return pipe in °C
+        :param allow_stop: Whether the boiler may stop at this time step (default: the element parameter)
 
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
@@ -199,9 +263,10 @@ class GasBoilerController(BasicProsumerController):
             max_ramp_down_kw_per_s = None
         q_previous_kw = self.last_result.get('q_kw', np.nan)
         delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
-        allow_stop = self._get_element_param(prosumer, 'allow_stop')
-        if allow_stop == None or np.isnan(allow_stop):
-            allow_stop = True
+        if allow_stop is None:
+            allow_stop = self._get_element_param(prosumer, 'allow_stop')
+            if allow_stop == None or np.isnan(allow_stop):
+                allow_stop = True
 
         max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
         if np.isnan(max_t_out_c):
@@ -248,6 +313,14 @@ class GasBoilerController(BasicProsumerController):
             t_out_required_c = t_in_required_c
         assert t_out_required_c >= t_in_required_c, f"Gas Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop == None or np.isnan(allow_stop):
+            allow_stop = True
+        # A boiler that has not run for min_on_time_s yet behaves as if it could not stop
+        allow_stop = allow_stop and not self._is_stop_locked(prosumer)
+        # A boiler that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+
         rerun = True
         nb_runs = 0
         while rerun:
@@ -257,12 +330,16 @@ class GasBoilerController(BasicProsumerController):
                     f"Gas Boiler {self.name}: did not converge after {MAX_RERUN} iterations at "
                     f"timestep {self.time} in prosumer {prosumer.name}"
                 )
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
-                prosumer,
-                mdot_required_kg_per_s,
-                t_out_required_c,
-                t_in_required_c,
-            )
+            if start_locked:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = 0., 0., t_in_required_c, t_in_required_c, 0.
+            else:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
+                    prosumer,
+                    mdot_required_kg_per_s,
+                    t_out_required_c,
+                    t_in_required_c,
+                    allow_stop,
+                )
 
             overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
             if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
@@ -318,10 +395,7 @@ class GasBoilerController(BasicProsumerController):
                     # If allow_stop is False and power dropped below min_q_kw due to temperature constraint,
                     # we need to increase mass flow to maintain minimum power
                     min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
-                    allow_stop = self._get_element_param(prosumer, 'allow_stop')
-                    if allow_stop == None or np.isnan(allow_stop):
-                        allow_stop = True
-                    
+
                     if (not np.isnan(min_q_kw) and allow_stop == False and 
                         q_kw > 1e-3 and q_kw < min_q_kw - 1e-3):
                         # Increase mass flow to achieve min_q_kw at constrained temperature
