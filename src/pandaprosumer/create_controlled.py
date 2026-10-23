@@ -657,6 +657,8 @@ def create_controlled_gas_boiler(prosumer,
                                  efficiency_percent=100,
                                  allow_stop=True,
                                  max_t_out_c=np.nan,
+                                 min_on_time_s=np.nan,
+                                 min_off_time_s=np.nan,
                                  name=None,
                                  index=None,
                                  in_service=True,
@@ -688,6 +690,13 @@ def create_controlled_gas_boiler(prosumer,
 
             **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C. 
                 When set, limits the boiler's output temperature. See edge cases documentation for interaction with allow_stop.
+
+            **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started,
+                the boiler cannot stop before it has run for this duration: until then it behaves as with
+                allow_stop=False. Requires a positive min_q_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped,
+                the boiler cannot restart before it has been stopped for this duration: until then it delivers no heat.
 
             **name** (string, default None) - The name for this gas boiler
 

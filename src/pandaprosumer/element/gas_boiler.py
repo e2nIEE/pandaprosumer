@@ -31,6 +31,8 @@ class GasBoilerElementData:
         ('efficiency_percent', 'f8'),
         ('allow_stop', bool),
         ('max_t_out_c', 'f8'),
+        ('min_on_time_s', 'f8'),
+        ('min_off_time_s', 'f8'),
         
         ('in_service', bool)
     ])

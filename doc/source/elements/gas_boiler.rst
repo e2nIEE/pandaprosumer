@@ -48,6 +48,8 @@ These are the physical parameters required for the Gas Boiler element to enable 
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
    "allow_stop", "Whether the boiler is allowed to stop completely (reach zero power). If False, the boiler maintains minimum power even when demand is null. See :ref:`gas_boiler_edge_cases` for important interaction with temperature constraints.", "Boolean"
    "max_t_out_c", "Maximum output temperature constraint. If set, limits the boiler's output temperature to this value. See :ref:`gas_boiler_edge_cases` for important interaction with minimum power constraints.", "Degree Celsius"
+   "min_on_time_s", "Minimum running time. Once started, the boiler cannot stop before it has run for this duration: until then it behaves as with ``allow_stop=False``. Requires a positive ``min_q_kw``. See :ref:`gas_boiler_min_on_off_time`.", "s"
+   "min_off_time_s", "Minimum stop time. Once stopped, the boiler cannot restart before it has been stopped for this duration: until then it delivers no heat, whatever the demand. See :ref:`gas_boiler_min_on_off_time`.", "s"
    "overflow_strategy", "How to dispatch surplus mass flow to responders when the boiler runs at ``min_q_kw`` but the demand asks for less. ``'dump_proportional'`` (default) splits the surplus across responders in proportion to their requests; ``'dump_on_last'`` pushes the surplus mass flow onto the last responder at the requested feed temperature; ``'cap'`` drops the surplus and raises ``t_out_c`` to keep energy balance. See :ref:`overflow_strategy`.", "str"
 
 
@@ -108,6 +110,30 @@ If the power consumption is higher than the maximum power of the boiler, the pow
 consumption is set to the maximum power, and the actual output temperature  :math:`T_\text{feed}` that can
 be reached is calculated based on the maximum power.
 For a gas boiler, the maximum power is defined as the maximum thermal power output, representing the highest amount of heat energy the boiler can produce.
+
+.. _gas_boiler_min_on_off_time:
+
+Minimum Running and Stop Times
+==============================
+
+Some boilers (e.g. biomass boilers) must not be cycled: once started they must run for a minimum
+time, and once stopped they must stay off for a minimum time. ``min_on_time_s`` and ``min_off_time_s``
+model these constraints. The boiler is running at a time step if it delivers heat
+(:math:`Q > 0`) and stopped otherwise.
+
+- **Minimum running time**: if the boiler started at time step :math:`t_\text{start}`, it cannot stop at
+  a time step :math:`t` such that :math:`t - t_\text{start} < \text{min\_on\_time\_s}`. When the demand
+  drops to zero in this window, the boiler keeps running at ``min_q_kw``, as with ``allow_stop=False``.
+- **Minimum stop time**: if the boiler stopped at time step :math:`t_\text{stop}`, it cannot restart at a
+  time step :math:`t` such that :math:`t - t_\text{stop} < \text{min\_off\_time\_s}`. In this window
+  the boiler delivers no heat and no mass flow, whatever the demand.
+
+With hourly time steps and ``min_on_time_s = min_off_time_s = 6 * 3600``, a boiler started at 08:00 runs at
+least until 13:00 included and may stop at 14:00; a boiler stopped at 14:00 stays off at least until 19:00
+included and may restart at 20:00.
+
+The state of the first time step of a run is assumed to have lasted long enough: only a start or a stop
+during the run locks the boiler. The history is reset at the start of each ``run_timeseries``.
 
 .. _gas_boiler_edge_cases:
 
