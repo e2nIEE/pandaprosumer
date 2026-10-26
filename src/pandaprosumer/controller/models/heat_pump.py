@@ -239,7 +239,17 @@ class HeatPumpController(BasicProsumerController):
         # - t_evap_in_c <= t_evap_out_c: no heat extracted on the evaporator side
         # - t_cond_out_c <= t_evap_in_c: would imply negative Carnot COP (denominator
         #   of (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c) <= 0)
-        if t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c or t_cond_out_c <= t_evap_in_c:
+        # - in 'lorenz' mode, a condenser log-mean temperature at or below the evaporator's: would
+        #   imply a negative Lorenz COP, although the outlet may still be above the source
+        #   (e.g. a 40 -> 80 °C stream heated from a 77 °C source)
+        cop_mode = self._cop_mode(prosumer)
+        no_lift = t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c or t_cond_out_c <= t_evap_in_c
+        if not no_lift and cop_mode == 'lorenz':
+            # Log-mean temperatures in K (the difference is the same in C and K)
+            mean_th_k = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
+            mean_tc_k = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+            no_lift = mean_th_k <= mean_tc_k
+        if no_lift:
             # If there is no demand on the condenser, the Heat Pump is not running
             # We have to take into account ramp down constraints here
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
@@ -267,13 +277,10 @@ class HeatPumpController(BasicProsumerController):
         # 3.-5. COP and compressor power. 'lorenz' (the default) uses the log-mean temperatures of the
         # condenser and evaporator streams, so a colder return raises the COP; 'carnot' only sees the
         # condenser outlet temperature
-        if self._cop_mode(prosumer) == 'carnot':
+        if cop_mode == 'carnot':
             cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
             cop_hp = carnot_efficiency * cop_carnot
         else:
-            # Log-mean temperatures in K (the difference is the same in C and K)
-            mean_th_k = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
-            mean_tc_k = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
             cop_lorenz = mean_th_k / (mean_th_k - mean_tc_k)
             cop_hp = carnot_efficiency * cop_lorenz
         p_comp_kw = q_cond_kw / cop_hp

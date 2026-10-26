@@ -1006,3 +1006,27 @@ def test_unknown_cop_mode_is_rejected():
     hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
     with pytest.raises(ValueError, match="unknown COP mode"):
         hp_controller.control_step(prosumer)
+
+
+@pytest.mark.parametrize("mode", ['lorenz', 'carnot'])
+def test_no_temperature_lift_turns_the_heat_pump_off(mode):
+    """
+    A 77 °C source for a 40 -> 80 °C condenser stream: the outlet is above the source, but the
+    condenser's log-mean temperature (~59 °C) is below the evaporator's (77 -> 67 °C, ~72 °C), so
+    there is no lift for the Lorenz COP: the heat pump is off instead of failing on a negative
+    COP. Carnot only sees the outlet, so it still runs.
+    """
+    prosumer = create_empty_prosumer_container()
+    hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                         **{**_default_argument(), 'mode': mode})
+    hp_controller = prosumer.controller.iloc[hp_idx].object
+    hp_controller.inputs = np.array([[77]])
+    hp_controller.t_m_to_deliver = lambda x: (80, 40, [2])
+    hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+    hp_controller.control_step(prosumer)
+
+    q_cond_kw, p_comp_kw, _, cop = hp_controller.step_results[0][:4]
+    if mode == 'lorenz':
+        assert (q_cond_kw, p_comp_kw) == (0, 0)
+    else:
+        assert q_cond_kw > 0 and cop > 0
