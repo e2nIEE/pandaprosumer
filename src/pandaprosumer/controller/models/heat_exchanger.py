@@ -11,6 +11,9 @@ from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESH
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
+#: Lowest secondary return the exchanger guesses when its feed is too cold for the requested outlet [°C]
+WATER_FREEZING_POINT_C = 0.
+
 logger = logging.getLogger(__name__)
 
 
@@ -362,7 +365,22 @@ class HeatExchangerController(BasicProsumerController):
         assert not np.isnan(t_in_2_required_c), f"Heat Exchanger {self.name} t_in_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
-        if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
+        t_in_2_promised_c = t_in_2_required_c
+        too_cold_to_heat = False
+        if t_1_in_c < t_out_2_required_c:
+            # A feed colder than the requested outlet: the outlet slides down with the feed. Once it reaches the
+            # return, the return is only a guess keeping the secondary temperature difference -- a responder whose
+            # return is an outcome (a dry cooler) answers with the real one and reruns this exchanger -- bounded by
+            # the freezing point of water: unbounded, a cooled network drove it to -24 degC. An outlet landing on
+            # the return, or a feed too cold to heat water above the freezing point, exchanges nothing.
+            t_out_2_lowered_c = t_1_in_c - min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
+            if t_out_2_lowered_c < t_in_2_required_c:
+                t_in_2_required_c = max(t_in_2_required_c + t_out_2_lowered_c - t_out_2_required_c,
+                                        WATER_FREEZING_POINT_C)
+            t_out_2_required_c = t_out_2_lowered_c
+            too_cold_to_heat = t_out_2_required_c - t_in_2_required_c < 1e-3
+
+        if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3 or too_cold_to_heat:
             # If the secondary mass flow is too low, no heat is exchanged.
             # The secondary must then leave at its INLET temperature, not at the
             # requested outlet: with the primary idle (mdot_1 = 0, q_exchanged = 0)
@@ -372,12 +390,12 @@ class HeatExchangerController(BasicProsumerController):
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
             mdot_2_kg_per_s = mdot_2_required_kg_per_s
-            t_2_in_c = t_in_2_required_c
-            t_2_out_c = t_in_2_required_c
+            t_2_in_c = t_in_2_promised_c
+            t_2_out_c = t_in_2_promised_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
-            
-        
+
+
             # Handle case where primary mass flow is provided but no heat exchange occurs (full bypass)
             if not np.isnan(self._mdot_1_provided_kg_per_s):
                 mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
@@ -385,13 +403,6 @@ class HeatExchangerController(BasicProsumerController):
                 t_1_out_c = t_1_in_c
 
         else:
-            # FixMe: case where t_out_2_required_c == t_in_2_required_c
-            t_out_2_required_c_init = t_out_2_required_c
-            if t_1_in_c < t_out_2_required_c:
-                t_out_2_required_c = t_1_in_c - min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
-            if t_out_2_required_c < t_in_2_required_c:
-                t_in_2_required_c += t_out_2_required_c - t_out_2_required_c_init
-
             assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
             assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
