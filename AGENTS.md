@@ -10,7 +10,23 @@ inputs (e.g. a heat demand timeseries) and outputs (e.g. power load timeseries o
 
 It extends the libraries `pandapower` and `pandapipes`.
 
-For running python code, always use the virtual environment.
+For running python code, always use the virtual environment at `.venv/` in this
+checkout (Python 3.10 or 3.11 — `requires-python` excludes 3.12+). Create it once with
+every optional extra:
+
+```bash
+uv venv --python 3.11 .venv          # or: python3.11 -m venv .venv
+uv pip install --python .venv/bin/python -e ".[all,docs,plotting,test]"
+.venv/bin/python -m pytest -n auto -q
+```
+
+**SenergyNets platform note.** In the SenergyNets platform workspace this checkout sits
+next to `panda-energy-system` (cloned as `pandaprosumer` or `pandaprosumer_os`), and this
+same `.venv` is the shared test environment for both repos — `panda-energy-system` is
+editable-installed into it (`--no-deps`; recipe in `panda-energy-system/CLAUDE.md`). Keep
+the checkout on the `senergynets-platform` branch there: the install is editable, so the
+checked-out branch is what `panda-energy-system` imports, and `develop` lacks APIs it needs
+(e.g. `create_controlled_plant_pump_coupling`).
 
 ## Codebase patterns to know
 
