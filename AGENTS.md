@@ -47,6 +47,46 @@ controller, write at least one integration test asserting all four
 invariants (see `tests/integrations/test_overflow_strategy_consistency.py`
 for the helper `_assert_interface_consistent` and examples).
 
+### Coupled district-heating networks (energy system)
+
+SenergyNets runs this library inside pandapipes networks through
+`panda-energy-system` (its `CLAUDE.md` → "One time step"). Behaviours a change
+here must keep, each pinned by a test:
+
+- **A writing network coupling re-converges** (`NetworkCouplingControl.is_converged`):
+  a prosumer controller may run again after the coupling wrote its outputs into the
+  network, within the same level (an exchanger answers first with a guessed return,
+  then reruns once its demand answers). The coupling is unconverged until its mapped
+  inputs are the ones it wrote. `tests/energy_system/test_network_coupling_rewrite.py`.
+- **Heat exchanger hot-end approach** (`HeatExchangerController.control_step`): the
+  secondary outlet slides down with the feed from `min(delta_t_hot_default_c, 5)` above
+  the requested outlet, never pinches (a 0.2 K approach wanted 10× the nominal primary
+  flow). `tests/models/test_heat_exchanger_cold_feed.py::TestFeedJustAboveTheOutlet`.
+- **A starved exchanger keeps its valve open**: a feed too cold to heat with draws the
+  flow its demand would need at the nominal primary temperatures, unheated
+  (`_starved_primary_flow_kg_per_s`, from what the secondary asked on the step's
+  *first* pass — `_first_ask`; later passes of the control loop are not `prosumer.rerun`).
+  Closed, a cooled network drew no flow and a heat-led plant never restarted.
+  `TestStarvedValveOpen`.
+- **A tank charging and discharging at once** through the same connections
+  short-circuits (`StratifiedHeatStorageController._short_circuits`, used in
+  `_calculate_heat_storage` and `_forced_charge_reapply_request`): the common flow goes
+  charge → discharge and return → source, only the net flow crosses the layers, when
+  the charge is no colder than the outlet layer. Each outlet booked without the other
+  stream lost ~1.7 MWh a day in a game tank.
+  `tests/integrations/test_shs_charge_discharge_short_circuit.py`.
+- **A forced charge setpoint is the producers' whole flow** to the tank (bypass = the
+  rest of what arrives): a fill-rate setpoint caps the source. Leave the charge free
+  (`-1`/NaN) when the source should also serve the demand.
+- **The plant pump coupling fixes the plant's heat on the first pass it delivered on**
+  (`PlantPumpCouplingControl`, `MAX_PLANT_WAIT_PASSES`), not the step's first pass.
+
+Check energy balances, not only the KPIs, when touching any of these: plant heat =
+circulation-pump heat, `res_heat_consumer.qext_w` = the substations' `q_exchanged_kw`,
+a tank's Σ(received − delivered) = its `e_stored_kwh` change (+ small losses). A
+discriminating test needs game-like steps (15 min to 1 h): at 5 min most of these
+effects vanish.
+
 ### `overflow_strategy` and `_merit_order_mass_flow`
 
 When a producer is pinned to its thermal floor (`min_q_kw` / `min_p_kw`
