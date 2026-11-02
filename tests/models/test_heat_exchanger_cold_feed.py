@@ -31,6 +31,8 @@ CARE_HOME_HX = {
 }
 #: The care home's 70/40 secondary at 50 kW
 MDOT_2_KG_PER_S = 50e3 / (CP_W * 30.)
+#: The primary flow a starved exchanger draws, valve open: those 50 kW over the nominal 85/50 degC primary
+STARVED_MDOT_1_KG_PER_S = 50e3 / (CP_W * 35.)
 
 
 def _period(prosumer):
@@ -70,19 +72,22 @@ class TestColdPrimaryFeed:
 
     def test_the_outlet_landing_on_the_return_exchanges_nothing(self):
         """45 degC: the outlet slides exactly onto the 40 degC return -- a zero difference that used to divide
-        into an infinite secondary flow. Nothing to heat: idle. (A guessed 10 degC return here would book 50 kW
-        the demand never receives: handed back exactly the return it promised, it does not rerun the exchanger.)"""
+        into an infinite secondary flow. Nothing to heat: no exchange, the primary passes through valve open.
+        (A guessed 10 degC return here would book 50 kW the demand never receives: handed back exactly the
+        return it promised, it does not rerun the exchanger.)"""
         r = _run_hx(45.)
-        assert r['mdot_1'] == 0
+        assert r['mdot_1'] == pytest.approx(STARVED_MDOT_1_KG_PER_S, rel=2e-2)
+        assert r['t_1_out'] == pytest.approx(45.)
         assert r['q_kw'] == 0
         assert r['t_2_in'] == pytest.approx(40.)
         assert r['t_2_out'] == pytest.approx(40.)
 
     @pytest.mark.parametrize("t_1_in_c", [0.5, 4., 5.])
     def test_a_feed_too_cold_to_heat_water_exchanges_nothing(self, t_1_in_c):
-        """The outlet would land at or below the freezing point: idle, the secondary passes at its own return."""
+        """The outlet would land at or below the freezing point: no exchange, the secondary passes at its own return
+        and the primary passes through valve open."""
         r = _run_hx(t_1_in_c)
-        assert r['mdot_1'] == 0
+        assert r['mdot_1'] == pytest.approx(STARVED_MDOT_1_KG_PER_S, rel=2e-2)
         assert r['q_kw'] == 0
         assert r['t_1_out'] == pytest.approx(t_1_in_c)
         assert r['t_2_in'] == pytest.approx(40.)
@@ -101,3 +106,45 @@ class TestColdPrimaryFeed:
         assert r['t_2_in'] == pytest.approx(40.)
         assert r['t_2_out'] == pytest.approx(70.)
         assert r['q_kw'] == pytest.approx(50., rel=1e-2)
+
+
+class TestFeedJustAboveTheOutlet:
+    """
+    A feed a fraction of a degree above the requested outlet used to keep that outlet with no hot-end approach:
+    in the coupled game network (325 kW at 71.1 degC) the primary then left barely cooled at 15.5 kg/s, ten times
+    its nominal flow, which drained the network's heat in one hour and starved every substation the next. The
+    outlet now slides from 5 K above the requested one, so the primary flow is continuous across that threshold.
+    """
+
+    MDOT_2_325_KW = 325e3 / (CP_W * 30.)
+
+    @pytest.mark.parametrize("t_1_in_c", [70.2, 72., 74.9])
+    def test_the_outlet_keeps_a_5_k_approach(self, t_1_in_c):
+        r = _run_hx(t_1_in_c, mdot_2_kg_per_s=self.MDOT_2_325_KW)
+        assert r['t_2_out'] == pytest.approx(t_1_in_c - 5.)
+        assert r['t_1_out'] < t_1_in_c - 20., "the primary is cooled, not merely passed through"
+
+    def test_the_primary_flow_is_continuous_around_the_outlet(self):
+        flows = [_run_hx(t, mdot_2_kg_per_s=self.MDOT_2_325_KW)['mdot_1'] for t in (69.99, 70.01, 74.99, 75.01)]
+        assert flows[1] == pytest.approx(flows[0], rel=1e-2)
+        assert flows[3] == pytest.approx(flows[2], rel=1e-2)
+        assert max(flows) < 3.5, "about 1.5 x the nominal primary flow of 325 kW over 85/50 degC, no pinch blow-up"
+
+
+class TestStarvedValveOpen:
+    """
+    A substation starved by a feed too cold to heat with opens its valve rather than closing it: the network keeps
+    circulating through it, unheated, so a heat-led plant sees the load and can warm the network up again. Closed,
+    a game network cooled overnight drew 0.3 kg/s, a CHP saw 78 kW (under its minimum load) and stayed off all day.
+    """
+
+    def test_a_starved_exchanger_draws_its_nominal_flow_and_exchanges_nothing(self):
+        r = _run_hx(45.)
+        assert r['q_kw'] == 0
+        assert r['t_1_out'] == pytest.approx(45.)
+        assert r['mdot_1'] == pytest.approx(STARVED_MDOT_1_KG_PER_S, rel=2e-2)
+
+    def test_no_demand_draws_no_flow(self):
+        r = _run_hx(45., mdot_2_kg_per_s=0.)
+        assert r['mdot_1'] == 0
+        assert r['q_kw'] == 0
