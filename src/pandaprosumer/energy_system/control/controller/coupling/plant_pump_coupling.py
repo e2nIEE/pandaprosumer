@@ -20,6 +20,12 @@ within the hour), so the supply temperature is iterated with the network solve (
 unconverged, which makes the control loop solve the network again) until both agree. The plant itself is
 not run again: its heat for the step is fixed, so stateful elements such as storages are not stepped twice.
 
+The heat is fixed on the first pass the plant has delivered on, not on the first pass of the step: a plant may
+need several passes of the control loop (a storage whose return misses the one it promised its sources re-runs
+them on the next pass and delivers nothing meanwhile). Fixing the heat on such a pass fixed it at 0 for the whole
+step: the network ran cold while the storage booked the heat it discharged. A plant that delivers nothing at all
+(out of service) is waited for `MAX_PLANT_WAIT_PASSES` passes, then gives no heat.
+
 The plant is always asked for the network's supply setpoint (the pump's `t_flow_k` at creation), not for the
 supply temperature of the latest solve: after a short step that one is the lower mixed temperature, and the
 target would ratchet down step after step. The network itself keeps the supply temperature it really had, so
@@ -40,6 +46,14 @@ logger = logging.getLogger(__name__)
 SUPPLY_TEMPERATURE_TOLERANCE_K = 1e-3
 MAX_SUPPLY_ITERATIONS = 20
 MIN_SECANT_SLOPE = 1e-6  # below it the secant step is unreliable: plain substitution instead
+# Passes of the control loop the coupling waits for a plant that has not delivered yet, before taking no heat.
+MAX_PLANT_WAIT_PASSES = 10
+
+
+def has_delivered(delivered):
+    """True once the plant mapped water into the coupling in this step (NaN until then)."""
+    return not (np.isnan(delivered[FluidMixMapping.TEMPERATURE_KEY])
+                or np.isnan(delivered[FluidMixMapping.MASS_FLOW_KEY]))
 
 
 def plant_heat_w(mdot_plant_kg_per_s, t_plant_k, t_inlet_k, cp_j_per_kgk):
@@ -75,6 +89,7 @@ class PlantPumpCouplingControl(NetworkCouplingControl):
         self.t_plant_k = np.nan
         self.settled = False
         self.iterations = 0
+        self.wait_passes = 0
         self.previous = None  # (supply temperature solved, its residual) of the previous iteration
 
     def time_step(self, net, time):
@@ -99,15 +114,24 @@ class PlantPumpCouplingControl(NetworkCouplingControl):
         net[self.element_name].at[self.element_index[0], "t_flow_k"] = t_flow_k
 
     def control_step(self, net):
-        """Fix the plant's heat on the first pass, then move the supply temperature towards the network's answer."""
+        """
+        Fix the plant's heat on the first pass it delivered on, then move the supply temperature towards the
+        network's answer.
+        """
         def cp(t_k):
             return float(net.fluid.get_heat_capacity(t_k))
 
         # supply temperature the latest network solve used
         solved_k = float(net[self.element_name].at[self.element_index[0], "t_flow_k"])
         if self.heat_w is None:
-            # First pass: the plant just ran on the flow and return temperature of the latest solve.
             delivered = self.input_mass_flow_with_temp
+            if not has_delivered(delivered) and self.wait_passes < MAX_PLANT_WAIT_PASSES:
+                # The plant runs again on the next pass: leave the network as solved, stay unconverged.
+                self.wait_passes += 1
+                return
+            if self.wait_passes:
+                logger.debug("%s: the plant delivered after %d more pass(es)", self.name, self.wait_passes)
+            # The plant just ran on the flow and return temperature of the latest solve.
             super().control_step(net)
             _, t_inlet_k = self._pump_result(net)
             t_plant_k = float(delivered[FluidMixMapping.TEMPERATURE_KEY]) + CELSIUS_TO_K
