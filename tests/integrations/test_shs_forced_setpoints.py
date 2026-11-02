@@ -289,6 +289,30 @@ class TestForcedDischarge:
         _assert_demand_interface(dfs)
         _assert_source_interface(dfs)
 
+    def test_discharge_of_a_drained_tank_gives_what_it_holds_and_the_source_the_rest(self):
+        """
+        A schedule planned outside the simulation keeps asking for a discharge after the tank is drained
+        (SenergyNets game: a peak-price discharge longer than the tank's charge). The tank gives at most the
+        scheduled mass of its real layers, never water under min_useful_temp_c, and the source covers the
+        rest: sized on the top layer, the HP was asked for almost nothing and the plug flow pushed out several
+        times the setpoint of lukewarm water, so the demand got its energy far under its feed temperature.
+        """
+        setpoint = 30.0  # 9 t per step: more than the hot top holds
+        # bottom first: cold, then lukewarm water above the demand return but under min_useful_temp_c, a thin hot top
+        drained = [T_RETURN_DEMAND] * 10 + [MIN_USEFUL - 2.0] * (N_LAYERS - 12) + [65.0] * 2
+        dfs = _run(charge_setpoints=[0.0] * N_STEPS, discharge_setpoints=[setpoint] * N_STEPS,
+                   init_layer_temps_c=drained)
+        shs = dfs["shs"]
+        assert (shs["q_discharge_kw"] > 0).iloc[0], "the hot top is discharged first"
+        assert (shs["mdot_discharge_kg_per_s"] <= setpoint + 1e-6).all(), shs["mdot_discharge_kg_per_s"]
+        discharging = shs["mdot_discharge_kg_per_s"] > 1e-6
+        assert (shs.loc[discharging, "t_discharge_out_c"] >= MIN_USEFUL - 0.5).all(), shs["t_discharge_out_c"]
+        assert (dfs["hd"]["q_uncovered_kw"] <= 1.0).all(), dfs["hd"]["q_uncovered_kw"]
+        assert dfs["hp"]["q_cond_kw"].iloc[-1] > 50.0, "the HP takes over what the drained tank no longer holds"
+        _assert_shs_balances(shs)
+        _assert_demand_interface(dfs)
+        _assert_source_interface(dfs)
+
     def test_zero_discharge_setpoint_forces_no_discharge(self):
         """Demand larger than a weak HP can serve: free logic discharges, 0.0 forbids it."""
         hot = list(np.linspace(58.0, 65.0, N_LAYERS))
