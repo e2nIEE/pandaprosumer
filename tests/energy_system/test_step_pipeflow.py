@@ -12,7 +12,8 @@ from pandaprosumer import create_period
 from pandaprosumer.energy_system import create_empty_energy_system, add_net_to_energy_system
 from pandaprosumer.energy_system.timeseries import run_time_series_energy_system as run_module
 from pandaprosumer.energy_system.timeseries.step_pipeflow import (
-    HEAT_BALANCE_TABLE, HEAT_LOSS_COLUMN, StepPipeflow, create_heat_balance_table, pipe_heat_loss_w)
+    HEAT_BALANCE_TABLE, HEAT_LOSS_COLUMN, StepPipeflow, _input_fingerprint, create_heat_balance_table,
+    pipe_heat_loss_w)
 
 
 def _pipe_net():
@@ -109,3 +110,22 @@ def test_run_timeseries_keeps_the_plain_pipeflow_on_request(monkeypatch):
     settings = _captured_net_settings(monkeypatch, _pipe_net(), step_pipeflow=False)
     assert settings["run"] is pandapipes.pipeflow
     assert settings["initial_run"] is True
+
+
+def test_the_input_fingerprint_sees_a_real_change_and_ignores_float_noise():
+    net = _pipe_net()
+    before = _input_fingerprint(net)
+    assert before is not None
+    net.heat_consumer.qext_w = 300e3 + 1e-9
+    assert _input_fingerprint(net) == before
+    net.heat_consumer.qext_w = 301e3
+    assert _input_fingerprint(net) != before
+    net.heat_consumer.qext_w = 300e3
+    net.heat_consumer.in_service = False  # booleans count too
+    assert _input_fingerprint(net) != before
+
+
+def test_an_unhashable_input_never_skips_a_solve():
+    net = _pipe_net()
+    net.junction["name"] = [[0]] * len(net.junction)
+    assert _input_fingerprint(net) is None

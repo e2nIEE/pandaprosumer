@@ -56,16 +56,34 @@ def pipe_heat_loss_w(net):
     return float((pipes[:, ALPHA] * np.pi * pipes[:, D] * pipes[:, LENGTH] * (pipes[:, TOUTINIT] - pipes[:, TEXT])).sum())
 
 
+def _array_bytes(values):
+    """Bytes standing for one column (or index) of a component table: raw numbers, floats rounded."""
+    if values.dtype.kind == "f":  # + 0.0 turns -0.0 into 0.0
+        return (np.round(values, FINGERPRINT_DECIMALS) + 0.0).tobytes()
+    if values.dtype.kind in "biumM":
+        return values.tobytes()
+    # names, fluids...: the digest only lives for the run, so the per-process string hash is enough
+    return hash(tuple(values.tolist())).to_bytes(8, "little", signed=True)
+
+
 def _input_fingerprint(net):
-    """Digest of every pipeflow input of the net (the declared input columns of each component table)."""
+    """
+    Digest of every pipeflow input of the net (the declared input columns of each component table).
+
+    Called before every pipeflow, so it hashes the columns' numpy buffers directly: hashing the tables with
+    `pd.util.hash_pandas_object` cost about a sixth of a whole game run.
+    """
     digest = hashlib.sha1()
     try:
         for component in net.component_list:
             table = net[component.table_name()]
-            columns = [name for name, _ in component.get_component_input() if name in table.columns]
-            inputs = table[columns].round(FINGERPRINT_DECIMALS)
             digest.update(component.table_name().encode())
-            digest.update(pd.util.hash_pandas_object(inputs, index=True).to_numpy().tobytes())
+            digest.update(_array_bytes(table.index.to_numpy()))
+            for name, _ in component.get_component_input():
+                if name in table.columns:
+                    values = table[name].to_numpy()
+                    digest.update(f"{name}:{values.dtype.str}".encode())
+                    digest.update(_array_bytes(values))
     except TypeError:  # an unhashable cell: never skip a solve
         return None
     return digest.digest()
