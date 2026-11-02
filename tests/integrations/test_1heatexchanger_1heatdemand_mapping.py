@@ -77,23 +77,25 @@ class Test1HeatExchanger1HeatDemandMapping:
 
         run_timeseries(prosumer, period, True)
 
+        # Step 0: an 80 degC feed is closer than 5 K to the requested 76.85 degC, so the outlet slides to 75 degC
+        # (the exchanger keeps a 5 K hot-end approach rather than pinching) and the demand is slightly uncovered.
         hx_data = {
-            'q_exchanged_kw': [49.840478, 198.94348, 772.4698, 0.],
-            'mdot_1_kg_per_s': [.245960, .774713, 36.718481, 0.],
+            'q_exchanged_kw': [47.866778, 198.94348, 772.4698, 0.],
+            'mdot_1_kg_per_s': [.232038, .774713, 36.718481, 0.],
             't_1_in_c': [80., 95., 95., 95.],
-            't_1_out_c': [31.56451, 33.67385, 90., 95.],
+            't_1_out_c': [30.689712, 33.67385, 90., 95.],
             'mdot_2_kg_per_s': [.255149, 1.020598, 3.941905, 0.],
             't_2_in_c': [30., 30., 30., 30.],
-            't_2_out_c': [76.85, 76.85, 76.85, 30.]
+            't_2_out_c': [75., 76.85, 76.85, 30.]
         }
 
         hx_expected = pd.DataFrame(hx_data, index=data.index)
 
         dmd_data = {
-            'q_received_kw': [50., 200., 772.4698, 0.],
-            'q_uncovered_kw': [0., 0., 227.53, 0.],
+            'q_received_kw': [48.021790, 200., 772.4698, 0.],
+            'q_uncovered_kw': [1.978210, 0., 227.53, 0.],
             'mdot_kg_per_s': [.255149, 1.020598, 3.941905, 0.],
-            't_in_c': [76.85, 76.85, 76.85, 30.],
+            't_in_c': [75., 76.85, 76.85, 30.],
             't_out_c': [30., 30., 30., 30.]
         }
         hd_expected = pd.DataFrame(dmd_data, index=data.index)
