@@ -221,8 +221,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         :return: True if the remaining capacity is below ``max_remaining_capacity_kwh``
         """
         t_ref_c = self._get_element_param(prosumer, 'min_useful_temp_c')
-        remaining_capacity_kwh = (self._get_max_stored_energy_kwh(t_ref_c, t_charge_c)
-                                  - self._get_stored_energy_kwh(t_ref_c))
+        remaining_capacity_kwh = self._get_remaining_capacity_kwh(t_ref_c, t_charge_c)
         return bool(mdot_demand_kg_per_s > 0
                     and remaining_capacity_kwh < self._get_element_param(prosumer, "max_remaining_capacity_kwh"))
 
@@ -734,8 +733,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # Same "tank full" energy-budget test as _calculate_heat_storage, at the
         # delivered feed temperature: a full tank bypasses the whole stream.
         t_charge_ref_in_c = self._get_element_param(prosumer, 'min_useful_temp_c')
-        remaining_capacity_kwh = (self._get_max_stored_energy_kwh(t_charge_ref_in_c, t_in_c)
-                                  - self._get_stored_energy_kwh(t_charge_ref_in_c))
+        remaining_capacity_kwh = self._get_remaining_capacity_kwh(t_charge_ref_in_c, t_in_c)
         tank_full = remaining_capacity_kwh < self._get_element_param(prosumer, "max_remaining_capacity_kwh")
 
         if q_prev_w >= q_bypass_full_w and not (tank_full and mdot_demand_kg_per_s > 0):
@@ -793,6 +791,31 @@ class StratifiedHeatStorageController(BasicProsumerController):
                    (t_charge_c - self.init_layer_temps_c[z]) * self.dz_m
                    for z in range(self.N_l) if t_charge_c >= extraction_temp_c - .1]) / 3.6e6
         return ret
+
+    def _get_remaining_capacity_kwh(self, extraction_temp_c, t_charge_c):
+        """
+        Heat (kWh) a charge at ``t_charge_c`` can still put into the tank: every layer colder than the charge
+        brought up to it. Zero when the charge is not warmer than the useful extraction temperature (it would
+        store nothing usable).
+
+        Measured on the current layers, not as ``_get_max_stored_energy_kwh`` − ``_get_stored_energy_kwh``:
+        both count from the INITIAL layers and the second drops the layers under ``extraction_temp_c``, so a
+        tank that starts full (initial layers at the charge temperature, e.g. behind a CHP) and is drained
+        below its useful temperature read 0 − 0 = 0 kWh left: "full" for good, it never asked for a charge
+        again.
+
+        :param extraction_temp_c: Useful extraction temperature (°C)
+        :param t_charge_c: Charge temperature (°C)
+        :return: Remaining capacity (kWh)
+        """
+        if t_charge_c < extraction_temp_c - .1:
+            return 0.
+        temps_c = np.asarray(self._layer_temps_c, dtype=float)
+        temps_k = CELSIUS_TO_K + temps_c
+        per_layer_j = (np.asarray(self.fluid.get_density(temps_k)) * self.A_m2
+                       * np.asarray(self.fluid.get_heat_capacity(temps_k))
+                       * np.maximum(0., t_charge_c - temps_c) * self.dz_m)
+        return float(np.sum(per_layer_j)) / 3.6e6
 
     def _get_stored_energy_kwh(self, t_extraction_c):
         """
