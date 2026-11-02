@@ -18,6 +18,9 @@ from pandaprosumer.controller.models.shs_ports import (
 MIN_USEFUL_MARGIN_K = 0.5
 #: Below this charge ΔT (target − bottom layer) the tank is full: it asks its source for no charge.
 MIN_CHARGE_DELTA_T_K = 0.5
+#: Lowest return the tank takes from its responders [°C]: a network not yet settled within a step can report
+#: liquid water below the freezing point (a cooled DHN, -7 °C), which the tank then takes at the freezing point.
+WATER_FREEZING_POINT_C = 0.
 
 
 class StratifiedHeatStorageController(BasicProsumerController):
@@ -258,6 +261,44 @@ class StratifiedHeatStorageController(BasicProsumerController):
             return min(mdot_kg_per_s, stored_kgk / (self.resol * (t_discharge_out_c - t_demand_in_c)))
         return 0.0
 
+    def _usable_discharge_kgk(self, prosumer, t_demand_in_c):
+        """
+        Heat (kg·K, i.e. energy / cp) a discharge can draw from the tank above ``t_demand_in_c``: the layers
+        from the discharge outlet down to the first one under ``min_useful_temp_c`` (``MIN_USEFUL_MARGIN_K``
+        margin) or not warmer than the return. Below them the water is too cold to serve the demand.
+        """
+        t_min_useful_c = self._get_element_param(prosumer, 'min_useful_temp_c')
+        if t_min_useful_c is None or np.isnan(t_min_useful_c):
+            t_min_useful_c = t_demand_in_c + 1.0
+        order = self._discharge_order()
+        temps_c = np.asarray(self._layer_temps_c, dtype=float)[order]
+        usable = (temps_c >= t_min_useful_c - MIN_USEFUL_MARGIN_K) & (temps_c > t_demand_in_c)
+        n_usable = len(usable) if usable.all() else int(np.argmin(usable))
+        return float(np.sum(self._layer_masses_kg()[order][:n_usable] * (temps_c[:n_usable] - t_demand_in_c)))
+
+    def _forced_discharge_mdot(self, prosumer, mdot_discharge_setpoint_kg_per_s, t_discharge_out_c, t_demand_in_c):
+        """
+        Discharge flow a forced discharge really gets, expressed as the split sizes discharges (on the top
+        layer, ``t_discharge_out_c``): the heat the setpoint's MASS carries out of the tank over the step
+        (plug flow from the top), capped at the heat the tank holds above ``min_useful_temp_c``
+        (``_usable_discharge_kgk``); 0 when the top is not warmer than the return.
+
+        A schedule can ask a discharge from a tank it already drained (the schedule is planned outside the
+        simulation). Taking the setpoint at the top layer's temperature over-promised that heat: the source
+        was asked only for the rest of the demand, and the plug flow then pushed out several times the
+        setpoint of lukewarm water to deliver it -- the supply fell far under the demand's feed temperature
+        and the network, whose flow the substations set, could not take the extra mass. Here the tank gives
+        what the scheduled mass of its real layers holds and the source is asked for the rest. The request
+        side (``_t_m_to_receive_init``) and the split (``_apply_setpoints``) MUST use this same flow.
+        """
+        delta_t_discharge_c = t_discharge_out_c - t_demand_in_c
+        if not delta_t_discharge_c > 0.5:
+            return 0.0
+        mass_kg = mdot_discharge_setpoint_kg_per_s * self.resol
+        heat_kgk = mass_kg * max(0.0, self._plug_flow_outlet_c(mass_kg, True, t_demand_in_c) - t_demand_in_c)
+        heat_kgk = min(heat_kgk, self._usable_discharge_kgk(prosumer, t_demand_in_c))
+        return heat_kgk / (self.resol * delta_t_discharge_c)
+
     def _apply_setpoints(self, prosumer, mdot_charge_setpoint_kg_per_s, mdot_discharge_setpoint_kg_per_s,
                          mdot_charge_kg_per_s, mdot_bypass_kg_per_s, mdot_discharge_kg_per_s,
                          mdot_received_kg_per_s, mdot_demand_kg_per_s,
@@ -270,7 +311,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
         - charge setpoint: clamped to ``[0, received]`` (the tank cannot be charged with mass it never
           received) and ignored when the tank is full; the bypass is the rest of the received stream;
           a free discharge covers the demand energy the bypass does not carry.
-        - discharge setpoint: clamped to zero when the top layer is not warmer than the return; a free
+        - discharge setpoint: capped at the heat the tank holds above ``min_useful_temp_c`` (zero when the
+          top layer is not warmer than the return, see ``_forced_discharge_mdot``); a free
           bypass covers the demand energy the discharge does not carry, and the received surplus charges
           the tank (unless it is full, in which case the whole stream is bypassed, as in the free path).
 
@@ -287,7 +329,8 @@ class StratifiedHeatStorageController(BasicProsumerController):
         tank_full = self._is_tank_full(prosumer, t_received_in_c, mdot_demand_kg_per_s)
 
         if discharge_forced:
-            mdot_discharge_kg_per_s = mdot_discharge_setpoint_kg_per_s if delta_t_discharge_c > 0.5 else 0.0
+            mdot_discharge_kg_per_s = self._forced_discharge_mdot(prosumer, mdot_discharge_setpoint_kg_per_s,
+                                                                  t_discharge_out_c, t_demand_in_c)
 
         if charge_forced:
             mdot_charge_kg_per_s = 0.0 if tank_full else min(mdot_charge_setpoint_kg_per_s, mdot_received_kg_per_s)
@@ -429,6 +472,21 @@ class StratifiedHeatStorageController(BasicProsumerController):
             left_kgk -= taken_kg * gain_kgk_per_kg
         return mass_kg
 
+    def _t_m_demand(self, prosumer):
+        """
+        ``t_m_to_deliver`` with the responders' return bounded by ``WATER_FREEZING_POINT_C``: a network not yet
+        settled within a step can report water colder than that, which would otherwise be stored in the bottom
+        layer as liquid water below 0 °C.
+
+        :param prosumer: The prosumer object
+        :return: A Tuple (Feed temperature, return temperature, mass flows)
+        """
+        t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
+        if t_demand_in_c < WATER_FREEZING_POINT_C:
+            t_demand_in_c = WATER_FREEZING_POINT_C
+            t_demand_out_c = max(t_demand_out_c, t_demand_in_c)
+        return t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s
+
     def _t_m_to_receive_init(self, prosumer):
         """
         Return the expected received Feed temperature, return temperature and mass flow in °C and kg/s
@@ -436,7 +494,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature, return temperature and mass flow)
         """
-        t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
+        t_demand_out_c, t_demand_in_c, mdot_demand_tab_required_kg_per_s = self._t_m_demand(prosumer)
         has_downstream_demand = np.sum(mdot_demand_tab_required_kg_per_s) >= 1e-6
         # The tank promises against the downstream demand it will actually serve: a responder its own source
         # also feeds directly (heat pump -> demand and heat pump -> tank -> demand) is served by that source, so
@@ -462,10 +520,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # discharge already carries part of the demand energy from the top layer.
         mdot_bypass_demand_kg_per_s = mdot_demand_kg_per_s
         if not np.isnan(mdot_discharge_setpoint_kg_per_s):
-            delta_t_discharge_c = self._layer_temps_c[self._ports[2]] - t_demand_in_c
+            t_discharge_out_c = self._layer_temps_c[self._ports[2]]
+            delta_t_discharge_c = t_discharge_out_c - t_demand_in_c
             e_demand_kgk = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
+            mdot_discharge_kg_per_s = self._forced_discharge_mdot(prosumer, mdot_discharge_setpoint_kg_per_s,
+                                                                  t_discharge_out_c, t_demand_in_c)
             if delta_t_discharge_c > 0.5 and e_demand_kgk > 0:
-                e_residual_kgk = max(0.0, e_demand_kgk - mdot_discharge_setpoint_kg_per_s * delta_t_discharge_c)
+                e_residual_kgk = max(0.0, e_demand_kgk - mdot_discharge_kg_per_s * delta_t_discharge_c)
                 mdot_bypass_demand_kg_per_s = mdot_demand_kg_per_s * e_residual_kgk / e_demand_kgk
         # If the required feed downstream temperature is null, it means that there is no downstream mapped controller
         # so ask treturn_required_c charge the storage at the min_useful_temp_c (or current top layer temperature ?)
@@ -545,7 +606,9 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 if not self.mdot_previous_in_kg_per_s < mdot_required_kg_per_s - 1e-9:
                     return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
                 return self._forced_charge_reapply_request(mdot_charge_kg_per_s,
-                                                           (t_required_in_c, t_required_out_c, mdot_required_kg_per_s))
+                                                           (t_required_in_c, t_required_out_c, mdot_required_kg_per_s),
+                                                           mdot_bypass_demand_kg_per_s * delta_t_demand_c,
+                                                           t_demand_in_c)
             # The bypass share of the demand (all of it unless a forced discharge carries part of it).
             return self._reapply_request(prosumer, t_demand_out_c, t_demand_in_c, mdot_bypass_demand_kg_per_s,
                                          t_charge_out_c,
@@ -553,11 +616,26 @@ class StratifiedHeatStorageController(BasicProsumerController):
 
         return t_required_in_c, t_required_out_c, mdot_required_kg_per_s
 
-    def _forced_charge_reapply_request(self, mdot_charge_setpoint_kg_per_s, forward_request):
+    def _short_circuits(self, t_charge_in_c):
+        """
+        Whether a charge and a discharge running at once short-circuit the tank: they share their connections
+        (charge inlet = discharge outlet, charge outlet = discharge inlet) and the charge is no colder than the
+        outlet layer, so it reaches the outlet straight instead of sinking into the tank.
+        """
+        charge_in, charge_out, discharge_out, discharge_in = self._ports
+        return (charge_in == discharge_out and charge_out == discharge_in
+                and t_charge_in_c >= self._layer_temps_c[discharge_out] - 1e-9)
+
+    def _forced_charge_reapply_request(self, mdot_charge_setpoint_kg_per_s, forward_request,
+                                       e_demand_kgk_per_s=0.0, t_demand_in_c=np.nan):
         """
         Reapply request of a forced charge the source could not deliver in full: ``_apply_setpoints`` puts
         what arrives into the tank first (up to the setpoint), so all the energy the source delivered charges
         it. Request the mass that energy pushes out of the bottom (plug flow), at its mean temperature.
+
+        The demand ``e_demand_kgk_per_s`` (kg·K/s) is then served by the discharge, and through the same
+        connections the charge water short-circuits to it first (see ``_calculate_heat_storage``): that share
+        comes back at the demand's return ``t_demand_in_c``, only the rest pushes water out of the bottom.
         """
         t_in_c = self.t_previous_in_charge_c
         t_keep_prev_c = self.t_previous_keep_return_c
@@ -565,11 +643,21 @@ class StratifiedHeatStorageController(BasicProsumerController):
         if np.isnan(t_in_c) or np.isnan(t_keep_prev_c) or not mdot_prev_kg_per_s > 0 or t_in_c - t_keep_prev_c <= 1e-9:
             return forward_request
         heat_kgk = mdot_prev_kg_per_s * (t_in_c - t_keep_prev_c) * self.resol
-        mass_kg = min(self._plug_flow_charge_mass_kg(heat_kgk, t_in_c),
-                      mdot_charge_setpoint_kg_per_s * self.resol)
+        short_kg = 0.0
+        delta_t_short_c = t_in_c - t_demand_in_c
+        if self._short_circuits(t_in_c) and e_demand_kgk_per_s > 0 and delta_t_short_c > 1e-9:
+            short_kg = min(heat_kgk, e_demand_kgk_per_s * self.resol) / delta_t_short_c
+            short_kg = min(short_kg, mdot_charge_setpoint_kg_per_s * self.resol)
+            heat_kgk -= short_kg * delta_t_short_c
+        net_kg = min(self._plug_flow_charge_mass_kg(heat_kgk, t_in_c),
+                     mdot_charge_setpoint_kg_per_s * self.resol - short_kg) if heat_kgk > 0 else 0.0
+        mass_kg = short_kg + net_kg
         if mass_kg <= 0:
             return forward_request
-        return t_in_c, self._plug_flow_outlet_c(mass_kg, False, t_in_c), mass_kg / self.resol
+        t_out_c = self._plug_flow_outlet_c(net_kg, False, t_in_c) if net_kg > 0 else t_in_c
+        if short_kg > 0:
+            t_out_c = (short_kg * t_demand_in_c + net_kg * t_out_c) / mass_kg
+        return t_in_c, t_out_c, mass_kg / self.resol
 
     def _reapply_request(self, prosumer, t_demand_out_c, t_demand_in_c, mdot_demand_kg_per_s,
                          t_charge_out_c, forward_request):
@@ -925,31 +1013,56 @@ class StratifiedHeatStorageController(BasicProsumerController):
                 mdot_charge_kg_per_s = mdot_fill_kg_per_s
                 t_bypass_in_c = t_received_in_c
 
+        charge_in, charge_out, discharge_out, discharge_in = self._ports
+        # The heat the split sized for the demand, on the top layer
+        discharge_heat_kgk_per_s = mdot_discharge_kg_per_s * max(0.0, t_discharge_out_c - t_demand_in_c)
+
+        # Charging and discharging at once through the same connections (charge inlet = discharge outlet,
+        # charge outlet = discharge inlet), the common flow short-circuits the tank: the charge water goes
+        # straight to the demand, the demand's return straight back to the source; only the net flow crosses
+        # the layers. Booking each outlet as if the other stream did not exist (the discharge drawn from the
+        # start-of-step layers, colder than the charge entering the same layer) handed the demand lukewarm
+        # water while the layers were heated by the full charge: a game tank charged with 440 kW gave 140 kW
+        # at 51 degC to the network, its stored energy flat, ~300 kW lost every hour. Only a charge at least as
+        # warm as the outlet layer reaches the outlet straight: a colder one sinks into the tank.
+        mdot_short_kg_per_s = 0.0
+        delta_t_short_c = t_received_in_c - t_demand_in_c
+        if (self._short_circuits(t_received_in_c) and mdot_charge_kg_per_s > 0
+                and discharge_heat_kgk_per_s > 0 and delta_t_short_c > 1e-9):
+            mdot_short_kg_per_s = min(mdot_charge_kg_per_s, discharge_heat_kgk_per_s / delta_t_short_c)
+            discharge_heat_kgk_per_s -= mdot_short_kg_per_s * delta_t_short_c
+        mdot_charge_net_kg_per_s = mdot_charge_kg_per_s - mdot_short_kg_per_s
+
         # What leaves the tank over the step (plug flow from the start-of-step layers), not the bottom / top
         # layer alone: the return the source gets and the heat the demand gets
-        t_charge_out_c = self._plug_flow_outlet_c(mdot_charge_kg_per_s * self.resol, False, t_received_in_c)
-        mdot_charge_tank_kg_per_s = mdot_charge_kg_per_s
-        if mdot_charge_kg_per_s > 0 and t_charge_out_c >= t_received_in_c:
+        t_charge_out_c = self._plug_flow_outlet_c(mdot_charge_net_kg_per_s * self.resol, False, t_received_in_c)
+        mdot_charge_tank_kg_per_s = mdot_charge_net_kg_per_s
+        if mdot_charge_net_kg_per_s > 0 and t_charge_out_c >= t_received_in_c:
             # A charge no warmer than the water it would push out only cools the tank (a top-entering
             # stream colder than the stratification): it passes by, back to the source, without exchange.
             # ToDo: enter at the layer of its own temperature (charge inlet height)
             mdot_charge_tank_kg_per_s = 0.0
             t_charge_out_c = t_received_in_c
-        if mdot_discharge_kg_per_s > 0:
+        mdot_discharge_tank_kg_per_s = 0.0
+        if discharge_heat_kgk_per_s > 0:
             # The split sized the discharge on the top layer; the plug flow draws the layers below it, warmer
             # in an inverted tank, colder when draining. Keep the energy the split sized, draw the mass that
             # carries it (or what the tank holds), so the demand gets neither more nor less than planned.
-            heat_kgk = mdot_discharge_kg_per_s * self.resol * max(0.0, t_discharge_out_c - t_demand_in_c)
-            mass_kg = self._plug_flow_discharge_mass_kg(heat_kgk, t_demand_in_c)
-            mdot_discharge_kg_per_s = mass_kg / self.resol
+            mass_kg = self._plug_flow_discharge_mass_kg(discharge_heat_kgk_per_s * self.resol, t_demand_in_c)
+            mdot_discharge_tank_kg_per_s = mass_kg / self.resol
             if mass_kg > 0:
                 t_discharge_out_c = self._plug_flow_outlet_c(mass_kg, True, t_demand_in_c)
+        mdot_discharge_kg_per_s = mdot_short_kg_per_s + mdot_discharge_tank_kg_per_s
+        if mdot_short_kg_per_s > 0:
+            t_discharge_out_c = ((mdot_short_kg_per_s * t_received_in_c
+                                  + mdot_discharge_tank_kg_per_s * t_discharge_out_c) / mdot_discharge_kg_per_s)
+            t_charge_out_c = ((mdot_short_kg_per_s * t_demand_in_c + mdot_charge_net_kg_per_s * t_charge_out_c)
+                              / mdot_charge_kg_per_s)
 
-        charge_in, charge_out, discharge_out, discharge_in = self._ports
         self._layer_temps_c = ports_resolution_in_time(np.array(self._layer_temps_c, dtype=float),
                                                        charge_in, charge_out, discharge_out, discharge_in,
                                                        mdot_charge_tank_kg_per_s, t_received_in_c,
-                                                       mdot_discharge_kg_per_s, t_demand_in_c,
+                                                       mdot_discharge_tank_kg_per_s, t_demand_in_c,
                                                        t_ext_c, cp_discharge_j_per_kgk, rho_kg_per_m3,
                                                        self.A_m2, self.dz_m, self.Sl_m2, self.S1_m2, self.SN_m2,
                                                        self.k_star_w_per_mk, self.U_w_per_m2k, self.U1_w_per_m2k,
@@ -1046,7 +1159,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # When discharging, the temperature of the fluid that will be added at the bottom of the storage is the
         # temperature returned by the downstream elements.
         # Simple average of the temperatures but will have to be weighted by the mass flows in the future
-        t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self.t_m_to_deliver(prosumer)
+        t_demand_out_c, t_demand_in_c, mdot_demand_tab_kg_per_s = self._t_m_demand(prosumer)
         mdot_demand_kg_per_s = sum(mdot_demand_tab_kg_per_s)
         # The discharge temperature is the one of the discharge outlet's layer (the top by default)
         self._resolve_ports(prosumer, self._t_received_in_c, t_demand_in_c, t_demand_out_c)
