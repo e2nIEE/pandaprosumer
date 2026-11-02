@@ -78,6 +78,11 @@ here must keep, each pinned by a test:
 - **A forced charge setpoint is the producers' whole flow** to the tank (bypass = the
   rest of what arrives): a fill-rate setpoint caps the source. Leave the charge free
   (`-1`/NaN) when the source should also serve the demand.
+- **A tank's remaining capacity is measured on its current layers**
+  (`StratifiedHeatStorageController._get_remaining_capacity_kwh`, used by `_is_tank_full` and
+  `_reapply_request`), never from `init_layer_temps_c`: a tank that starts full and is drained
+  below `min_useful_temp_c` read 0 kWh left and never charged again.
+  `tests/models/test_shs_drained_start_full.py`.
 - **The plant pump coupling fixes the plant's heat on the first pass it delivered on**
   (`PlantPumpCouplingControl`, `MAX_PLANT_WAIT_PASSES`), not the step's first pass.
 
