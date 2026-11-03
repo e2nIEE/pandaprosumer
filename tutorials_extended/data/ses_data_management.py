@@ -115,7 +115,7 @@ for day, periods in schedule_ev_charging.items():
 
 
 # Total elelctrical power demand ---> shopping centre power + EV charge power
-ses_data_df["P el total [kW]"] = ses_data_df["P el sc [kW]"] + ses_data_df["P ev [kW]"]
+ses_data_df["P el total [kW]"] = ses_data_df["P el sc [kW]"] #+ ses_data_df["P ev [kW]"]
 
 
 # External flexibility

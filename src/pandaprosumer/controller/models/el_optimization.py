@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.opt import SolverStatus, TerminationCondition
-
+import math
 from pandaprosumer.controller.base import BasicProsumerController
 
 
@@ -30,6 +30,8 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
         contract_penalty_eur_per_mwh=10000.0,
         chp_start_cost_eur=5.0,
         flex_revenue_eur_per_mwh=200.0,
+        ev_charge_revenue_eur_per_mwh=400.0,
+        grid_export_revenue_eur_per_mwh=20.0,
         chp_eta_el=0.36,
         # request_tolerance_kw=1e-6,
         soc_target=0.90,
@@ -62,6 +64,12 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
         self.chp_start_cost_eur = float(chp_start_cost_eur)
         self.flex_revenue_eur_per_mwh = float(
             flex_revenue_eur_per_mwh
+        )
+        self.ev_charge_revenue_eur_per_mwh = float(
+            ev_charge_revenue_eur_per_mwh
+        )
+        self.grid_export_revenue_eur_per_mwh = float(
+            grid_export_revenue_eur_per_mwh
         )
         self.chp_eta_el = float(chp_eta_el)
         # self.request_tolerance_kw = float(
@@ -225,10 +233,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                 "p_flex_kw must be finite and non-negative."
             )
 
-        p_grid_baseline_kw = max(
-            0.0,
-            float(demand[0] + ev[0] - pv[0]),
-        )
+        p_grid_baseline_kw = float(demand[0] + ev[0] - pv[0])
 
         model = pyo.ConcreteModel()
         model.T = pyo.RangeSet(
@@ -299,12 +304,53 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             ),
         )
 
+        model.p_grid_export_kw = pyo.Var(
+            model.T,
+            domain=pyo.NonNegativeReals,
+        )
+
+        # 1: Import möglich, Export gesperrt.
+        # 0: Export möglich, Import gesperrt.
+        model.grid_import_mode = pyo.Var(
+            model.T,
+            domain=pyo.Binary,
+        )
+
+        model.grid_import_activation = pyo.Constraint(
+            model.T,
+            rule=lambda m, t: (
+                    m.p_grid_kw[t]
+                    <= float(grid_max[t]) * m.grid_import_mode[t]
+            ),
+        )
+
+        model.grid_export_activation = pyo.Constraint(
+            model.T,
+            rule=lambda m, t: (
+                    m.p_grid_export_kw[t]
+                    <= 5000                         # ToDo: Hard coded
+                    * (1 - m.grid_import_mode[t])
+            ),
+        )
+
         model.p_pv_used_kw = pyo.Var(
             model.T,
             domain=pyo.NonNegativeReals,
             bounds=lambda _, t: (
                 0.0,
                 float(pv[t]),
+            ),
+        )
+
+        for t in model.T:
+            model.p_pv_used_kw[t].fix(float(pv[t]))
+
+        model.ev_charge_kw = pyo.Var(
+            model.T,
+            domain=pyo.NonNegativeReals,
+            bounds=lambda _, t: (
+                0.0,
+                float(ev[t]),
             ),
         )
 
@@ -326,6 +372,7 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                     m.battery[index].p_charge[t]
                     for index in m.battery_index
                 )
+                + m.p_grid_export_kw[t]
             )
 
         model.power_balance = pyo.Constraint(
@@ -353,27 +400,94 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             rule=contract_rule,
         )
 
-        max_flex_kw = min(
-            p_flex_request_kw,
-            p_grid_baseline_kw,
-        )
+        # max_flex_kw = min(
+        #     p_flex_request_kw,
+        #     p_grid_baseline_kw,
+        # )
+        #
+        # model.p_flex_delivered_kw = pyo.Var(
+        #     domain=pyo.NonNegativeReals,
+        #     bounds=(0.0, max_flex_kw),
+        # )
+
+        # # if max_flex_kw > self.request_tolerance_kw:
+        # if max_flex_kw > 0:
+        #     model.flex_delivery = pyo.Constraint(
+        #         expr=(
+        #             model.p_grid_kw[t0]
+        #             + model.p_flex_delivered_kw
+        #             <= p_grid_baseline_kw
+        #         )
+        #     )
+        # else:
+        #     model.p_flex_delivered_kw.fix(0.0)
+        contract_limit_kw = float(contract[t0])
+
+        if np.isfinite(contract_limit_kw):
+            if contract_limit_kw < 0.0:
+                raise ValueError(
+                    "Die Vertragsgrenze muss nichtnegativ sein."
+                )
+
+            max_flex_kw = min(
+                p_flex_request_kw,
+                contract_limit_kw,
+            )
+        else:
+            # Ohne endliche Vertragsgrenze keine solche Flexvergütung.
+            max_flex_kw = 0.0
 
         model.p_flex_delivered_kw = pyo.Var(
             domain=pyo.NonNegativeReals,
             bounds=(0.0, max_flex_kw),
         )
 
-        # if max_flex_kw > self.request_tolerance_kw:
-        if max_flex_kw > 0:
+        if max_flex_kw > 0.0:
+            grid_upper_bound_kw = model.p_grid_kw[t0].ub
+
+            if (
+                    grid_upper_bound_kw is None
+                    or not np.isfinite(float(grid_upper_bound_kw))
+            ):
+                raise ValueError(
+                    "Eine endliche Netzbezugsobergrenze ist erforderlich."
+                )
+
+            big_m_kw = max(
+                0.0,
+                float(grid_upper_bound_kw) - contract_limit_kw,
+            )
+
+            model.flex_active = pyo.Var(
+                domain=pyo.Binary,
+            )
+
+            model.flex_activation = pyo.Constraint(
+                expr=(
+                        model.p_flex_delivered_kw
+                        <= max_flex_kw * model.flex_active
+                )
+            )
+
             model.flex_delivery = pyo.Constraint(
                 expr=(
-                    model.p_grid_kw[t0]
-                    + model.p_flex_delivered_kw
-                    <= p_grid_baseline_kw
+                        model.p_grid_kw[t0]
+                        + model.p_flex_delivered_kw
+                        <= contract_limit_kw
+                        + big_m_kw * (1 - model.flex_active)
                 )
             )
         else:
             model.p_flex_delivered_kw.fix(0.0)
+
+        model.ev_revenue_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                    energy_factor
+                    * float(self.ev_charge_revenue_eur_per_mwh)
+                    * m.ev_charge_kw[t]
+            ),
+        )
 
         # Operating costs for each MPC time step.
         model.grid_cost_t = pyo.Expression(
@@ -427,6 +541,29 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             )
         )
 
+        model.ev_charge_revenue_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.ev_revenue_t[t]
+                for t in model.T
+            )
+        )
+
+        model.grid_export_revenue_t = pyo.Expression(
+            model.T,
+            rule=lambda m, t: (
+                    energy_factor
+                    * self.grid_export_revenue_eur_per_mwh
+                    * m.p_grid_export_kw[t]
+            ),
+        )
+
+        model.grid_export_revenue_horizon_eur = pyo.Expression(
+            expr=pyo.quicksum(
+                model.grid_export_revenue_t[t]
+                for t in model.T
+            )
+        )
+
         model.grid_cost_horizon_eur = pyo.Expression(
             expr=pyo.quicksum(
                 model.grid_cost_t[t]
@@ -469,6 +606,8 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                 + model.gas_cost_t[t0]
                 + model.contract_cost_t[t0]
                 + model.startup_cost_t[t0]
+                - model.ev_revenue_t[t0]
+                - model.grid_export_revenue_t[t0]
                 - model.flex_revenue_current_eur
             )
         )
@@ -479,6 +618,8 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
                 + model.gas_cost_horizon_eur
                 + model.contract_cost_horizon_eur
                 + model.startup_cost_horizon_eur
+                - model.ev_charge_revenue_horizon_eur
+                - model.grid_export_revenue_horizon_eur
                 - model.flex_revenue_current_eur
             )
         )
@@ -645,6 +786,12 @@ class ElectricalOptimizationControllerMPC(BasicProsumerController):
             ),
             "revenue_flex_current_eur": value(
                 model.flex_revenue_current_eur
+            ),
+            "revenue_ev_charge_current_eur": value(
+                model.ev_revenue_t[t0]
+            ),
+            "revenue_grid_export_current_eur": value(
+                model.grid_export_revenue_t[t0]
             ),
             "objective_horizon_eur": value(
                 model.objective

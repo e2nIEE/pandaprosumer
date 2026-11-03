@@ -25,6 +25,8 @@ time_series_data["p_el_demand_kw"] = time_series_data["P el total [kW]"].astype(
 time_series_data["p_pv_in_kw"] = time_series_data["P pv [kW]"].astype(float)
 time_series_data["p_contract_kw"] = time_series_data["P el contr [kW]"].astype(float)
 time_series_data["p_flex_kw"] = time_series_data["P el flex [kW]"].astype(float)
+time_series_data["p_ev_charge_kw"] = time_series_data["P ev [kW]"].astype(float)
+
 
 time_series_data["cycle"] = 1
 time_series_data["t_intake_k"] = 298.15
@@ -42,7 +44,8 @@ hourly_data = pd.DataFrame({
     "p_el_demand_kw": time_series_data["p_el_demand_kw"].resample("1h").mean(),
     "p_pv_in_kw": time_series_data["p_pv_in_kw"].resample("1h").mean(),
     "p_contract_kw": time_series_data["p_contract_kw"].resample("1h").min(),
-    "p_flex_kw": time_series_data["p_flex_kw"].resample("1h").mean()
+    "p_flex_kw": time_series_data["p_flex_kw"].resample("1h").mean(),
+    "p_ev_charge_kw": time_series_data["p_ev_charge_kw"].resample("1h").mean()
 })
 
 hourly_data = hourly_data.dropna().copy()
@@ -83,9 +86,6 @@ electricity_price = (
 hourly_data["electricity_price_eur_per_mwh"] = (
     electricity_price.reindex(hourly_data.index)
 )
-
-# Kein EV-Profil vorhanden
-hourly_data["p_ev_charge_kw"] = 0.0
 
 # Konstanter Gaspreis
 hourly_data["gas_price_eur_per_mwh"] = 40.0
@@ -182,11 +182,13 @@ optimization_index = create_controlled_electrical_optimization_mpc(
     order=0,
     solver_name="appsi_highs",
     horizon_steps=24,
-    contract_penalty_eur_per_mwh=300.0,
+    contract_penalty_eur_per_mwh=500.0,
     chp_start_cost_eur=50.0,
     soc_target=0.80,
     weight_soc=2000.0,
-    flex_revenue_eur_per_mwh=200.0,
+    flex_revenue_eur_per_mwh=150.0,
+    ev_charge_revenue_eur_per_mwh=250.0,
+    grid_export_revenue_eur_per_mwh=20.0,
     forecast_data=time_series_data[forecast_columns].copy(),
     pad_forecast_end=True,
 )
@@ -453,14 +455,14 @@ ax[1].step(
     label="Contract limit",
 )
 
+
+contract = results["p_contract_kw"].to_numpy(dtype=float)
+grid = results["p_grid_dispatch_kw"].to_numpy(dtype=float)
+
 ax[1].fill_between(
     x,
-    results["p_contract_kw"].to_numpy(),
-    results["p_grid_dispatch_kw"].to_numpy(),
-    where=(
-        results["contract_violation_kw"].to_numpy()
-        > 0.0
-    ),
+    contract,
+    np.maximum(grid, contract),
     step="post",
     color="tab:red",
     alpha=0.25,
@@ -475,7 +477,7 @@ ax[1].legend(loc="upper left")
 ax_soc = ax[2]
 ax_chp = ax_soc.twinx()
 
-ax_soc.plot(
+ax_soc.step(
     x,
     results["dispatch_battery_soc"] * 100.0,
     color="tab:purple",
@@ -569,6 +571,8 @@ components = {
     "Contract penalty": results["cost_contract_current_eur"],
     "CHP startup": r["cost_startup_current_eur"],
     "Flexibility revenue": -results["revenue_flex_current_eur"],
+    "EV charge revenue": -results["revenue_ev_charge_current_eur"],
+    "Grid export revenue": -results["revenue_grid_export_current_eur"]
 }
 
 for name, values in components.items():
