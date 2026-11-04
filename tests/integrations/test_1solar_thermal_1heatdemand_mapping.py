@@ -22,7 +22,7 @@ class Test1SolarThermal1HeatDemandMapping:
             "Ambient temperature [C]": [25, 20, 15, 10],
             "Inlet mass flow rate [kg/h]": [100, 100, 100, 100],
             "Inlet temperature [C]": [30, 30, 30, 30],
-            "q_demand_kw": [10, 20, 30, 0]  # gewünschte Wärmelast
+            "q_demand_kw": [10, 20, 30, 0]  # requested heat load
         })
 
         start = "2020-01-01 00:00:00"
@@ -61,7 +61,7 @@ class Test1SolarThermal1HeatDemandMapping:
 
         st_index = create_controlled_solar_thermal(prosumer, name="solar_thermal_plant", level=1, order=0)
 
-        # HeatDemand-Controller
+        # HeatDemand controller
         hd_index = create_controlled_heat_demand(
             prosumer,
             level=1,
@@ -113,17 +113,17 @@ class Test1SolarThermal1HeatDemandMapping:
 
         df = prosumer.time_series.data_source.iloc[1].df
 
-        # Einzelwerte prüfen
+        # Check individual values
         assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(6.550240, rel=1e-6)
         assert df.loc["2020-01-01 01:00:00+00:00", "q_uncovered_kw"] == pytest.approx(18.590205, rel=1e-6)
         assert df.loc["2020-01-01 02:00:00+00:00", "q_received_kw"] == pytest.approx(-0.388631, rel=1e-6)
         assert df.loc["2020-01-01 03:00:00+00:00", "t_out_c"] == 0.0
 
-        # Ganze Spalte prüfen
+        # Check the whole column
         expected_q_received = [6.550240, 1.409795, -0.388631, -0.530509]
         assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-6)
 
-        # Komplettes DataFrame prüfen
+        # Check the complete DataFrame
         expected = pd.DataFrame({
             "q_received_kw": [6.550240, 1.409795, -0.388631, -0.530509],
             "q_uncovered_kw": [3.449760, 18.590205, 30.388631, 0.530509],
@@ -143,7 +143,7 @@ class Test1SolarThermal1HeatDemandMapping:
             "Ambient temperature [C]": [25, 20, 15, 10],
             "Inlet mass flow rate [kg/h]": [100, 100, 100, 100],
             "Inlet temperature [C]": [30, 30, 30, 30],
-            "q_demand_kw": [10, 20, 30, 0]  # gewünschte Wärmelast
+            "q_demand_kw": [10, 20, 30, 0]  # requested heat load
         })
 
         start = "2020-01-01 00:00:00"
@@ -182,7 +182,7 @@ class Test1SolarThermal1HeatDemandMapping:
 
         st_index = create_controlled_solar_thermal(prosumer, name="solar_thermal_plant", level=1, order=0)
 
-        # HeatDemand-Controller
+        # HeatDemand controller
         hd_index = create_controlled_heat_demand(
             prosumer,
             level=1,
@@ -228,15 +228,15 @@ class Test1SolarThermal1HeatDemandMapping:
         run_timeseries(prosumer)
         df = prosumer.time_series.data_source.iloc[1].df
 
-        # Einzelwerte prüfen
+        # Check individual values
         assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(7.136952, rel=1e-3)
         assert df.loc["2020-01-01 01:00:00+00:00", "t_out_c"] == 25.0
 
-        # Ganze Spalte prüfen
+        # Check the whole column
         expected_q_received = [7.136952, 1.990310, 0.191985, 0.050065]
         assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-3)
 
-        # Komplettes DataFrame prüfen
+        # Check the complete DataFrame
         expected = pd.DataFrame({
             "q_received_kw": [7.136952, 1.990310, 0.191985, 0.050065],
             "q_uncovered_kw": [2.863048, 18.009690, 29.808015, -0.050065],
