@@ -171,7 +171,7 @@ battery storage is the responder, with ``p_requested_kw`` as responder column.
         prosumer,
         initiator_id=optimization_index,
         initiator_column="p_battery_kw",
-        responder_id=battery_controller_index,
+        responder_id=battery_index,
         responder_column="p_requested_kw",
     )
 

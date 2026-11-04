@@ -1369,6 +1369,49 @@ def create_battery_storage(
     name=None,
     **kwargs
 ):
+    """
+    Creates a battery storage element in prosumer["battery_storage"].
+
+    The element only holds the static parameters of the battery. The operation (limiting the requested power and
+    updating the state of charge) is done by the battery storage controller. Use
+    create_controlled_battery_storage to create both at once. The parameters are not checked here, they are
+    checked when the controller is created.
+
+    INPUT:
+        **prosumer** - The prosumer within which this battery storage should be created.
+
+        **e_capacity_kwh** (float) - Energy capacity of the battery [kWh].
+
+        **p_charge_max_kw** (float) - Maximum charging power [kW].
+
+        **p_discharge_max_kw** (float) - Maximum discharging power [kW].
+
+    OPTIONAL:
+        **eta_charge** (float, default 0.95) - Charging efficiency, in the range (0, 1].
+
+        **eta_discharge** (float, default 0.95) - Discharging efficiency, in the range (0, 1].
+
+        **soc_min** (float, default 0.1) - Minimum allowed state of charge, as a fraction between 0 and 1.
+
+        **soc_max** (float, default 0.9) - Maximum allowed state of charge, as a fraction between 0 and 1.
+
+        **self_discharge_per_hour** (float, default 0.0) - Fraction of the stored energy lost per hour [1/h].
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **name** (string, default None) - A custom name for this battery storage.
+
+        **kwargs** - Additional keyword arguments are added as extra columns of the element table.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created battery storage element.
+
+    EXAMPLE:
+        create_battery_storage(prosumer, e_capacity_kwh=1000, p_charge_max_kw=500, p_discharge_max_kw=500)
+    """
+    
     add_new_element(
         prosumer,
         BatteryStorageElementData
