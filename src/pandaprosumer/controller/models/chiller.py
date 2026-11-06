@@ -65,13 +65,26 @@ class ChillerController(BasicProsumerController):
     def _ctrl(self):
         return self._get_input("ctrl")
 
+    @property
+    def _q_load_kw(self):
+        return self._get_input("q_load_kw")
+
     def q_to_deliver_kw(self, prosumer):
         """
-        Calculates the heat to deliver in kW.
+        The cooling load in kW: the ``q_load_kw`` input when it is mapped, else what the responders ask for.
+
+        A chiller's responders are usually fed from its condenser (``q_cond_kw`` into a heat demand, a dry
+        cooler): what they ask for is heat, not cooling. Sizing the evaporator on it made the chiller cool
+        whatever its heat consumer wanted heated (a data centre's 75 kW of space heating became 75 kW of
+        cooling and 95 kW of condenser heat). With ``q_load_kw`` mapped, the cooling load drives the chiller
+        and the condenser heat follows from it.
 
         :param prosumer: The prosumer object
-        :return: Heat to deliver in kW
+        :return: Cooling load in kW
         """
+        q_load_kw = self._q_load_kw
+        if q_load_kw is not None and not np.isnan(q_load_kw):
+            return max(float(q_load_kw), 0.)
         q_to_deliver_kw = 0.
         for responder in self._get_generic_mapped_responders(prosumer):
             q_to_deliver_kw += responder.q_to_receive_kw(prosumer)
