@@ -111,7 +111,8 @@ class TestBoosterHeatPump:
 
         bhp_controller.control_step(prosumer)
 
-        expected = [5.21054, 5.26054, 0.0, 0.0 ,0.0, 0.0, 0.0 ] # results
+        # Sinks at 19/18 degC from 22 degC: a negative lift, evaluated at MIN_LIFT_K (15 K)
+        expected = [4.3235, 4.3235, 0.0, 0.0 ,0.0, 0.0, 0.0 ] # results
 
         assert bhp_controller.step_results[0, 0] >= 1 or bhp_controller.step_results[0, 0] == 0
         assert bhp_controller.step_results[0, 1] >= 1 or bhp_controller.step_results[0, 1] == 0
@@ -137,7 +138,7 @@ class TestBoosterHeatPump:
         bhp_controller.time_step(prosumer, "2020-01-01 00:00:00")
         bhp_controller.control_step(prosumer)
 
-        expected = [5.21054, 5.26054, 0.191918, 0.19009, 0.0, 1.0, 1.0]
+        expected = [4.3235, 4.3235, 1 / 4.3235, 1 / 4.3235, 0.0, 1.0, 1.0]
 
         assert bhp_controller.step_results[0, 0] >= 1 or bhp_controller.step_results[0, 0] == 0
         assert bhp_controller.step_results[0, 1] >= 1 or bhp_controller.step_results[0, 1] == 0

@@ -115,7 +115,11 @@ The calculation of :math:`COP` is based on the following expression:
 
    COP = a_0 + a_1 \Delta T + a_2 \Delta T^2,
 
-where :math:`a_0`, :math:`a_1`, and :math:`a_2` are predefined coefficients, and :math:`\Delta T` is the temperature difference between the source and the sink. Sink temperatures are calculated using heating curves.
+where :math:`a_0`, :math:`a_1`, and :math:`a_2` are predefined coefficients, and :math:`\Delta T` is the temperature difference between the source and the sink. Sink temperatures are calculated using heating curves, unless ``t_sink_k`` is given.
+
+The fits only hold over a range of lifts: :math:`\Delta T` is held between 15 K (``MIN_LIFT_K``; a 3 K lift gave a
+:math:`COP` of 20.7) and the lift where the fit is lowest (about 41 K for the ``water-water`` types, beyond which
+their :math:`COP` would rise again with the lift).
 
 The final important quantity is the **maximum available heat** that the booster heat pump can provide. It is calculated using the following equation:
 
