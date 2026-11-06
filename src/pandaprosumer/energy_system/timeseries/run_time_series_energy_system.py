@@ -46,7 +46,8 @@ def run_timeseries(energy_system, period_index, continue_on_divergence=False, ve
     Run the energy system over its period `period_index`.
 
     :param step_pipeflow: solve every pandapipes net with a `StepPipeflow` (one transient state per time step
-        whatever the number of solves, unchanged inputs skip the solve). A net that was already solved when the
+        whatever the number of solves, unchanged inputs skip the solve; a net whose own `dt` is shorter than the
+        period's resolution is solved in that many sub-steps per time step). A net that was already solved when the
         run starts also skips the initial pipeflow of each step: the controllers read the state at the end of the
         previous step and the levels solve the step. False restores pandapipes' plain `pipeflow` and the initial run.
     :type step_pipeflow: bool, default: True
@@ -62,7 +63,7 @@ def run_timeseries(energy_system, period_index, continue_on_divergence=False, ve
 
     for net_name, net in energy_system['nets'].items():
         if step_pipeflow and isinstance(net, pandapipesNet):
-            ts_variables['nets'][net_name]['run'] = StepPipeflow()
+            ts_variables['nets'][net_name]['run'] = StepPipeflow(step_s=resol)
             if net.get('converged', False):
                 ts_variables['nets'][net_name]['initial_run'] = False
         control_diagnostic(net)
