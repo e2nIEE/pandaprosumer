@@ -129,3 +129,48 @@ def test_an_unhashable_input_never_skips_a_solve():
     net = _pipe_net()
     net.junction["name"] = [[0]] * len(net.junction)
     assert _input_fingerprint(net) is None
+
+
+def _fine_net(dt_s):
+    net = _pipe_net()
+    pandapipes.set_user_pf_options(net, dt=dt_s)
+    return net
+
+
+def test_a_net_with_a_shorter_dt_is_solved_in_sub_steps():
+    """dt = 900 s in hourly steps: one step is four 900 s solves, the same as solving them one by one."""
+    stepped, manual = _fine_net(900), _fine_net(900)
+    run = StepPipeflow(step_s=3600)
+    run(stepped, transient=True, dt=3600, simulation_time_step=0)
+    run(stepped, transient=True, dt=3600, simulation_time_step=1)
+    for k in range(8):
+        pandapipes.pipeflow(manual, transient=True, dt=900, simulation_time_step=k + 1)
+    for table in ("res_junction", "res_pipe"):
+        pd.testing.assert_frame_equal(stepped[table], manual[table], rtol=1e-9, atol=1e-9)
+
+
+def test_repeated_solves_of_a_sub_stepped_step_do_not_drift():
+    once, twice = _fine_net(900), _fine_net(900)
+    run_once, run_twice = StepPipeflow(step_s=3600), StepPipeflow(step_s=3600)
+    for net, run in ((once, run_once), (twice, run_twice)):
+        run(net, transient=True, dt=3600, simulation_time_step=0)
+    twice.circ_pump_pressure.t_flow_k = 340.0
+    run_twice(twice, transient=True, dt=3600, simulation_time_step=1)
+    twice.circ_pump_pressure.t_flow_k = 350.0
+    run_twice(twice, transient=True, dt=3600, simulation_time_step=1)
+    once.circ_pump_pressure.t_flow_k = 350.0
+    run_once(once, transient=True, dt=3600, simulation_time_step=1)
+    pd.testing.assert_frame_equal(once.res_junction, twice.res_junction, rtol=1e-9, atol=1e-9)
+
+
+def test_sub_steps_split_the_step_evenly_and_average_the_losses():
+    run = StepPipeflow(step_s=3600)
+    assert run._substeps(_fine_net(900), {}) == (4, 900.0)
+    assert run._substeps(_fine_net(1000), {}) == (4, 900.0)  # never longer than the net's dt
+    assert run._substeps(_fine_net(3600), {}) == (1, 3600.0)
+    assert run._substeps(_fine_net(7200), {}) == (1, 3600.0)  # a longer dt still advances one step
+    assert StepPipeflow()._substeps(_fine_net(900), {}) == (1, None)
+    net = _fine_net(900)
+    create_heat_balance_table(net)
+    run(net, transient=True, dt=3600, simulation_time_step=0)
+    assert 50e3 < net[HEAT_BALANCE_TABLE].at[0, HEAT_LOSS_COLUMN] < 100e3
