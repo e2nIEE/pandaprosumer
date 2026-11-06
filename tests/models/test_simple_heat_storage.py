@@ -85,7 +85,7 @@ class TestSimpleHeatStorage:
         shs_controller = prosumer.controller.iloc[shs_controller_idx].object
 
         input_columns_expected = ["q_received_kw"]
-        result_columns_expected = ["soc", "q_delivered_kw"]
+        result_columns_expected = ["soc", "q_delivered_kw", "q_received_kw"]
 
         assert shs_controller.input_columns == input_columns_expected
         assert shs_controller.result_columns == result_columns_expected
@@ -109,7 +109,7 @@ class TestSimpleHeatStorage:
         shs_controller.control_step(prosumer)
 
         soc = (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
+        expected = [soc, q_out_kw, q_in_kw]
         assert shs_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_charge(self):
@@ -131,7 +131,7 @@ class TestSimpleHeatStorage:
         shs_controller.control_step(prosumer)
 
         soc = (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
+        expected = [soc, q_out_kw, q_in_kw]
         assert shs_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_discharge(self):
@@ -154,7 +154,7 @@ class TestSimpleHeatStorage:
         shs_controller.control_step(prosumer)
 
         soc = 0.5 + (q_in_kw - q_out_kw) * shs_controller.resol / 3600 / 100
-        expected = [soc, q_out_kw]
+        expected = [soc, q_out_kw, q_in_kw]
         assert shs_controller.step_results == pytest.approx(np.array([expected]))
 
     def test_controller_run_control_overcharge(self):

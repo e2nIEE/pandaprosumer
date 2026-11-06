@@ -192,7 +192,8 @@ class TestChpBhpStorageDemandMapping:
 
         storage_data_res = {
             "soc": [0.0, 0.0, 0.0, 0.0],
-            "q_delivered_kw": [6.85, 10.42, 10.42, 0.00]
+            "q_delivered_kw": [6.85, 10.42, 10.42, 0.00],
+            "q_received_kw": [6.85, 10.42, 10.42, 0.00]  # an empty tank passes on what it receives
         }
 
         chp_data_res = {
