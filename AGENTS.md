@@ -83,6 +83,13 @@ here must keep, each pinned by a test:
   `_reapply_request`), never from `init_layer_temps_c`: a tank that starts full and is drained
   below `min_useful_temp_c` read 0 kWh left and never charged again.
   `tests/models/test_shs_drained_start_full.py`.
+- **Solar collectors heat the water their responder gives back**
+  (`SolarThermalController._inlet_temperature_c`), not their `inlet_temperature_C` input
+  (only a fallback): their pump sets the flow, so on a tank's reapply they take the
+  return it really gave back (`t_previous_out_charge_c`), settle a two-value cycle on its
+  midpoint, and expose it as `t_booked_return_c` for `_check_return_contract`. Heating
+  from a fixed 30 °C inlet, a tank received 327 kWh from collectors that made 212.
+  `tests/integrations/test_solar_thermal_stratified_tank_balance.py`.
 - **The plant pump coupling fixes the plant's heat on the first pass it delivered on**
   (`PlantPumpCouplingControl`, `MAX_PLANT_WAIT_PASSES`), not the step's first pass.
 
