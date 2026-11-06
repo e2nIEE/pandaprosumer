@@ -3,6 +3,11 @@ from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 import math
 
+#: Two inlet temperatures [K] closer than this are the same one (detects a reapply loop alternating between two).
+INLET_CYCLE_TOLERANCE_C = 1e-3
+#: Cycles after which the collectors keep their inlet temperature for the rest of the step.
+MAX_INLET_CYCLES = 3
+
 
 def collector_initial_parameters(
         # a_c,
@@ -315,6 +320,7 @@ class SolarThermalController(BasicProsumerController):
         )
         self.time = time
         self.applied = False
+        self.t_booked_return_c = np.nan
         # self._beam_solar_radiation = self.ds.get_time_step_value(time, self.pn_beam_solar_radiation)
         # self._diffuse_solar_radiation = self.ds.get_time_step_value(time, self.pn_diffuse_solar_radiation)
         # self._ground_solar_radiation = self.ds.get_time_step_value(time, self.pn_ground_solar_radiation)
@@ -352,6 +358,66 @@ class SolarThermalController(BasicProsumerController):
         # from is_converged() in plant.py
         return self.applied
 
+    def _inlet_temperature_c(self, prosumer):
+        """
+        The temperature of the water entering the collectors [°C].
+
+        Fed into a FluidMix responder (a tank, a heat demand), the collectors heat the water that responder
+        gives back: its return temperature, not the ``inlet_temperature_C`` input. Heating from the input
+        while the responder books the heat from its own (e.g. a tank's colder bottom layer) made energy
+        appear or vanish at the interface. The input is used when nothing is fed, or nothing is asked for.
+
+        The collectors' flow is set by their pump (``inlet_mass_flow_rate_kg_h``), not by what the responder
+        asks for. On a reapply pass a stratified tank's request is sized for another flow, so its promised
+        return does not apply: the water it really gave back on the previous pass does
+        (``t_previous_out_charge_c``). Following the promise instead alternated between two requests and
+        never converged.
+
+        Around the hour the collectors' outlet crosses what the tank's demand needs, the tank routes the
+        flow differently depending on that outlet (straight to the demand or into the tank), and the water
+        it gives back flips between two values: no inlet reproduces itself. On such a cycle the collectors
+        restart from the midpoint, and keep it after a few cycles (the tank then stops on its stagnation guard).
+
+        :param prosumer: The prosumer object
+        :return: The inlet temperature in °C
+        """
+        responders = self._get_mapped_responders(prosumer)
+        if responders:
+            if len(responders) == 1:
+                t_given_back_c = getattr(responders[0], "t_previous_out_charge_c", np.nan)
+                if t_given_back_c is not None and not np.isnan(t_given_back_c):
+                    return self._settle_inlet_c(float(t_given_back_c))
+            _, t_return_c, mdot_tab_kg_per_s = self.t_m_to_deliver(prosumer)
+            if np.sum(mdot_tab_kg_per_s) > 1e-8 and not np.isnan(t_return_c):
+                self._promised_return = (self.time, float(t_return_c))
+                return float(t_return_c)
+            # Nothing asked for (e.g. the collectors cooled the water below the demand's return at night): the
+            # water still comes back at the return found earlier in this step. Switching to the input there
+            # made the demand ask again, and the step never converged.
+            promised_time, promised_c = getattr(self, "_promised_return", (None, np.nan))
+            if promised_time == self.time:
+                return promised_c
+        return self._get_input("inlet_temperature_C")
+
+    def _settle_inlet_c(self, t_given_back_c):
+        """
+        The inlet temperature [°C] for a reapply pass, given the water the tank gave back on the previous one:
+        that water, unless the passes of this step alternate between two values (see ``_inlet_temperature_c``).
+        A cycle restarts from the midpoint of the two (the step then usually converges on one side); after
+        ``MAX_INLET_CYCLES`` cycles the collectors keep the midpoint for the rest of the step.
+        """
+        if getattr(self, "_inlet_tries_time", None) != self.time:
+            self._inlet_tries_time, self._inlet_tries_c, self._inlet_cycles = self.time, [], 0
+        tries = self._inlet_tries_c
+        if self._inlet_cycles >= MAX_INLET_CYCLES:
+            return tries[-1]
+        if len(tries) >= 2 and abs(t_given_back_c - tries[-2]) < INLET_CYCLE_TOLERANCE_C \
+                and abs(t_given_back_c - tries[-1]) >= INLET_CYCLE_TOLERANCE_C:
+            self._inlet_cycles += 1
+            t_given_back_c = 0.5 * (tries[-1] + t_given_back_c)
+        tries.append(t_given_back_c)
+        return t_given_back_c
+
     def control_step(self, prosumer):
         """It implements the thermodynamic model of the solar thermal component
 
@@ -361,6 +427,9 @@ class SolarThermalController(BasicProsumerController):
             _description_
         """
 
+        t_in_c = self._inlet_temperature_c(prosumer)
+        # What a tank's return-contract check compares its return with (see ``_check_return_contract``)
+        self.t_booked_return_c = t_in_c
         m = self._get_input("inlet_mass_flow_rate_kg_h") / self.pros.number_collectors[0]  # /self.pros.series[0]
 
         fr_tau_alpha_n, fr_ul, fr_ul_t = collector_initial_parameters(
@@ -431,7 +500,7 @@ class SolarThermalController(BasicProsumerController):
         bb = -2 * fr_ul_t * self._get_input("ambient_temperature_C") * a_field + fr_ul * a_field + 2 * self._get_input("inlet_mass_flow_rate_kg_h") * \
              self.pros.use_specific_heat[0] / 3.6
         cc = fr_ul_t * self._get_input("ambient_temperature_C") ** 2 * a_field - fr_ul * a_field * self._get_input("ambient_temperature_C") - fr_tau_alpha_n * gt * a_field - 2 * self._get_input("inlet_mass_flow_rate_kg_h") * \
-             self.pros.use_specific_heat[0] * self._get_input("inlet_temperature_C") / 3.6
+             self.pros.use_specific_heat[0] * t_in_c / 3.6
         if aa == 0:
             t_m = -bb / cc
         else:
@@ -446,13 +515,13 @@ class SolarThermalController(BasicProsumerController):
         # Outputs
         outlet_flow_rate_kg_h = self._get_input("inlet_mass_flow_rate_kg_h")
         energy_gain_W = 2 * self._get_input("inlet_mass_flow_rate_kg_h") * self.pros.use_specific_heat[0] * (
-                    t_m - self._get_input("inlet_temperature_C")) / 3.6
+                    t_m - t_in_c) / 3.6
         if energy_gain_W == 0:
-            outlet_temperature_C = self._get_input("inlet_temperature_C")
+            outlet_temperature_C = t_in_c
         elif energy_gain_W < 0:
-            outlet_temperature_C = 2 * t_m - self._get_input("inlet_temperature_C")
+            outlet_temperature_C = 2 * t_m - t_in_c
         else:
-            outlet_temperature_C = self._get_input("inlet_temperature_C") + 3.6 * energy_gain_W / (
+            outlet_temperature_C = t_in_c + 3.6 * energy_gain_W / (
                         self._get_input("inlet_mass_flow_rate_kg_h") * self.pros.use_specific_heat[0])
 
         outlet_flow_rate_kg_s = outlet_flow_rate_kg_h / 3600

@@ -228,21 +228,27 @@ class Test1SolarThermal1HeatDemandMapping:
         run_timeseries(prosumer)
         df = prosumer.time_series.data_source.iloc[1].df
 
+        # The collectors heat the water the demand gives back (25 degC), not the 30 degC inlet input: in the sunny
+        # hours their gain is what the demand receives.
+        st_df = prosumer.time_series.data_source.iloc[0].df
+        assert df["q_received_kw"].iloc[:2].tolist() == pytest.approx(
+            (st_df["energy_gain_W"].iloc[:2] / 1e3).tolist(), rel=2e-3)
+
         # Check individual values
-        assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(7.136952, rel=1e-3)
+        assert df.loc["2020-01-01 00:00:00+00:00", "q_received_kw"] == pytest.approx(6.717834, rel=1e-3)
         assert df.loc["2020-01-01 01:00:00+00:00", "t_out_c"] == 25.0
 
         # Check the whole column
-        expected_q_received = [7.136952, 1.990310, 0.191985, 0.050065]
-        assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-3)
+        expected_q_received = [6.717834, 1.549424, 0.0, 0.050065]
+        assert df["q_received_kw"].tolist() == pytest.approx(expected_q_received, rel=1e-3, abs=1e-6)
 
         # Check the complete DataFrame
         expected = pd.DataFrame({
-            "q_received_kw": [7.136952, 1.990310, 0.191985, 0.050065],
-            "q_uncovered_kw": [2.863048, 18.009690, 29.808015, -0.050065],
+            "q_received_kw": [6.717834, 1.549424, 0.0, 0.050065],
+            "q_uncovered_kw": [3.282166, 18.450576, 30.0, -0.050065],
             "mdot_kg_per_s": [0.027778, 0.027778, 0.027778, 0.027778],
-            "t_in_c": [86.413554, 42.141779, 26.652939, 25.431024],
-            "t_out_c": [25.0, 25.0, 25.0, 25.0]
+            "t_in_c": [82.815800, 38.344100, 22.822380, 25.431024],
+            "t_out_c": [25.0, 25.0, 22.822380, 25.0]
         }, index=df.index)
 
         pd.testing.assert_frame_equal(df, expected, rtol=1e-3)

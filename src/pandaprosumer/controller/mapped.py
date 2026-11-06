@@ -642,7 +642,8 @@ class MappedController(Controller):
                                tol_kw=RETURN_CONTRACT_TOL_KW):
         """
         Warn when this responder finalizes with a return temperature that differs from the one it promised its
-        initiators (``t_keep_return_c``, set in ``t_m_to_receive``).
+        initiators (``t_keep_return_c``, set in ``t_m_to_receive``), or from the one its single initiator says it
+        booked against (``t_booked_return_c``, when it has one).
 
         The initiators booked their heat against the promise; a responder that accepts a different return (a
         reapply loop that stagnated, an initiator on another level) leaves
@@ -655,14 +656,22 @@ class MappedController(Controller):
         :param cp_fluid_kj_per_kgk: Heat capacity of the fluid [kJ/(kg.K)]
         :param tol_kw: Suppress the warning when the leak is below tol_kw
         """
-        if np.isnan(self.t_keep_return_c) or mdot_kg_per_s is None or np.isnan(mdot_kg_per_s) \
+        t_booked_c = self.t_keep_return_c
+        # An initiator that heats the water it really gets back instead of the promise (a solar collector, whose
+        # pump sets its flow) says which return it booked against.
+        initiators = self._get_mapped_initiators(container)
+        if len(initiators) == 1:
+            t_initiator_c = getattr(initiators[0], "t_booked_return_c", np.nan)
+            if t_initiator_c is not None and not np.isnan(t_initiator_c):
+                t_booked_c = float(t_initiator_c)
+        if np.isnan(t_booked_c) or mdot_kg_per_s is None or np.isnan(mdot_kg_per_s) \
                 or mdot_kg_per_s <= 1e-9 or np.isnan(t_return_c):
             return
-        leak_kw = float(mdot_kg_per_s) * cp_fluid_kj_per_kgk * (self.t_keep_return_c - float(t_return_c))
+        leak_kw = float(mdot_kg_per_s) * cp_fluid_kj_per_kgk * (t_booked_c - float(t_return_c))
         if abs(leak_kw) < tol_kw:
             return
         warn((f"{self.name_class()} '{self.name}' at timestep {self.time}: finalizes with a return of "
-              f"{t_return_c:.3f} degC to its initiators, which booked against the promised {self.t_keep_return_c:.3f} "
+              f"{t_return_c:.3f} degC to its initiators, which booked against {t_booked_c:.3f} "
               f"degC: energy leak of {leak_kw:.3f} kW at the FluidMix interface ({mdot_kg_per_s:.4f} kg/s)."),
              EnergyLeakWarning, stacklevel=3)
 
