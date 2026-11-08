@@ -82,7 +82,7 @@ electricity_price = (
     .resample("1h")
     .mean()
 )
-
+update
 hourly_data["electricity_price_eur_per_mwh"] = (
     electricity_price.reindex(hourly_data.index)
 )
@@ -182,12 +182,12 @@ optimization_index = create_controlled_electrical_optimization_mpc(
     order=0,
     solver_name="appsi_highs",
     horizon_steps=24,
-    contract_penalty_eur_per_mwh=500.0,
+    contract_penalty_eur_per_mwh=1000.0,
     chp_start_cost_eur=50.0,
     soc_target=0.80,
     weight_soc=2000.0,
     flex_revenue_eur_per_mwh=150.0,
-    ev_charge_revenue_eur_per_mwh=250.0,
+    ev_charge_revenue_eur_per_mwh=150.0,
     grid_export_revenue_eur_per_mwh=20.0,
     forecast_data=time_series_data[forecast_columns].copy(),
     pad_forecast_end=True,
@@ -371,6 +371,10 @@ startup_events = (chp_on.diff().fillna(chp_on.iloc[0]) == 1)
 print("CHP startups", int(startup_events.sum()))
 print("Startup cost[€]:",results["cost_startup_current_eur"].sum())
 print("Expected startup cost [€]:", startup_events.sum() * 50.0)
+print("Operational Cost Sum:", results["cost_current_step_eur"].sum())
+print("Cost per MWh:", results["cost_current_step_eur"].sum() /
+      (time_series_data["p_el_demand_kw"].sum()-time_series_data["p_pv_in_kw"].sum() +time_series_data["p_ev_charge_kw"].sum() ) * 1e3)
+
 
 def combined_legend(left_axis, right_axis=None):
     handles, labels = left_axis.get_legend_handles_labels()
@@ -399,7 +403,7 @@ fig, ax = plt.subplots(
 x = results.index
 
 # 1. Electricity price and battery operation
-ax_price = ax[0]
+ax_price = ax[1]
 ax_battery = ax_price.twinx()
 
 ax_price.step(
@@ -430,7 +434,7 @@ combined_legend(ax_price, ax_battery)
 
 
 # 2. Grid import and contract limit
-ax[1].step(
+ax[0].step(
     x,
     results["p_grid_baseline_kw"],
     where="post",
@@ -474,15 +478,15 @@ ax[1].legend(loc="upper left")
 
 
 # 3. Battery SOC and CHP output
-ax_soc = ax[2]
-ax_chp = ax_soc.twinx()
+ax_chp = ax[2]
+# ax_soc = ax_chp.twinx()
 
-ax_soc.step(
-    x,
-    results["dispatch_battery_soc"] * 100.0,
-    color="tab:purple",
-    label="Battery SOC",
-)
+# ax_soc.step(
+#     x,
+#     results["dispatch_battery_soc"] * 100.0,
+#     color="tab:purple",
+#     label="Battery SOC",
+# )
 
 ax_chp.step(
     x,
@@ -492,9 +496,9 @@ ax_chp.step(
     label="CHP output",
 )
 
-ax_soc.set_ylabel("SOC [%]")
+# ax_soc.set_ylabel("SOC [%]")
 ax_chp.set_ylabel("CHP power [kW]")
-combined_legend(ax_soc, ax_chp)
+combined_legend(ax_chp)
 
 
 # 4. Flexibility request and delivery
