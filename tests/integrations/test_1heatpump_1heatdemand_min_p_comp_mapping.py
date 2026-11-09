@@ -1,13 +1,18 @@
+import warnings
+
 import pytest
 import numpy as np
 import pandas as pd
-from pandas.testing import assert_series_equal
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
+from pandaprosumer.controller.mapped import EnergyLeakWarning
 from pandaprosumer import (create_period, DFData, create_empty_prosumer_container,
                            create_controlled_const_profile, create_controlled_heat_pump,
                            create_controlled_heat_demand)
+
+from tests.integrations.test_overflow_strategy_consistency import _assert_interface_consistent
 
 
 class Test1HeatPump1HeatDemandMinPCompMapping:
@@ -185,3 +190,68 @@ class Test1HeatPump1HeatDemandMinPCompMapping:
         flowing = hd_df.mdot_kg_per_s.values > 1e-6
         assert np.allclose(hp_df.t_cond_out_c.values[flowing],
                            hd_df.t_in_c.values[flowing], rtol=1e-2)
+
+
+class Test1HeatPump1HeatDemandMinOnOffTime:
+    """
+    A Heat Pump with min_on_time_s and min_off_time_s mapped to a Heat Demand that switches on and off every hour
+    """
+    MIN_P_COMP_KW = 15.
+    COP = 3.375  # 0.5 * (76.85+273) / (76.85-25)
+
+    def _build(self):
+        prosumer = create_empty_prosumer_container()
+        data = pd.DataFrame({"Tin_evap": [25] * 10,
+                             "demand_kw": [0, 200, 0, 200, 0, 200, 0, 200, 0, 200]})
+        start = '2020-01-01 00:00:00'
+        resol = 3600
+        end = pd.Timestamp(start) + len(data) * pd.Timedelta(seconds=resol) - pd.Timedelta(seconds=1)
+        period = create_period(prosumer, resol, start, end, 'utc', 'default')
+        data.index = pd.date_range(start, end, freq=f'{resol}s', tz='utc')
+        cp_idx = create_controlled_const_profile(prosumer, ["Tin_evap", "demand_kw"], ["t_evap_in_c", "qdemand_kw"],
+                                                 DFData(data), period, level=0, order=0)
+        hp_idx = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
+                                             carnot_efficiency=0.5, pinch_c=0, delta_t_evap_c=5, mode='carnot',
+                                             max_p_comp_kw=100, min_p_comp_kw=self.MIN_P_COMP_KW,
+                                             min_on_time_s=2 * 3600, min_off_time_s=2 * 3600)
+        hd_idx = create_controlled_heat_demand(prosumer, level=1, order=1, period=period,
+                                               t_feed_demand_c=76.85, t_return_demand_c=30)
+        GenericMapping(container=prosumer, initiator_id=cp_idx, initiator_column="t_evap_in_c",
+                       responder_id=hp_idx, responder_column="t_evap_in_c", order=0)
+        GenericMapping(container=prosumer, initiator_id=cp_idx, initiator_column="qdemand_kw",
+                       responder_id=hd_idx, responder_column="q_demand_kw", order=1)
+        FluidMixMapping(container=prosumer, initiator_id=hp_idx, responder_id=hd_idx, order=0)
+        return prosumer, period
+
+    def test_min_on_off_time(self):
+        prosumer, period = self._build()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", EnergyLeakWarning)
+            run_timeseries(prosumer, period, True)
+
+        hp_df = prosumer.time_series.loc[0].data_source.df
+        hd_df = prosumer.time_series.loc[1].data_source.df
+
+        p_on_kw = 200 / self.COP
+        p_min = self.MIN_P_COMP_KW
+        q_min_kw = p_min * self.COP
+        # Started at 01:00 (held at min_p_comp_kw at 02:00), stopped at 04:00 (held off at 05:00 despite the demand),
+        # restarted at 07:00 (held at min_p_comp_kw at 08:00)
+        assert hp_df.p_comp_kw.values == pytest.approx([0, p_on_kw, p_min, p_on_kw, 0, 0, 0, p_on_kw, p_min, p_on_kw],
+                                                       rel=1e-2, abs=1e-3)
+        # The heat held at min_p_comp_kw is dumped on the demand (default overflow_strategy 'dump_proportional')
+        assert hd_df.q_uncovered_kw.values == pytest.approx([0, 0, -q_min_kw, 0, 0, 200, 0, 0, -q_min_kw, 0],
+                                                            rel=1e-2, abs=.1)
+        assert np.allclose(hp_df.q_cond_kw.values, hp_df.p_comp_kw.values + hp_df.q_evap_kw.values, atol=1e-6)
+        _assert_interface_consistent(hp_df, hd_df, 't_cond_out_c', 't_cond_in_c', 'mdot_cond_kg_per_s', 'q_cond_kw',
+                                     rtol_q=.01)
+
+    def test_min_on_off_time_rerun(self):
+        """
+        The on/off history is reset at the start of each run, so a second run gives the same results
+        """
+        prosumer, period = self._build()
+        run_timeseries(prosumer, period, True)
+        first_run_df = prosumer.time_series.loc[0].data_source.df.copy()
+        run_timeseries(prosumer, period, True)
+        assert_frame_equal(prosumer.time_series.loc[0].data_source.df, first_run_df)

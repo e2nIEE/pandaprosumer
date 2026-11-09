@@ -49,6 +49,8 @@ Input Static Data
     "max_ramp_down_kw_per_s", "Maximum ramp-down rate of electrical power", "kW/s"
     "max_t_cond_out_c", "Maximum condenser outlet temperature", "Degree Celsius"
     "max_cop", "Maximum COP", "N/A"
+    "min_on_time_s", "Minimum running time of the compressor. Once started, the heat pump cannot stop before it has run for this duration: until then it runs at least at ``min_p_comp_kw``. Requires a positive ``min_p_comp_kw``. See :ref:`heat_pump_min_on_off_time`.", "s"
+    "min_off_time_s", "Minimum stop time of the compressor. Once stopped, the heat pump cannot restart before it has been stopped for this duration: until then it exchanges no heat, whatever the demand. See :ref:`heat_pump_min_on_off_time`.", "s"
     "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
     "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
     "mode", "COP calculation mode. Options: 'carnot' (default) or 'lorenz'", "str", "'carnot' or 'lorenz'", "No"
@@ -272,3 +274,29 @@ The heat pump model includes several edge case handling mechanisms:
 5. **Mass Flow Constraints**: The model handles cases where the evaporator mass flow differs from the required mass flow by implementing bypass logic (to handle any extra mass flow at the evaporator) or recalculating the heat demand (if the available mass flow at the evaporator is not enough for the heat pump to satisfy the demand).
 
 6. **Shutdown Conditions**: The model properly handles shutdown conditions when there is no demand on the condenser or when operational limits are exceeded.
+
+.. _heat_pump_min_on_off_time:
+
+Minimum Running and Stop Times
+------------------------------
+
+``min_on_time_s`` and ``min_off_time_s`` prevent the heat pump from cycling. The heat pump is running at a
+time step if its compressor consumes power (:math:`P_\text{comp} > 0`) and stopped otherwise.
+
+- **Minimum running time**: if the heat pump started at time step :math:`t_\text{start}`, it cannot stop at
+  a time step :math:`t` such that :math:`t - t_\text{start} < \text{min\_on\_time\_s}`. When the demand
+  drops to zero in this window, the compressor keeps running at ``min_p_comp_kw``, with the condenser temperature
+  lift of the previous time step; the surplus heat is dispatched according to ``overflow_strategy``.
+  A heat pump already running and asked for less than ``min_p_comp_kw`` is held at ``min_p_comp_kw`` anyway
+  (see the minimum power above), so this constraint only matters when the demand stops. If the temperatures make
+  it impossible to run (no lift between the evaporator inlet and the condenser outlet), the heat pump stops anyway.
+- **Minimum stop time**: if the heat pump stopped at time step :math:`t_\text{stop}`, it cannot restart at a
+  time step :math:`t` such that :math:`t - t_\text{stop} < \text{min\_off\_time\_s}`. In this window
+  the heat pump exchanges no heat and consumes no electricity, whatever the demand.
+
+With hourly time steps and ``min_on_time_s = min_off_time_s = 6 * 3600``, a heat pump started at 08:00 runs at
+least until 13:00 included and may stop at 14:00; a heat pump stopped at 14:00 stays off at least until 19:00
+included and may restart at 20:00.
+
+The state of the first time step of a run is assumed to have lasted long enough: only a start or a stop
+during the run locks the heat pump. The history is reset at the start of each ``run_timeseries``.

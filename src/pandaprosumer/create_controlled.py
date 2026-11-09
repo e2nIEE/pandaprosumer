@@ -225,6 +225,8 @@ def create_controlled_heat_pump(prosumer,
                                 max_ramp_down_kw_per_s=np.nan,
                                 max_t_cond_out_c=np.nan,
                                 max_cop=np.nan,
+                                min_on_time_s=np.nan,
+                                min_off_time_s=np.nan,
                                 cond_fluid=None,
                                 evap_fluid=None,
                                 mode='lorenz',
@@ -266,6 +268,13 @@ def create_controlled_heat_pump(prosumer,
             **max_ramp_down_kw_per_s** (float, default None) - Maximum ramping down speed of the compressor [kW/s]
 
             **max_cop** (float, default None) - Maximum COP
+
+            **min_on_time_s** (float, default None) - Minimum running time of the compressor [s]. Once started, \
+                the heat pump cannot stop before it has run for this duration: until then it is held at least at \
+                min_p_comp_kw. Requires a positive min_p_comp_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the compressor [s]. Once stopped, \
+                the heat pump cannot restart before it has been stopped for this duration.
 
             **cond_fluid** (str, default None) - Fluid at the condenser. If None, the \
             prosumer's fluid will be used
@@ -583,6 +592,8 @@ def create_controlled_electric_boiler(prosumer,
                                       efficiency_percent=100,
                                       allow_stop=True,
                                       max_t_out_c=np.nan,
+                                      min_on_time_s=np.nan,
+                                      min_off_time_s=np.nan,
                                       name=None,
                                       index=None,
                                       in_service=True,
@@ -610,6 +621,12 @@ def create_controlled_electric_boiler(prosumer,
             **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
 
             **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
+
+            **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+                the boiler cannot stop before it has run for this duration. Requires a positive min_p_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+                the boiler cannot restart before it has been stopped for this duration.
 
             **name** (string, default None) - The name for this electric boiler
 

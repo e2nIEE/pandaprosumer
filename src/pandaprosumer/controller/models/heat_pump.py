@@ -11,6 +11,7 @@ from pandapipes import call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
 from pandaprosumer.controller.power_cap import _capped, _setpoint
 
 
@@ -26,7 +27,7 @@ class ShadowedInputWarning(UserWarning):
     """
 
 
-class HeatPumpController(BasicProsumerController):
+class HeatPumpController(MinOnOffTimeMixin, BasicProsumerController):
     """
     Controller for heat pumps.
 
@@ -38,6 +39,9 @@ class HeatPumpController(BasicProsumerController):
     :param index: The index of the controller
     :param kwargs: Additional keyword arguments
     """
+
+    # The heat pump is running when its compressor consumes power
+    _on_off_result_key = 'p_comp_kw'
 
     def name_class(self):
         return "heat_pump_controller"
@@ -68,6 +72,9 @@ class HeatPumpController(BasicProsumerController):
         self.p_comp_previous_kw = np.nan
         # Whether the ShadowedInputWarning was already emitted (once per controller, not once per step)
         self._warned_shadowed_t_evap_in = False
+
+        self._check_min_on_time(prosumer, 'min_p_comp_kw', "Heat Pump")
+        self._reset_on_off_state()
 
     @property
     def _t_evap_in_c(self):
@@ -419,6 +426,38 @@ class HeatPumpController(BasicProsumerController):
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c)
 
+    def _calculate_heat_pump_on_off(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c,
+                                    pinch_c, start_locked, stop_locked):
+        """
+        _calculate_heat_pump, enforcing the minimum running and stop times
+
+        :param start_locked: The heat pump has not been stopped for min_off_time_s yet: it stays off
+        :param stop_locked: The heat pump has not run for min_on_time_s yet: it runs at least at min_p_comp_kw
+        """
+        if start_locked:
+            return (0, 0, 0, 0,
+                    0, t_cond_in_c, t_cond_in_c,
+                    0, t_evap_in_c, t_evap_in_c)
+
+        result = self._calculate_heat_pump(prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c,
+                                           pinch_c)
+        p_comp_kw = result[1]
+        min_p_comp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
+        if not stop_locked or not p_comp_kw < min_p_comp_kw - 1e-3:
+            return result
+
+        # The demand would stop the heat pump: hold it at min_p_comp_kw instead.
+        # Without a requested condenser temperature lift (no demand), keep the lift of the previous time step
+        if t_cond_out_c - t_cond_in_c <= 1e-3:
+            delta_t_cond_previous_c = self.last_result.get('t_cond_out_c', np.nan) - self.last_result.get('t_cond_in_c', np.nan)
+            if not delta_t_cond_previous_c > 1e-3:
+                return result
+            t_cond_out_c = t_cond_in_c + delta_t_cond_previous_c
+        # With a negligible condenser mass flow, the required compressor power is below min_p_comp_kw while the
+        # heat pump was running: _calculate_heat_pump holds it at min_p_comp_kw. If the temperatures make it
+        # impossible to run (no lift between the evaporator and the condenser), the heat pump stops anyway
+        return self._calculate_heat_pump(prosumer, 1e-6, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c)
+
     def _calculate_heat_pump_reverse(self, prosumer, mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c, t_cond_in_c, t_cond_out_c):
         """
         Main method for Heat Pump physical calculation during one time step
@@ -505,6 +544,11 @@ class HeatPumpController(BasicProsumerController):
         assert t_cond_out_required_c >= t_cond_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_cond_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
+        # A heat pump that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+        # A heat pump that has not run for min_on_time_s yet cannot stop: it runs at least at min_p_comp_kw
+        stop_locked = self._is_stop_locked(prosumer)
+
         rerun = True
         nb_runs = 0
         while rerun:
@@ -518,12 +562,14 @@ class HeatPumpController(BasicProsumerController):
 
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
              mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                        mdot_cond_required_kg_per_s,
-                                                                                        t_cond_out_required_c,
-                                                                                        t_cond_in_required_c,
-                                                                                        self._t_evap_in_c,
-                                                                                        pinch_c)
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_on_off(prosumer,
+                                                                                               mdot_cond_required_kg_per_s,
+                                                                                               t_cond_out_required_c,
+                                                                                               t_cond_in_required_c,
+                                                                                               self._t_evap_in_c,
+                                                                                               pinch_c,
+                                                                                               start_locked,
+                                                                                               stop_locked)
             if not np.isnan(self._mdot_evap_in_kg_per_s):
                 # If the evaporator is fed with a fixed mass flow (not free air)
                 if mdot_evap_kg_per_s > self._mdot_evap_in_kg_per_s:
@@ -603,13 +649,15 @@ class HeatPumpController(BasicProsumerController):
             pinch_c = self._get_element_param(prosumer, 'pinch_c')
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
              mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_on_off(
                 prosumer,
                 mdot_cond_new,
                 t_cond_out_required_c,
                 t_cond_in_required_c,
                 self._t_evap_in_c,
                 pinch_c,
+                start_locked,
+                stop_locked,
             )
 
         cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(

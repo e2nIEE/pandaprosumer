@@ -108,6 +108,8 @@ def create_heat_pump(prosumer,
                      max_ramp_down_kw_per_s=np.nan,
                      max_t_cond_out_c=np.nan,
                      max_cop=np.nan,
+                     min_on_time_s=np.nan,
+                     min_off_time_s=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
                      mode='lorenz',
@@ -148,6 +150,13 @@ def create_heat_pump(prosumer,
 
         **max_cop** (float, default None) - Maximum COP
 
+        **min_on_time_s** (float, default None) - Minimum running time of the compressor [s]. Once started, \
+            the heat pump cannot stop before it has run for this duration: until then it is held at least at \
+            min_p_comp_kw. Requires a positive min_p_comp_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the compressor [s]. Once stopped, \
+            the heat pump cannot restart before it has been stopped for this duration.
+
         **cond_fluid** (str, default None) - Fluid at the condenser. If None, the \
         prosumer's fluid will be used
 
@@ -183,10 +192,12 @@ def create_heat_pump(prosumer,
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
              'min_p_comp_kw',  'max_ramp_up_kw_per_s', 'max_ramp_down_kw_per_s', 'max_t_cond_out_c',
-             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy', 'in_service'],
+             'max_cop', 'min_on_time_s', 'min_off_time_s', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy',
+             'in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
              min_p_comp_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, max_t_cond_out_c,
-             max_cop, cond_fluid, evap_fluid, mode, overflow_strategy, in_service])
+             max_cop, min_on_time_s, min_off_time_s, cond_fluid, evap_fluid, mode, overflow_strategy,
+             in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
@@ -591,6 +602,8 @@ def create_electric_boiler(prosumer,
                            efficiency_percent=100,
                            allow_stop=True,
                            max_t_out_c=np.nan,
+                           min_on_time_s=np.nan,
+                           min_off_time_s=np.nan,
                            overflow_strategy='dump_proportional',
                            name=None,
                            index=None,
@@ -617,6 +630,12 @@ def create_electric_boiler(prosumer,
 
         **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
+        **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+            the boiler cannot stop before it has run for this duration. Requires a positive min_p_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+            the boiler cannot restart before it has been stopped for this duration.
+
         **name** (string, default None) - The name for this electric boiler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -634,8 +653,8 @@ def create_electric_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "electric_boiler", index)
 
-    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
-                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
+    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "overflow_strategy", "in_service"],
+                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, min_on_time_s, min_off_time_s, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
     return int(index)
