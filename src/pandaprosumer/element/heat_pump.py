@@ -33,6 +33,8 @@ class HeatPumpElementData:
         ('max_ramp_down_kw_per_s', 'f8'),
         ('max_t_cond_out_c', 'f8'),
         ('max_cop', 'f8'),
+        ('min_on_time_s', 'f8'),
+        ('min_off_time_s', 'f8'),
         ('cond_fluid', 'str'),
         ('evap_fluid', 'str'),
         ('mode', 'str'),  # COP calculation mode: 'carnot' or 'lorenz'
