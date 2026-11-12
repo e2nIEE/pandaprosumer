@@ -749,6 +749,17 @@ class FluidMixHeatStorageController(BasicProsumerController):
                 if abs(t_demand_out_c - t_discharge_out_c) > self._get_element_param(prosumer, "t_discharge_out_tol_c"):
                     mdot_discharge_kg_per_s = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c) / (
                             t_demand_out_c - t_discharge_out_c)
+                    if mdot_discharge_kg_per_s > 0:
+                        # The mixing valve never draws more than the demand energy the bypass leaves (iso-energy):
+                        # with the outlet layer just under the demand's feed and the bypass hot, the formula above
+                        # draws an unbounded flow of lukewarm water. A source at its maximum power falling
+                        # 1e-5 kg/s short of the demand made a uniform tank at 58 degC serve a 60/35 degC demand of
+                        # 80 kW with 211 kW.
+                        e_residual_kgk = max(0.0, mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
+                                             - mdot_bypass_kg_per_s * (t_received_in_c - t_demand_in_c))
+                        delta_t_discharge_c = t_discharge_out_c - t_demand_in_c
+                        mdot_discharge_kg_per_s = (min(mdot_discharge_kg_per_s, e_residual_kgk / delta_t_discharge_c)
+                                                   if delta_t_discharge_c > 1e-9 else 0.0)
                 else:
                     mdot_discharge_kg_per_s = mdot_demand_kg_per_s - mdot_bypass_kg_per_s
                 if mdot_discharge_kg_per_s <= 0 and mdot_demand_kg_per_s > 0:
