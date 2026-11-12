@@ -68,9 +68,17 @@ here must keep, each pinned by a test:
   *first* pass — `_first_ask`; later passes of the control loop are not `prosumer.rerun`).
   Closed, a cooled network drew no flow and a heat-led plant never restarted.
   `TestStarvedValveOpen`.
-- **A tank charging and discharging at once** through the same connections
+- **The hot-water storages share their FluidMix coupling**
+  (`controller/models/fluid_mix_heat_storage.py`, `FluidMixHeatStorageController`: request,
+  split, setpoints, reapply loop); `StratifiedHeatStorageController` (layers, plug flow) and
+  `UniformHeatStorageController` (one mixed layer, exact step) only implement the tank physics
+  hooks. A fix to the coupling goes in the base and applies to both: run both storages' tests.
+  The uniform tank promises, on a reapply, the return it measured when asked again for the
+  same stream (`_measured_return`): charging while discharging, its charge return depends on
+  the discharge. `tests/integrations/test_uniform_heat_storage_mapping.py`.
+- **A stratified tank charging and discharging at once** through the same connections
   short-circuits (`StratifiedHeatStorageController._short_circuits`, used in
-  `_calculate_heat_storage` and `_forced_charge_reapply_request`): the common flow goes
+  `_exchange` and `FluidMixHeatStorageController._forced_charge_reapply_request`): the common flow goes
   charge → discharge and return → source, only the net flow crosses the layers, when
   the charge is no colder than the outlet layer. Each outlet booked without the other
   stream lost ~1.7 MWh a day in a game tank.
@@ -79,7 +87,7 @@ here must keep, each pinned by a test:
   rest of what arrives): a fill-rate setpoint caps the source. Leave the charge free
   (`-1`/NaN) when the source should also serve the demand.
 - **A tank's remaining capacity is measured on its current layers**
-  (`StratifiedHeatStorageController._get_remaining_capacity_kwh`, used by `_is_tank_full` and
+  (`FluidMixHeatStorageController._get_remaining_capacity_kwh`, used by `_is_tank_full` and
   `_reapply_request`), never from `init_layer_temps_c`: a tank that starts full and is drained
   below `min_useful_temp_c` read 0 kWh left and never charged again.
   `tests/models/test_shs_drained_start_full.py`.
