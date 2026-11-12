@@ -21,6 +21,16 @@ time_series_data.index = pd.to_datetime(time_series_data.index)
 time_series_data = time_series_data.sort_index()
 time_series_data = time_series_data[~time_series_data.index.duplicated(keep="first")]
 
+time_series_data.index = pd.to_datetime(
+    time_series_data.index,
+    utc=True
+)
+
+missing_ts = pd.Timestamp("2025-03-30 02:00:00+00:00")
+
+time_series_data.loc[missing_ts] = np.nan
+time_series_data = time_series_data.sort_index().ffill()
+
 time_series_data["p_el_demand_kw"] = time_series_data["P el total [kW]"].astype(float)
 time_series_data["p_pv_in_kw"] = time_series_data["P pv [kW]"].astype(float)
 time_series_data["p_contract_kw"] = time_series_data["P el contr [kW]"].astype(float)
@@ -32,7 +42,7 @@ time_series_data["cycle"] = 1
 time_series_data["t_intake_k"] = 298.15
 
 # One-week simulation with hourly resolution
-week_start = pd.Timestamp("2025-07-07 00:00:00")
+week_start = pd.Timestamp("2025-07-08 00:00:00", tz="UTC")
 week_end = week_start + pd.Timedelta(days=7)
 
 time_series_data = time_series_data.loc[
@@ -82,7 +92,17 @@ electricity_price = (
     .resample("1h")
     .mean()
 )
-update
+
+electricity_price.index = pd.to_datetime(
+    electricity_price.index,
+    utc=True
+)
+
+missing_ts = pd.Timestamp("2025-03-30 02:00:00+00:00")
+
+electricity_price.loc[missing_ts] = np.nan
+electricity_price = electricity_price.sort_index().ffill()
+# update
 hourly_data["electricity_price_eur_per_mwh"] = (
     electricity_price.reindex(hourly_data.index)
 )
@@ -442,7 +462,7 @@ ax[0].step(
     label="Baseline",
 )
 
-ax[1].step(
+ax[0].step(
     x,
     results["p_grid_dispatch_kw"],
     where="post",
@@ -450,7 +470,7 @@ ax[1].step(
     label="Optimized",
 )
 
-ax[1].step(
+ax[0].step(
     x,
     results["p_contract_kw"],
     where="post",
@@ -463,7 +483,7 @@ ax[1].step(
 contract = results["p_contract_kw"].to_numpy(dtype=float)
 grid = results["p_grid_dispatch_kw"].to_numpy(dtype=float)
 
-ax[1].fill_between(
+ax[0].fill_between(
     x,
     contract,
     np.maximum(grid, contract),
@@ -473,8 +493,8 @@ ax[1].fill_between(
     label="Contract violation",
 )
 
-ax[1].set_ylabel("Grid power [kW]")
-ax[1].legend(loc="upper left")
+ax[0].set_ylabel("Grid power [kW]")
+ax[0].legend(loc="upper left")
 
 
 # 3. Battery SOC and CHP output
@@ -638,4 +658,4 @@ plt.show()
 #
 # fig.autofmt_xdate()
 # fig.tight_layout()
-# plt.show()
+plt.show()

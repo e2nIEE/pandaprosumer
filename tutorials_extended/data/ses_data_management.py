@@ -74,7 +74,7 @@ print(ses_data_df.head())                        # THE MAIN DATAFRAME ---> use '
 p_el_mcscharge_max_kw = 1000            # max. MCS charging power of the system ---> charging power per charger
 p_el_ccscharge_max_kw = 350             # max. CCS charging power of the system ---> charging power per charger
 
-n_charger = 0                           # number of chargers at loading bays
+n_charger = 3                           # number of chargers at loading bays
 
 p_el_charge_kw = p_el_mcscharge_max_kw * n_charger    # total charging power at the shopping centre
 
@@ -122,7 +122,7 @@ ses_data_df["P el total [kW]"] = ses_data_df["P el sc [kW]"] #+ ses_data_df["P e
 # Assumptions:
 # - Step change only
 # - Negative values for flexibilty to represent the DSO's request
-p_el_flex_kw = 0
+p_el_flex_kw = 700
 
 ses_data_df["P el flex [kW]"] = 0.0                        # adding a column to the input dataframe ---> external flexibility
 
