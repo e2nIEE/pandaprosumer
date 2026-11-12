@@ -29,4 +29,5 @@ information about the definition and interpretation of the parameters in the fol
     elements/chiller
     elements/solar_thermal
     elements/pv
+    elements/battery_storage
 

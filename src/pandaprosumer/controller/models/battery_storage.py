@@ -9,15 +9,12 @@ from pandaprosumer.controller.base import BasicProsumerController
 
 class BatteryStorageController(BasicProsumerController):
     """
-    Controller for battery storage systems.
+           
+       Controller for battery storage systems.
 
-    Sign convention
-    ---------------
-    p_requested_kw > 0:
-        Battery discharge
-
-    p_requested_kw < 0:
-        Battery charge
+       The requested power ``p_requested_kw`` is signed: a positive value
+       discharges the battery and a negative value charges it.
+       
     """
 
     def name_class(self):
@@ -270,8 +267,8 @@ class BatteryStorageController(BasicProsumerController):
                 pd.Series(self.p_discharge_kw),
                 pd.Series(self.p_charge_available_kw),
                 pd.Series(self.p_discharge_available_kw),
+                pd.Series(e_stored_kwh),
                 pd.Series(self.p_request_unmet_kw),
-                pd.Series(e_stored_kwh)
             ]
         )
 

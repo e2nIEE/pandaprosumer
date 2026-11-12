@@ -1407,8 +1407,57 @@ def create_controlled_battery_storage(
     **kwargs,
 ):
     """
-    Create a battery-storage element and its controller.
-    """
+    Creates a battery storage element in prosumer["battery_storage"] and a battery storage controller.
+
+    The controller receives a requested power (positive: discharge, negative: charge), limits it to what the
+    battery can deliver or absorb, and updates the state of charge (SOC). The following conditions are checked when
+    the controller is created, and a ValueError is raised if one of them is violated:
+    e_capacity_kwh > 0, p_charge_max_kw >= 0, p_discharge_max_kw >= 0, 0 < eta_charge <= 1, 0 < eta_discharge <= 1,
+    0 <= soc_min < soc_max <= 1, soc_min <= init_soc <= soc_max and self_discharge_per_hour >= 0.
+
+    INPUT:
+        **prosumer** - The prosumer within which this battery storage should be created.
+
+        **e_capacity_kwh** (float) - Energy capacity of the battery [kWh].
+
+        **p_charge_max_kw** (float) - Maximum charging power [kW].
+
+        **p_discharge_max_kw** (float) - Maximum discharging power [kW].
+
+    OPTIONAL:
+        **eta_charge** (float, default 0.95) - Charging efficiency, in the range (0, 1].
+
+        **eta_discharge** (float, default 0.95) - Discharging efficiency, in the range (0, 1].
+
+        **soc_min** (float, default 0.1) - Minimum allowed state of charge, as a fraction between 0 and 1.
+
+        **soc_max** (float, default 0.9) - Maximum allowed state of charge, as a fraction between 0 and 1.
+
+        **self_discharge_per_hour** (float, default 0.0) - Fraction of the stored energy lost per hour [1/h].
+
+        **init_soc** (float, default 0.5) - The initial state of charge, as a fraction between 0 and 1. Must lie between soc_min and soc_max.
+
+        **name** (string, default None) - A custom name for this battery storage.
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service.
+
+        **period** (int, default 0) - Index of the period, default is 0.
+
+        **level** (int, default 0) - The level of the controller.
+
+        **order** (int, default 0) - The order of the controller.
+
+        **kwargs** - Additional keyword arguments are added as extra columns of the element table.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created battery storage controller (not of the element). This is the
+        index to use as initiator_id or responder_id in a mapping.
+
+    EXAMPLE:
+        create_controlled_battery_storage(prosumer, e_capacity_kwh=1000, p_charge_max_kw=500, p_discharge_max_kw=500, init_soc=0.6, name="battery_1")
+    """    
 
     battery_index = create_battery_storage(
         prosumer=prosumer,
