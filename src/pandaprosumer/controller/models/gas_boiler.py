@@ -245,13 +245,13 @@ class GasBoilerController(MinOnOffTimeMixin, BasicProsumerController):
         t_out_required_c, t_in_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_required_kg_per_s = np.sum(mdot_tab_required_kg_per_s)
 
-        assert not np.isnan(t_out_required_c), f"Gas Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_in_required_c), f"Gas Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_required_kg_per_s).any(), f"Gas Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(not np.isnan(t_out_required_c), "t_out_required_c is NaN", prosumer)
+        self._check(not np.isnan(t_in_required_c), "t_in_required_c is NaN", prosumer)
+        self._check(not np.isnan(mdot_required_kg_per_s).any(), "mdot_required_kg_per_s is NaN", prosumer)
         if t_in_required_c - TEMPERATURE_NOISE_K <= t_out_required_c < t_in_required_c:
             # rounding noise of a fully-served responder (e.g. an upstream tank covered it): nothing left to heat
             t_out_required_c = t_in_required_c
-        assert t_out_required_c >= t_in_required_c, f"Gas Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(t_out_required_c >= t_in_required_c, "t_out_required_c is lower than t_in_required_c", prosumer)
 
         allow_stop = self._get_element_param(prosumer, 'allow_stop')
         if allow_stop == None or np.isnan(allow_stop):
@@ -351,9 +351,7 @@ class GasBoilerController(MinOnOffTimeMixin, BasicProsumerController):
                 else:
                     result_mdot_tab_kg_per_s = np.array([mdot_delivered_kg_per_s])
 
-        assert q_kw >= 0, (
-            f"Gas Boiler {self.name} q_kw is negative ({q_kw}) for timestep {self.time} in prosumer {prosumer.name}"
-        )
+        self._check(q_kw >= 0, f"q_kw is negative ({q_kw})", prosumer)
 
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         self._check_fluid_mix_balance(prosumer,

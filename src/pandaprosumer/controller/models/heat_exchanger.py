@@ -397,10 +397,10 @@ class HeatExchangerController(BasicProsumerController):
         t_1_in_c = self._t_feed_in_c
         
 
-        assert not np.isnan(t_1_in_c), f"Heat Exchanger {self.name} t_1_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_out_2_required_c), f"Heat Exchanger {self.name} t_out_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_in_2_required_c), f"Heat Exchanger {self.name} t_in_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(not np.isnan(t_1_in_c), "t_1_in_c is NaN", prosumer)
+        self._check(not np.isnan(t_out_2_required_c), "t_out_2_required_c is NaN", prosumer)
+        self._check(not np.isnan(t_in_2_required_c), "t_in_2_required_c is NaN", prosumer)
+        self._check(not np.isnan(mdot_2_required_kg_per_s), "mdot_2_required_kg_per_s is NaN", prosumer)
 
         t_in_2_promised_c = t_in_2_required_c
         too_cold_to_heat = False
@@ -455,8 +455,8 @@ class HeatExchangerController(BasicProsumerController):
                 t_1_out_c = t_1_in_c
 
         else:
-            assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
-            assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
+            self._check(t_1_in_c >= t_out_2_required_c, f"t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c})", prosumer)
+            self._check(t_out_2_required_c >= t_in_2_required_c, f"t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c})", prosumer)
 
             return_solver = ReturnTemperatureSolver()
             rerun = True
@@ -476,7 +476,7 @@ class HeatExchangerController(BasicProsumerController):
                                                                                        t_1_in_c)
 
                 if not np.isnan(self._mdot_1_provided_kg_per_s):
-                    assert self._mdot_1_provided_kg_per_s >= 0, f"Heat Exchanger {self.name} received mass flow is negative for for timestep {self.time} in prosumer {prosumer.name}"
+                    self._check(self._mdot_1_provided_kg_per_s >= 0, f"received mass flow is negative ({self._mdot_1_provided_kg_per_s})", prosumer)
                     # If the primary is fed with a fixed mass flow (not free air)
                     if mdot_1_kg_per_s > self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is higher than the one provided to the Heat Exchanger,
@@ -489,10 +489,9 @@ class HeatExchangerController(BasicProsumerController):
                                                                                                        mdot_2_required_kg_per_s,
                                                                                                        t_1_in_c,
                                                                                                        self._mdot_1_provided_kg_per_s)
-                        assert abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01,\
-                            (f"Heat Exchanger {self.name} mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s"
-                             f" ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s}) for for timestep"
-                             f" {self.time} in prosumer {prosumer.name}")
+                        self._check(abs(mdot_1_kg_per_s - self._mdot_1_provided_kg_per_s) < .01,
+                                    f"mdot_1_kg_per_s != self._mdot_1_provided_kg_per_s"
+                                    f" ({mdot_1_kg_per_s} != {self._mdot_1_provided_kg_per_s})", prosumer)
 
                     elif mdot_1_kg_per_s < self._mdot_1_provided_kg_per_s:
                         # If the primary mass flow is lower than the one required by the Heat Exchanger,
@@ -525,10 +524,9 @@ class HeatExchangerController(BasicProsumerController):
                         t_in_2_required_c = t_2_in_next_c
                         rerun = True
 
-            assert abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3, \
-                (f"Heat Exchanger {self.name} mdot_2_kg_per_s != sum(result_mdot_tab_kg_per_s) "
-                 f"({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)}) for"
-                 f" timestep {self.time} in prosumer {prosumer.name}")
+            self._check(abs(mdot_2_kg_per_s - np.sum(result_mdot_tab_kg_per_s)) < 1e-3,
+                        f"mdot_2_kg_per_s != sum(result_mdot_tab_kg_per_s) "
+                        f"({mdot_2_kg_per_s} != {np.sum(result_mdot_tab_kg_per_s)})", prosumer)
 
         # Snap to t_1_in_c when t_1_out_c overshoots it by float-rounding noise.
         # The LMTD math involves divisions/log so the last ULP of t_1_out_c can sit a
@@ -561,14 +559,14 @@ class HeatExchangerController(BasicProsumerController):
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_2_out_c,
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
 
-        assert t_2_out_c >= 0, f"Heat Exchanger {self.name} t_2_out_c is negative ({t_2_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_2_in_c >= 0, f"Heat Exchanger {self.name} t_2_in_c is negative ({t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_out_c >= 0, f"Heat Exchanger {self.name} t_1_out_c is negative ({t_1_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_in_c >= 0, f"Heat Exchanger {self.name} t_1_in_c is negative ({t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_2_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_2_kg_per_s is negative ({mdot_2_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert mdot_1_kg_per_s >= 0, f"Heat Exchanger {self.name} mdot_1_kg_per_s is negative ({mdot_1_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_1_out_c <= t_1_in_c, f"Heat Exchanger {self.name} t_1_out_c > t_1_in_c ({t_1_out_c} > {t_1_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_2_out_c >= t_2_in_c, f"Heat Exchanger {self.name} t_2_out_c < t_2_in_c ({t_2_out_c} < {t_2_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(t_2_out_c >= 0, f"t_2_out_c is negative ({t_2_out_c})", prosumer)
+        self._check(t_2_in_c >= 0, f"t_2_in_c is negative ({t_2_in_c})", prosumer)
+        self._check(t_1_out_c >= 0, f"t_1_out_c is negative ({t_1_out_c})", prosumer)
+        self._check(t_1_in_c >= 0, f"t_1_in_c is negative ({t_1_in_c})", prosumer)
+        self._check(mdot_2_kg_per_s >= 0, f"mdot_2_kg_per_s is negative ({mdot_2_kg_per_s})", prosumer)
+        self._check(mdot_1_kg_per_s >= 0, f"mdot_1_kg_per_s is negative ({mdot_1_kg_per_s})", prosumer)
+        self._check(t_1_out_c <= t_1_in_c, f"t_1_out_c > t_1_in_c ({t_1_out_c} > {t_1_in_c})", prosumer)
+        self._check(t_2_out_c >= t_2_in_c, f"t_2_out_c < t_2_in_c ({t_2_out_c} < {t_2_in_c})", prosumer)
 
         if np.isnan(self.t_keep_return_c) or mdot_1_kg_per_s == 0 or abs(t_1_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
             # If the actual output temperature is the same as the promised one, the storage is correctly applied

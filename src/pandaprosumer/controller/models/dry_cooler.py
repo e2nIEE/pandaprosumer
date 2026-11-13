@@ -417,9 +417,9 @@ class DryCoolerController(BasicProsumerController):
             # See ``tests/integrations/test_dry_cooler_infeasible_setpoint.py``.
             t_out_required_c = min(t_out_required_c_input, t_in_supplied_c)
 
-        assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_supplied_kg_per_s), f"Dry Cooler {self.name} mdot_supplied_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(not np.isnan(t_in_supplied_c), "t_in_supplied_c is NaN", prosumer)
+        self._check(not np.isnan(t_out_required_c), "t_out_required_c is NaN", prosumer)
+        self._check(not np.isnan(mdot_supplied_kg_per_s), "mdot_supplied_kg_per_s is NaN", prosumer)
 
         (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
          mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
@@ -435,7 +435,9 @@ class DryCoolerController(BasicProsumerController):
                 # If the primary mass flow is higher than the one required by the Cooler,
                 # recalculate the secondary mass flow to reduce the heat demand to reduce the primary mass flow
                 # ToDo: This case should never happen for the dry cooler ?
-                assert abs(mdot_fluid_kg_per_s - mdot_supplied_kg_per_s) < .01
+                self._check(abs(mdot_fluid_kg_per_s - mdot_supplied_kg_per_s) < .01,
+                            f"mdot_fluid_kg_per_s != mdot_supplied_kg_per_s "
+                            f"({mdot_fluid_kg_per_s} != {mdot_supplied_kg_per_s})", prosumer)
             elif mdot_fluid_kg_per_s < mdot_supplied_kg_per_s:
                 # If the primary mass flow is lower than the one required by the Cooler,
                 # model a bypass on the primary side where the extra mass flow doesn't exchange heat.
@@ -464,7 +466,7 @@ class DryCoolerController(BasicProsumerController):
             "mdot_water_kg_per_s": mdot_water_kg_per_s,
         }
 
-        assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c})", prosumer)
 
         # ToDo: Add a condition to check whether the mass flows are equal
         if np.isnan(self.t_keep_return_c) or mdot_fluid_kg_per_s == 0 or abs(t_fluid_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C:  # or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:

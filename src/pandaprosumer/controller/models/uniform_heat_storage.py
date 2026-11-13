@@ -281,8 +281,7 @@ class UniformHeatStorageController(FluidMixHeatStorageController):
                 mdot_discharge_tank_kg_per_s = (low + high) / 2
 
         t_end_c, t_mean_c = step(mdot_discharge_tank_kg_per_s)
-        assert t_end_c > 0, (f"Uniform heat storage {self.name}: the tank temperature fell to {t_end_c} °C "
-                             f"at timestep {self.time}")
+        self._check(t_end_c > 0, f"the tank temperature fell to {t_end_c} °C", prosumer)
         self._layer_temps_c = [t_end_c]
         self._q_loss_kw = ua_w_per_k * (t_mean_c - t_ext_c) / 1e3
 
