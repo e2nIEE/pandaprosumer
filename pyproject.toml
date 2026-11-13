@@ -35,7 +35,9 @@ dependencies = [
     "CoolProp>=6.7.0",
     "matplotlib>=3.9.0",
     "numba>=0.61.2",
-    "numpy>=2.2",
+    # pandas 2.x (required by pandapower) predates numpy 2.5 and emits a deprecation warning on every
+    # Timedelta under numpy 2.5; pandapower >= 3.5 also caps numpy < 2.5.
+    "numpy>=2.2,<2.5",
     "pandapipes>=0.14.0",
     "pandapower>=3.3.3",
     "pandas~=2.3",
