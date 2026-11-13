@@ -5,8 +5,9 @@ Module containing the ElectricBoilerController class.
 import numpy as np
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
 from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
 from pandaprosumer.controller.power_cap import _capped, _setpoint
 
@@ -243,13 +244,14 @@ class ElectricBoilerController(MinOnOffTimeMixin, BasicProsumerController):
         # A boiler that has not been stopped for min_off_time_s yet stays off, whatever the demand
         start_locked = self._is_start_locked(prosumer)
 
+        return_solver = ReturnTemperatureSolver()
         rerun = True
         nb_runs = 0
         while rerun:
             nb_runs += 1
-            if nb_runs > 20:
+            if nb_runs > MAX_RERUN:
                 raise RuntimeError(
-                    f"Electric Boiler {self.name}: did not converge after 20 iterations at "
+                    f"Electric Boiler {self.name}: did not converge after {MAX_RERUN} iterations at "
                     f"timestep {self.time} in prosumer {prosumer.name}"
                 )
             if start_locked:
@@ -269,19 +271,16 @@ class ElectricBoilerController(MinOnOffTimeMixin, BasicProsumerController):
                                                                    mdot_tab_required_kg_per_s,
                                                                    overflow_strategy=overflow_strategy)
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
-                # If the electric boiler is not able to deliver the required mass flow,
-                # recalculate the input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Boiler is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_in_new_c = t_in_required_c
-                if abs(t_in_new_c - t_in_required_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
-                    # If this recalculation changes the input temperature, rerun the calculation
-                    # with the new temperature
-                    t_in_required_c = t_in_new_c
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (mdot_delivered_kg_per_s < mdot_required_kg_per_s or return_solver.started)):
+                # If the electric boiler is not able to deliver the required mass flow, its return is the mix
+                # of what its responders give back for the flows it delivers, each one returning the same
+                # temperature whatever flow it gets: rerun until the return it is calculated with is that mix
+                t_in_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                             t_in_required_c)
+                t_in_next_c = return_solver.next_guess(t_in_required_c, t_in_mixed_c, t_returns_c)
+                if t_in_next_c is not None:
+                    t_in_required_c = t_in_next_c
                     rerun = True
 
         # After merit-order capping, ensure mass and energy balance at the interface:

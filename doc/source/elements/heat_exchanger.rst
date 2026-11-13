@@ -206,6 +206,14 @@ Assuming no heat losses, we then derive :math:`\dot{m}_1` given that
     secondary inlet, :math:`T_{1_\text{out}} \to T_{2_\text{in}}`.
 
 .. note::
+    The dichotomy solving :math:`a X + \ln(1 - X) = 0` brackets the root on each side of :math:`X = 0`.
+    For :math:`0 < a < 1` it was run as on a decreasing function and stopped on the bracket's edge
+    :math:`X = (a - 1) / a` instead of the root: the primary left colder than the LMTD allows (85 °C to
+    60.6 °C instead of 63.4 °C for a secondary heated from 53 °C to 80 °C). The bracket is now widened until
+    the function changes sign, so the root is found down to :math:`a \approx 0.02` (a fixed edge missed it
+    below :math:`a = 0.27`). ``tests/models/test_heat_exchanger_reverse.py``.
+
+.. note::
     :math:`X > 1` would mean :math:`\Delta T_\text{cold} < 0`, so :math:`T_{1_\text{out}} < T_{2_\text{in}}`,
     which is not possible for the heat exchange
 
@@ -234,10 +242,12 @@ exchanger :math:`Q_{\text{max}}` (``max_q_kw``), the secondary mass flow :math:`
 :math:`\frac{Q_{\text{max}}}{Cp_2 \Delta T_2}` so the transferred power is equal to the maximum power before
 solving for :math:`T_{1_\text{out}}`.
 
-**No hot approach** (:math:`\Delta T_\text{hot} = T_{1_\text{in}} - T_{2_\text{out}} \le 0`). The LMTD
-solution is evaluated directly with the generic ``compute_temp`` routine; it returns
-:math:`T_{1_\text{out}} = T_{1_\text{in}}` and :math:`\dot{m}_1 = 0` (no exchange) whenever the result
-would require the primary to warm up.
+**No hot approach** (:math:`\Delta T_\text{hot} = T_{1_\text{in}} - T_{2_\text{out}} \le 0`). The primary
+cannot heat the secondary to the outlet it asks: no exchange on either side,
+:math:`T_{1_\text{out}} = T_{1_\text{in}}`, :math:`\dot{m}_1 = \dot{m}_2 = 0`. ``control_step`` lowers the
+outlet first (see *Demand contract shift*), so this is reached only through ``t_m_to_receive_for_t``, which
+asks for the outlet as is. (The LMTD equation has no root for :math:`a \le 0`; the dichotomy run on it
+anyway answered a 69.9 °C feed heating a secondary to 76.85 °C and leaving at 43.6 °C.)
 
 **Minimum primary temperature difference** (``min_delta_t_1_c``). The primary outlet cannot be colder than
 :math:`T_{1_{\text{out}_\text{max}}} = T_{1_\text{in}} - \Delta T_{1_\text{min}}`, which gives a minimum value of
@@ -284,20 +294,22 @@ The reverse calculation applies the symmetric rule (:math:`\dot{m}_2 = 0 \Righta
 :math:`\dot{m}_{1_\text{provided}}` is imposed:
 
 - if the model requires more than is provided (:math:`\dot{m}_1 > \dot{m}_{1_\text{provided}}`), the
-  calculation is inverted (``calculate_heat_exchanger_reverse``): the primary state
-  :math:`(T_{1_\text{in}}, T_{1_\text{out}}, \dot{m}_{1_\text{provided}})` is taken as given, the same LMTD
-  equation is solved for the secondary outlet :math:`T_{2_\text{out}}`, and :math:`\dot{m}_2` is deduced from
-  the energy balance — the heat delivered downstream is reduced accordingly;
+  calculation is inverted (``calculate_heat_exchanger_reverse``): the secondary keeps the outlet
+  :math:`T_{2_\text{out}}` it asked and gets the flow :math:`\dot{m}_2` for which the calculation above draws
+  exactly :math:`\dot{m}_{1_\text{provided}}` on the primary, found by dichotomy on :math:`\dot{m}_2` (the
+  primary flow grows with the secondary one). The result is continuous with the calculation above: a primary
+  barely short gives a secondary barely short, served in merit order. The primary outlet moves closer to the
+  secondary return (less duty on the same exchanger) and the upstream producer is rerun with it;
 - if the model requires less than is provided, the extra primary flow bypasses the exchanger without
   exchanging heat and the primary outlet is the mixing temperature
   :math:`T_{1_\text{out}} = \frac{\dot{m}_\text{bypass} T_{1_\text{in}} + \dot{m}_1 T_{1_\text{out}}}{\dot{m}_{1_\text{provided}}}`,
   with :math:`\dot{m}_1 = \dot{m}_{1_\text{provided}}`.
 
-**Several downstream responders.** The secondary mass flow is distributed in merit order. If the exchanger
-cannot deliver the whole requested mass flow, the secondary return temperature is recomputed as the
-mass-flow-weighted mean of the responders' return temperatures and, if it moved by more than 1 K, the
-calculation is rerun with the new return (at most ``MAX_RERUN`` = 20 times). If the delivered mass flow
-exceeds the requested one, the surplus is spread evenly over the responders.
+**Several downstream responders.** The secondary mass flow is distributed in merit order; a surplus (a
+responder asking nothing) goes to the others in proportion to their asks. If the delivered mass flow differs
+from the requested one, the secondary return temperature is the mass-flow-weighted mean of the responders'
+return temperatures for the flows delivered, which depends on the return the calculation assumed: the
+calculation is rerun with ``ReturnTemperatureSolver`` until the two agree (at most ``MAX_RERUN`` = 20 times).
 
 **Numerical safeguards.** :math:`T_{1_\text{out}}` is snapped to :math:`T_{1_\text{in}}` when float rounding
 pushes it less than :math:`10^{-9}` K above it; a larger overshoot, a negative mass flow or a NaN raise a
