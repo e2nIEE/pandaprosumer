@@ -345,9 +345,9 @@ class StratifiedHeatStorageController(FluidMixHeatStorageController):
                                                        self.k_star_w_per_mk, self.U_w_per_m2k, self.U1_w_per_m2k,
                                                        self.UN_w_per_m2k, self.resol, max_dt_s)
 
-        assert (self._layer_temps_c > 0).all(), (f"The SHS model has diverged - "
-                                                 f"Negative temperature in the storage for "
-                                                 f"timestep {self.time} layers= {self._layer_temps_c}")
+        self._check((self._layer_temps_c > 0).all(),
+                    f"the model has diverged - negative temperature in the storage, layers = {self._layer_temps_c}",
+                    prosumer)
 
         return mdot_discharge_kg_per_s, t_charge_out_c, t_discharge_out_c
 
