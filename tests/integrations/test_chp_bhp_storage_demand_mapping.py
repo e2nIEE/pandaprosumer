@@ -192,7 +192,8 @@ class TestChpBhpStorageDemandMapping:
 
         storage_data_res = {
             "soc": [0.0, 0.0, 0.0, 0.0],
-            "q_delivered_kw": [6.85, 10.42, 10.42, 0.00]
+            "q_delivered_kw": [6.85, 10.42, 10.42, 0.00],
+            "q_received_kw": [6.85, 10.42, 10.42, 0.00]  # an empty tank passes on what it receives
         }
 
         chp_data_res = {
@@ -211,8 +212,9 @@ class TestChpBhpStorageDemandMapping:
         }
 
         bhp_data_res = {
-            "cop_floor": [3.965375, 5.210540, 5.210540, 0.000000],
-            "cop_radiator": [3.590375, 5.260540, 5.260540, 0.000000],
+            # The 2nd/3rd steps' lifts are below MIN_LIFT_K: the COP of a 15 K lift
+            "cop_floor": [3.954736, 4.323500, 4.323500, 0.000000],
+            "cop_radiator": [3.600085, 4.323500, 4.323500, 0.000000],
             "p_el_floor": [350.0, 350.0, 350.0, 0.0],
             "p_el_radiator": [350.0, 350.0, 350.0, 0.0],
             "q_remain": [20093.15, 20089.58, 20489.58, 20500.0],

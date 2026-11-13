@@ -13,6 +13,12 @@ from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 
 logger = pplog.getLogger(__name__)
 
+#: Relative tolerance between the heat a producer books and the heat its labelled outlet stream carries (cp evaluated
+#: at slightly different temperatures along a calculation)
+LABEL_REL_TOL = 5e-3
+#: A responder that finalizes on a return differing from its promise by more than this power warns (kW)
+RETURN_CONTRACT_TOL_KW = 1.0
+
 
 class EnergyLeakWarning(UserWarning):
     """
@@ -255,6 +261,29 @@ class MappedController(Controller):
         # return [item for item in container.mapping[container.mapping["initiator"] == self.index]
         # .sort_values("order")[["mapping", "responder"]].itertuples()]
 
+    @staticmethod
+    def _resolve_mapped_controller(mapping_obj, controller_index, role):
+        """
+        Resolve a controller object from a mapping endpoint, raising a clear
+        error if the referenced controller does not exist in the target network.
+
+        :param mapping_obj: The mapping object holding the responder network
+        :param controller_index: The index of the controller to resolve
+        :param role: 'initiator' or 'responder', used only for the error message
+        :return: The resolved controller object
+        """
+        responder_net = mapping_obj.responder_net
+        try:
+            return responder_net.controller.loc[controller_index]["object"]
+        except KeyError:
+            mapping_name = getattr(mapping_obj, "name", type(mapping_obj).__name__)
+            existing = list(responder_net.controller.index) if hasattr(responder_net, "controller") else []
+            raise KeyError(
+                f"{mapping_name} references a {role} controller #{controller_index} that does "
+                f"not exist in its target network (existing controller indices: {existing}). "
+                f"The mapping was likely created with a wrong controller index."
+            )
+
     def _get_mapped_responders(self, container, remove_duplicate=True):
         """
         Returns a list of all the controllers for which this controller is the initiator.
@@ -262,6 +291,8 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped responders
         """
+        if not hasattr(container, "mapping"):
+            return []
         # Boolean mask for responders matching self.index
         mask_initiator = container.mapping["initiator"] == self.index
 
@@ -277,7 +308,7 @@ class MappedController(Controller):
 
         # Build the list of initiators
         list_responders = [
-            obj.responder_net.controller.loc[responder]["object"]
+            self._resolve_mapped_controller(obj, responder, "responder")
             for obj, responder in filtered_mapping.itertuples(index=False)
         ]
 
@@ -293,9 +324,15 @@ class MappedController(Controller):
         :param prosumer: The prosumer object
         :return: List of mapped responders
         """
-        responders = [prosumer.controller.loc[item.responder]["object"] for item in
-                      prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
-                      [["object", "responder"]].itertuples()]
+        mappings = prosumer.mapping[prosumer.mapping["initiator"] == self.index].sort_values("order")
+        responders = []
+        for mapping_obj, responder in mappings[["object", "responder"]].itertuples(index=False):
+            # A mapping into another container (e.g. an electric output coupled to a
+            # pandapower net) indexes that container's controllers, not this prosumer's;
+            # and a network coupling has no heat to request anyway.
+            if getattr(mapping_obj, "responder_net", prosumer) is not prosumer:
+                continue
+            responders.append(prosumer.controller.loc[responder]["object"])
         return [responder for responder in responders if not responder.is_supervisor()]
 
     def _get_mapped_initiators(self, container, remove_duplicate=True):
@@ -305,6 +342,8 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped initiators
         """
+        if not hasattr(container, "mapping"):
+            return []
         # Boolean mask for responders matching self.index
         mask_responder = container.mapping["responder"] == self.index
 
@@ -320,7 +359,7 @@ class MappedController(Controller):
 
         # Build the list of initiators
         list_initiators = [
-            obj.responder_net.controller.loc[initiator]["object"]
+            self._resolve_mapped_controller(obj, initiator, "initiator")
             for obj, initiator in filtered_mapping.itertuples(index=False)
         ]
 
@@ -337,11 +376,27 @@ class MappedController(Controller):
         :return: List of mapped initiators
         """
         list_initiators = self._get_mapped_initiators(container, remove_duplicate)
-        self_level = container.controller.loc[container.controller.object == self].level.values[0]
+        return [initiator for initiator in list_initiators if self._on_same_level(container, initiator)]
 
-        list_initiators = [initiator for initiator in list_initiators if container.controller.loc[container.controller.object == initiator].level.values[0] == self_level]
+    @staticmethod
+    def _level_of(container, controller):
+        """
+        The level of a controller in the container's controller table (an int, or a list of levels).
+        """
+        return container.controller.loc[container.controller.object == controller].level.values[0]
 
-        return list_initiators
+    @staticmethod
+    def _levels_overlap(level_a, level_b):
+        """
+        True if two controller levels share a value. A level is an int or, without check_order, a list of levels.
+        """
+        return bool(set(np.atleast_1d(level_a).tolist()) & set(np.atleast_1d(level_b).tolist()))
+
+    def _on_same_level(self, container, other):
+        """
+        True if the controller ``other`` runs on (one of) the level(s) of this controller.
+        """
+        return self._levels_overlap(self._level_of(container, self), self._level_of(container, other))
 
     def _unapply_initiators(self, container):
         """
@@ -351,15 +406,11 @@ class MappedController(Controller):
         """
         # Recursive unapply all the controllers for which this controller is the responder at the same level
         # so they will be re-executed
-        # FixMe: level can be an array, use 'in' instead
         for initiator in self._get_mapped_initiators(container):
-            initiator_level = container.controller.loc[container.controller.object == initiator].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
-            if initiator_level == self_level and initiator.applied:
+            if self._on_same_level(container, initiator) and initiator.applied:
                 initiator.applied = False
                 for initiator_initiator in initiator._get_mapped_initiators(container):
-                    initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
-                    if initiator_initiator_level == initiator_level:
+                    if initiator._on_same_level(container, initiator_initiator):
                         initiator.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                                FluidMixMapping.MASS_FLOW_KEY: np.nan}
                 initiator._unapply_initiators(container)
@@ -374,9 +425,7 @@ class MappedController(Controller):
         # Recursive unapply all the controllers for which this controller is the initiator
         # so they will be re-executed
         for responder in self._get_mapped_responders(container):
-            responder_level = container.controller.loc[container.controller.object == responder].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
-            if responder_level == self_level and responder.applied:
+            if self._on_same_level(container, responder) and responder.applied:
                 responder.applied = False
                 responder.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                        FluidMixMapping.MASS_FLOW_KEY: np.nan}
@@ -557,6 +606,17 @@ class MappedController(Controller):
                                      defaults to 4.19 (water) if omitted
         :param tol_kw: Suppress the warning when |gap| < tol_kw
         """
+        if cp_fluid_kj_per_kgk is not None:
+            # The heat booked must be the heat the outlet stream carries: a producer that books power on a stream
+            # it labels with requested temperatures (or that has no flow) books heat nobody receives
+            carried_kw = (0.0 if mdot_kg_per_s is None else float(mdot_kg_per_s)) * cp_fluid_kj_per_kgk \
+                * (float(t_out_c) - float(t_in_c))
+            label_gap_kw = float(q_kw) - carried_kw
+            if abs(label_gap_kw) > max(tol_kw, LABEL_REL_TOL * abs(float(q_kw))):
+                warn((f"{self.name_class()} '{self.name}' at timestep {self.time}: books q_kw={q_kw:.3f} kW but "
+                      f"its outlet stream ({mdot_kg_per_s} kg/s, {t_in_c:.3f} -> {t_out_c:.3f} degC) carries "
+                      f"{carried_kw:.3f} kW: energy leak of {label_gap_kw:.3f} kW at the FluidMix interface."),
+                     EnergyLeakWarning, stacklevel=3)
         if mdot_kg_per_s is None or mdot_kg_per_s <= 1e-9:
             return  # Producer is off
         dispatched_mdot = float(np.sum(result_mdot_tab_kg_per_s)) if len(result_mdot_tab_kg_per_s) else 0.0
@@ -587,6 +647,43 @@ class MappedController(Controller):
             EnergyLeakWarning,
             stacklevel=3,
         )
+
+    def _check_return_contract(self, container, t_return_c, mdot_kg_per_s, cp_fluid_kj_per_kgk,
+                               tol_kw=RETURN_CONTRACT_TOL_KW):
+        """
+        Warn when this responder finalizes with a return temperature that differs from the one it promised its
+        initiators (``t_keep_return_c``, set in ``t_m_to_receive``), or from the one its single initiator says it
+        booked against (``t_booked_return_c``, when it has one).
+
+        The initiators booked their heat against the promise; a responder that accepts a different return (a
+        reapply loop that stagnated, an initiator on another level) leaves
+        ``mdot * cp * (t_keep_return - t_return)`` booked on one side of the boundary only. Call it in the branch
+        that finalizes, with the return actually handed back.
+
+        :param container: The prosumer/net/energy_system object
+        :param t_return_c: Return temperature actually handed back to the initiators [°C]
+        :param mdot_kg_per_s: Mass flow received from the initiators [kg/s]
+        :param cp_fluid_kj_per_kgk: Heat capacity of the fluid [kJ/(kg.K)]
+        :param tol_kw: Suppress the warning when the leak is below tol_kw
+        """
+        t_booked_c = self.t_keep_return_c
+        # An initiator that heats the water it really gets back instead of the promise (a solar collector, whose
+        # pump sets its flow) says which return it booked against.
+        initiators = self._get_mapped_initiators(container)
+        if len(initiators) == 1:
+            t_initiator_c = getattr(initiators[0], "t_booked_return_c", np.nan)
+            if t_initiator_c is not None and not np.isnan(t_initiator_c):
+                t_booked_c = float(t_initiator_c)
+        if np.isnan(t_booked_c) or mdot_kg_per_s is None or np.isnan(mdot_kg_per_s) \
+                or mdot_kg_per_s <= 1e-9 or np.isnan(t_return_c):
+            return
+        leak_kw = float(mdot_kg_per_s) * cp_fluid_kj_per_kgk * (t_booked_c - float(t_return_c))
+        if abs(leak_kw) < tol_kw:
+            return
+        warn((f"{self.name_class()} '{self.name}' at timestep {self.time}: finalizes with a return of "
+              f"{t_return_c:.3f} degC to its initiators, which booked against {t_booked_c:.3f} "
+              f"degC: energy leak of {leak_kw:.3f} kW at the FluidMix interface ({mdot_kg_per_s:.4f} kg/s)."),
+             EnergyLeakWarning, stacklevel=3)
 
     def finalize(self, container, result, result_fluid_mix=None):
         """

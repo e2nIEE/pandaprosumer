@@ -4,6 +4,7 @@ from .ice_chp import *
 from .heat_demand import *
 from .dry_cooler import *
 from .stratified_heat_storage import *
+from .uniform_heat_storage import *
 from .electric_boiler import *
 from .gas_boiler import *
 from .heat_exchanger import *
@@ -11,3 +12,4 @@ from .heat_pump import *
 from .chiller import *
 from .pv import *
 from .solar_thermal import *
+from .battery_storage import *

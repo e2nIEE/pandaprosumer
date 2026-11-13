@@ -5,6 +5,7 @@ from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
 from pandaprosumer.element import (
+    BatteryStorageElementData,
     BoosterHeatPumpElementData,
     ChillerElementData,
     ConverterElementData,
@@ -19,11 +20,14 @@ from pandaprosumer.element import (
     PvProductionComponentData,
     SolarThermalElementData,
     StratifiedHeatStorageElementData,
+    UniformHeatStorageElementData,
 )
+from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element
 from pandaprosumer.time_series.time_series import TimeSeries
+from pandaprosumer.controller.models.shs_ports import parse_auto_ports
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +110,11 @@ def create_heat_pump(prosumer,
                      max_ramp_down_kw_per_s=np.nan,
                      max_t_cond_out_c=np.nan,
                      max_cop=np.nan,
+                     min_on_time_s=np.nan,
+                     min_off_time_s=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
-                     mode='carnot',
+                     mode='lorenz',
                      overflow_strategy='dump_proportional',
                      name=None,
                      index=None,
@@ -146,13 +152,22 @@ def create_heat_pump(prosumer,
 
         **max_cop** (float, default None) - Maximum COP
 
+        **min_on_time_s** (float, default None) - Minimum running time of the compressor [s]. Once started, \
+            the heat pump cannot stop before it has run for this duration: until then it is held at least at \
+            min_p_comp_kw. Requires a positive min_p_comp_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the compressor [s]. Once stopped, \
+            the heat pump cannot restart before it has been stopped for this duration.
+
         **cond_fluid** (str, default None) - Fluid at the condenser. If None, the \
         prosumer's fluid will be used
 
         **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
         prosumer's fluid will be used
 
-        **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+        **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+        evaporator temperatures, so a colder return raises the COP) or 'carnot' (condenser outlet temperature \
+        only) (case insensitive)
 
     OUTPUT:
         **index** (int) - The unique ID of the created heat pump
@@ -179,10 +194,12 @@ def create_heat_pump(prosumer,
     entries = dict(
         zip(['name', 'pinch_c', 'delta_t_evap_c', 'carnot_efficiency', 'delta_t_hot_default_c', 'max_p_comp_kw',
              'min_p_comp_kw',  'max_ramp_up_kw_per_s', 'max_ramp_down_kw_per_s', 'max_t_cond_out_c',
-             'max_cop', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy', 'in_service'],
+             'max_cop', 'min_on_time_s', 'min_off_time_s', 'cond_fluid', 'evap_fluid', 'mode', 'overflow_strategy',
+             'in_service'],
             [name, pinch_c, delta_t_evap_c, carnot_efficiency, delta_t_hot_default_c, max_p_comp_kw,
              min_p_comp_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, max_t_cond_out_c,
-             max_cop, cond_fluid, evap_fluid, mode, overflow_strategy, in_service])
+             max_cop, min_on_time_s, min_off_time_s, cond_fluid, evap_fluid, mode, overflow_strategy,
+             in_service])
     )
 
     _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
@@ -255,10 +272,12 @@ def create_stratified_heat_storage(prosumer,
                                    t_discharge_out_tol_c=1e-3,
                                    max_dt_s=None,
                                    max_charge_mdot_kg_per_s=np.nan,
+                                   t_charge_target_c=np.nan,
                                    height_charge_in_m=None,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
                                    height_discharge_in_m=0,
+                                   auto_ports="",
                                    name=None,
                                    index=None,
                                    in_service=True,
@@ -315,13 +334,29 @@ def create_stratified_heat_storage(prosumer,
         rate, which can exceed what the upstream producer can supply and trigger non-convergence. \
         Set this to a value within the upstream's capacity to keep the reapply loop bounded. [kg/s]
 
-        **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
+        **t_charge_target_c** (float, default NaN) - Optional target temperature the storage \
+        requests from its upstream producer while charging. When unset (default NaN), the \
+        charging request follows the downstream demand's feed temperature — which keeps the \
+        tank pinned at the demand minimum and stores no margin. Set it to the producer's design \
+        outlet (e.g. an optimiser's constant condenser setpoint) so the tank charges toward its \
+        actual design top temperature. [C]
 
-        **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
+        **height_charge_in_m** (float, default None) - Height (m above the bottom) where the source's feed \
+        enters. None: the top.
 
-        **height_discharge_out_m** (float, default None) - The height of the outlet discharging point in m.
+        **height_charge_out_m** (float, default 0) - Height where the water returned to the source leaves. \
+        None: the bottom.
 
-        **height_discharge_in_m** (float, default None) - The height of the outlet charging point in m.
+        **height_discharge_out_m** (float, default None) - Height where the water sent to the demand leaves. \
+        None: the top.
+
+        **height_discharge_in_m** (float, default 0) - Height where the demand's return enters. None: the bottom.
+
+        **auto_ports** (str, default "") - Comma-separated connections placed on the layers at each step \
+        instead of at their height: ``charge_in`` / ``discharge_in`` enter the highest layer not warmer \
+        than their water (an ideal stratification lance), ``discharge_out`` draws the lowest layer still at \
+        the demand's feed temperature, ``charge_out`` draws the coldest layer. See \
+        ``pandaprosumer.controller.models.shs_ports``.
 
         **name** (string, default None) - A custom name for this stratified heat storage
 
@@ -344,31 +379,159 @@ def create_stratified_heat_storage(prosumer,
         raise ValueError(f"tank_external_radius_m ({tank_external_radius_m} m) must be greater "
                          f"than tank_internal_radius_m ({tank_internal_radius_m} m)")
 
-    if (height_charge_out_m and height_charge_out_m < 0 or
-            height_charge_out_m and height_charge_out_m and height_charge_in_m < height_charge_out_m or
-            height_charge_out_m and height_charge_in_m > tank_height_m):
-        raise ValueError(f"height_charge_out_m ({height_charge_out_m} m) or height_charge_in_m ({height_charge_in_m} m)"
-                         f"is invalid.")
-    if (height_discharge_in_m and height_discharge_in_m < 0 or
-            height_discharge_in_m and height_discharge_in_m and height_discharge_out_m < height_discharge_in_m or
-            height_discharge_in_m and height_discharge_out_m > tank_height_m):
-        raise ValueError(f"height_discharge_in_m ({height_discharge_in_m} m) or "
-                         f"height_discharge_out_m ({tank_height_m} m) is invalid.")
+    for port_name, height_m in (("height_charge_in_m", height_charge_in_m), ("height_charge_out_m", height_charge_out_m),
+                                ("height_discharge_out_m", height_discharge_out_m),
+                                ("height_discharge_in_m", height_discharge_in_m)):
+        if height_m is not None and not np.isnan(height_m) and not 0 <= height_m <= tank_height_m:
+            raise ValueError(f"{port_name} ({height_m} m) must lie between 0 and tank_height_m ({tank_height_m} m)")
+    parse_auto_ports(auto_ports)
 
     index = _get_index_with_check(prosumer, "stratified_heat_storage", index)
 
     entries = dict(zip(['name', 'tank_height_m', 'tank_internal_radius_m', 'tank_external_radius_m', 'n_layers',
                         'min_useful_temp_c', 'insulation_thickness_m', 'k_fluid_w_per_mk', 'k_insu_w_per_mk',
                         'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
-                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 'height_charge_in_m',
-                        'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
+                        't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c',
+                        'height_charge_in_m',
+                        'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'auto_ports',
+                        'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
                         k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
-                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, height_charge_in_m,
-                        height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
+                        t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, t_charge_target_c,
+                        height_charge_in_m,
+                        height_charge_out_m, height_discharge_out_m, height_discharge_in_m, auto_ports,
+                        in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
+    return int(index)
+
+
+def _is_unset(value):
+    return value is None or (np.isscalar(value) and np.isnan(value))
+
+
+def create_uniform_heat_storage(prosumer,
+                                mass_kg=None,
+                                e_capacity_kwh=None,
+                                min_useful_temp_c=65.,
+                                t_full_c=np.nan,
+                                u_w_per_m2k=0.,
+                                area_wall_m2=0.,
+                                t_ext_c=22.5,
+                                max_remaining_capacity_kwh=1,
+                                t_discharge_out_tol_c=1e-3,
+                                max_charge_mdot_kg_per_s=np.nan,
+                                t_charge_target_c=np.nan,
+                                name=None,
+                                index=None,
+                                in_service=True,
+                                **kwargs):
+    """
+    Creates a uniform (fully mixed) heat storage element in prosumer["uniform_heat_storage"]
+
+    The whole tank is at one temperature. Give its size either as a mass of water (``mass_kg``) or as an
+    energy capacity (``e_capacity_kwh``, which then needs ``t_full_c``), not both.
+
+    INPUT:
+        **prosumer** - The prosumer within which this uniform heat storage should be created.
+
+    OPTIONAL:
+        **mass_kg** (float, default None) - Mass of water in the tank [kg]. Must be positive. Mandatory if \
+        ``e_capacity_kwh`` is not given.
+
+        **e_capacity_kwh** (float, default None) - Heat the tank holds between ``min_useful_temp_c`` and \
+        ``t_full_c`` [kWh]. Must be positive; converted to a mass with the heat capacity of the prosumer's \
+        fluid at the mean of the two temperatures. Mandatory if ``mass_kg`` is not given.
+
+        **min_useful_temp_c** (float, default 65) - Minimum tank temperature to serve a demand: a colder \
+        tank (by more than 0.5 K) does not discharge. Also the charge temperature asked to the sources when \
+        no demand is mapped [°C]
+
+        **t_full_c** (float, default NaN) - Tank temperature at which the tank counts as full: \
+        ``e_capacity_kwh`` is the heat between ``min_useful_temp_c`` and ``t_full_c``. Must be above \
+        ``min_useful_temp_c``. Needed with ``e_capacity_kwh``; optional with ``mass_kg`` (``e_capacity_kwh`` \
+        is then computed, NaN without it). It does not limit the charge [°C]
+
+        **u_w_per_m2k** (float, default 0) - Heat transfer coefficient of the tank wall to the ambient \
+        air [W/(m²K)]. Must be non-negative; 0 means no heat loss.
+
+        **area_wall_m2** (float, default 0) - Area of the tank wall exchanging with the ambient air [m²]. \
+        Must be non-negative.
+
+        **t_ext_c** (float, default 22.5) - Ambient temperature for the heat losses; also the default \
+        initial tank temperature [°C]
+
+        **max_remaining_capacity_kwh** (float, default 1) - Heat the tank can still take below which it is \
+        full and asks its sources for no charge [kWh]
+
+        **t_discharge_out_tol_c** (float, default 0.001) - The maximum allowed difference between the demand \
+        feed temperature and the tank temperature to serve the demand with the tank water only [°C]
+
+        **max_charge_mdot_kg_per_s** (float, default NaN) - Optional cap on the charge mass flow the tank \
+        asks its sources for. When unset the tank asks for the flow that fills it within one time step \
+        [kg/s]
+
+        **t_charge_target_c** (float, default NaN) - Optional temperature the tank asks its sources to \
+        charge it at. When unset the charge request follows the demand's feed temperature [°C]
+
+        **name** (string, default None) - A custom name for this uniform heat storage
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created uniform heat storage
+
+    EXAMPLE:
+        create_uniform_heat_storage(prosumer, mass_kg=5000, min_useful_temp_c=60, t_full_c=85)
+    """
+    if _is_unset(mass_kg) == _is_unset(e_capacity_kwh):
+        raise ValueError("Uniform heat storage: give exactly one of mass_kg and e_capacity_kwh "
+                         f"(got mass_kg={mass_kg}, e_capacity_kwh={e_capacity_kwh})")
+    if not _is_unset(t_full_c) and not t_full_c > min_useful_temp_c:
+        raise ValueError(f"Uniform heat storage: t_full_c ({t_full_c} °C) must be above "
+                         f"min_useful_temp_c ({min_useful_temp_c} °C)")
+    if not (u_w_per_m2k >= 0 and area_wall_m2 >= 0):
+        raise ValueError(f"Uniform heat storage: u_w_per_m2k ({u_w_per_m2k}) and area_wall_m2 ({area_wall_m2}) "
+                         f"must be non-negative")
+
+    t_full_c = np.nan if _is_unset(t_full_c) else float(t_full_c)
+    if not _is_unset(e_capacity_kwh):
+        if not e_capacity_kwh > 0:
+            raise ValueError(f"Uniform heat storage: e_capacity_kwh ({e_capacity_kwh} kWh) must be positive")
+        if np.isnan(t_full_c):
+            raise ValueError("Uniform heat storage: e_capacity_kwh needs t_full_c, the temperature of the full tank")
+    elif not mass_kg > 0:
+        raise ValueError(f"Uniform heat storage: mass_kg ({mass_kg} kg) must be positive")
+
+    if not np.isnan(t_full_c):
+        if prosumer.get("fluid") is None:
+            raise ValueError("Uniform heat storage: the prosumer has no fluid to convert between mass_kg and "
+                             "e_capacity_kwh")
+        cp_j_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + (t_full_c + min_useful_temp_c) / 2))
+        delta_t_c = t_full_c - min_useful_temp_c
+        if _is_unset(mass_kg):
+            mass_kg = e_capacity_kwh * 3.6e6 / (cp_j_per_kgk * delta_t_c)
+        else:
+            e_capacity_kwh = mass_kg * cp_j_per_kgk * delta_t_c / 3.6e6
+    else:
+        e_capacity_kwh = np.nan
+
+    add_new_element(prosumer, UniformHeatStorageElementData)
+
+    index = _get_index_with_check(prosumer, "uniform_heat_storage", index)
+
+    entries = dict(zip(['name', 'mass_kg', 'e_capacity_kwh', 'min_useful_temp_c', 't_full_c', 'u_w_per_m2k',
+                        'area_wall_m2', 't_ext_c', 'max_remaining_capacity_kwh', 't_discharge_out_tol_c',
+                        'max_charge_mdot_kg_per_s', 't_charge_target_c', 'in_service'],
+                       [name, float(mass_kg), float(e_capacity_kwh), min_useful_temp_c, t_full_c, u_w_per_m2k,
+                        area_wall_m2, t_ext_c, max_remaining_capacity_kwh, t_discharge_out_tol_c,
+                        max_charge_mdot_kg_per_s, t_charge_target_c, in_service]))
+
+    _set_entries(prosumer, "uniform_heat_storage", index, **entries, **kwargs)
     return int(index)
 
 
@@ -475,6 +638,10 @@ def create_dry_cooler(prosumer,
                       adiabatic_mode=False,
                       phi_adiabatic_sat_percent=99,
                       min_delta_t_air_c=0,
+                      min_fan_speed_pct=np.nan,
+                      min_p_fan_kw=np.nan,
+                      max_fan_speed_pct=np.nan,
+                      max_p_fan_kw=np.nan,
                       name=None,
                       index=None,
                       in_service=True,
@@ -509,6 +676,22 @@ def create_dry_cooler(prosumer,
 
         **min_delta_t_air_c** (float, default 0) - Minimum air temperature difference [C]
 
+        **min_fan_speed_pct** (float, default NaN) - Minimum fan speed as a percentage of the nominal \
+            rotational speed [%]. Floors the reported fan speed (and hence, through the cube affinity \
+            law, the fan power) whenever the fans are energised but the heat-rejection duty would \
+            otherwise drive them below this speed. NaN disables the floor. Typical value 20-30. \
+            See :func:`create_controlled_dry_cooler` for the rationale.
+
+        **min_p_fan_kw** (float, default NaN) - Minimum electric power per energised fan [kW]. \
+            Floors the per-fan power once the bank is actually rejecting heat. NaN disables the floor.
+
+        **max_fan_speed_pct** (float, default NaN) - Maximum fan speed as a percentage of the nominal \
+            rotational speed [%]. Caps the reported fan speed (and hence the fan power) when the duty \
+            would otherwise drive the fans above this speed. NaN disables the cap. Typically 100.
+
+        **max_p_fan_kw** (float, default NaN) - Maximum electric power per energised fan [kW]. \
+            Caps the per-fan power. NaN disables the cap.
+
         **name** (string, default None) - The name for this dry cooler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -528,10 +711,14 @@ def create_dry_cooler(prosumer,
 
     entries = dict(zip(["name", "n_nom_rpm", "p_fan_nom_kw", "qair_nom_m3_per_h", "t_air_in_nom_c", "t_air_out_nom_c",
                         "t_fluid_in_nom_c", "t_fluid_out_nom_c", "fans_number",
-                        "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c", "in_service"],
+                        "adiabatic_mode", "phi_adiabatic_sat_percent", "min_delta_t_air_c",
+                        "min_fan_speed_pct", "min_p_fan_kw", "max_fan_speed_pct", "max_p_fan_kw",
+                        "in_service"],
                        [name, n_nom_rpm, p_fan_nom_kw, qair_nom_m3_per_h, t_air_in_nom_c, t_air_out_nom_c,
                         t_fluid_in_nom_c, t_fluid_out_nom_c, fans_number,
-                        adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c, in_service]))
+                        adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c,
+                        min_fan_speed_pct, min_p_fan_kw, max_fan_speed_pct, max_p_fan_kw,
+                        in_service]))
 
     _set_entries(prosumer, "dry_cooler", index, **entries, **kwargs)
     return int(index)
@@ -545,6 +732,8 @@ def create_electric_boiler(prosumer,
                            efficiency_percent=100,
                            allow_stop=True,
                            max_t_out_c=np.nan,
+                           min_on_time_s=np.nan,
+                           min_off_time_s=np.nan,
                            overflow_strategy='dump_proportional',
                            name=None,
                            index=None,
@@ -571,6 +760,12 @@ def create_electric_boiler(prosumer,
 
         **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
+        **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+            the boiler cannot stop before it has run for this duration. Requires a positive min_p_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+            the boiler cannot restart before it has been stopped for this duration.
+
         **name** (string, default None) - The name for this electric boiler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -588,8 +783,8 @@ def create_electric_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "electric_boiler", index)
 
-    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
-                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
+    entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "overflow_strategy", "in_service"],
+                       [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, min_on_time_s, min_off_time_s, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
     return int(index)
@@ -604,6 +799,8 @@ def create_gas_boiler(prosumer,
                       efficiency_percent=100,
                       allow_stop=True,
                       max_t_out_c=np.nan,
+                      min_on_time_s=np.nan,
+                      min_off_time_s=np.nan,
                       overflow_strategy='dump_proportional',
                       name=None,
                       index=None,
@@ -632,6 +829,12 @@ def create_gas_boiler(prosumer,
 
         **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
 
+        **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+            the boiler cannot stop before it has run for this duration. Requires a positive min_q_kw.
+
+        **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+            the boiler cannot restart before it has been stopped for this duration.
+
         **name** (string, default None) - The name for this gas boiler
 
         **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
@@ -649,8 +852,8 @@ def create_gas_boiler(prosumer,
 
     index = _get_index_with_check(prosumer, "gas_boiler", index)
 
-    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
-                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
+    entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "overflow_strategy", "in_service"],
+                       [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, min_on_time_s, min_off_time_s, overflow_strategy, in_service]))
 
     _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
     return int(index)
@@ -1149,4 +1352,68 @@ def create_pv_production(
     )
 
     _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs
+):
+    """
+    Adds a battery storage element (electrical, no fluid) to the prosumer.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer container.
+    e_capacity_kwh : float
+        Energy capacity [kWh].
+    p_charge_max_kw, p_discharge_max_kw : float
+        Maximum charging / discharging power [kW].
+    eta_charge, eta_discharge : float, optional
+        Charging / discharging efficiencies in (0, 1], default 0.95.
+    soc_min, soc_max : float, optional
+        State-of-charge limits, default 0.1 / 0.9.
+    self_discharge_per_hour : float, optional
+        Fraction of the stored energy lost per hour, default 0.
+    in_service : bool, optional
+        Whether the element is in service, default True.
+    index : int, optional
+        Force a specified element index.
+    name : str, optional
+        Name of the element.
+
+    Returns
+    -------
+    int
+        Index of the created element in the ``battery_storage`` table.
+    """
+    add_new_element(prosumer, BatteryStorageElementData)
+    index = _get_index_with_check(prosumer, "battery_storage", index)
+    if name is None:
+        name = f"battery_storage_{index}"
+    entries = dict(
+        name=name,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        in_service=in_service,
+    )
+    _set_entries(prosumer, "battery_storage", index, **entries, **kwargs)
     return int(index)

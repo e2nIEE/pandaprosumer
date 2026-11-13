@@ -54,7 +54,7 @@ Input Time Series
     "ground_solar_radiation_w_m2", "Ground-reflected solar radiation", "W/m²"
     "radiation_incidence_angle_deg", "Angle of incidence of solar radiation", "deg"
     "ambient_temperature_C", "Ambient temperature", "°C"
-    "inlet_temperature_C", "Inlet fluid temperature", "°C"
+    "inlet_temperature_C", "Inlet fluid temperature, used when the collectors feed no FluidMix responder (fed, they heat the water their responder gives back)", "°C"
     "inlet_mass_flow_rate_kg_h", "Inlet mass flow rate", "kg/h"
 
 

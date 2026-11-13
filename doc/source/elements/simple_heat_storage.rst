@@ -65,6 +65,7 @@ Output Time Series
 
     "soc", "State of Charge", "%"
     "q_delivered_kw", "Delivered heat power", "kW"
+    "q_received_kw", "Received heat power (the charge)", "kW"
 
 
 

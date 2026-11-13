@@ -4,15 +4,31 @@ Module containing the HeatPumpController class.
 
 import numpy as np
 from math import log
+from warnings import warn
 
 from pandapipes import call_lib
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
+from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
+from pandaprosumer.controller.power_cap import _capped, _setpoint
 
 
-class HeatPumpController(BasicProsumerController):
+class ShadowedInputWarning(UserWarning):
+    """
+    Raised when a heat pump's evaporator receives both a FluidMixMapping (``fluid_evap``) and a mapped
+    ``t_evap_in_c`` value. The fluid's temperature takes precedence whenever it is set, so the mapped
+    ``t_evap_in_c`` is silently ignored - usually a wiring mistake (e.g. a source temperature profile
+    left connected next to a source fluid). Emitted once per controller.
+
+    Filter with ``warnings.simplefilter("ignore", ShadowedInputWarning)`` if both inputs are intended
+    (``t_evap_in_c`` as a fallback for the steps where the fluid delivers nothing).
+    """
+
+
+class HeatPumpController(MinOnOffTimeMixin, BasicProsumerController):
     """
     Controller for heat pumps.
 
@@ -24,6 +40,9 @@ class HeatPumpController(BasicProsumerController):
     :param index: The index of the controller
     :param kwargs: Additional keyword arguments
     """
+
+    # The heat pump is running when its compressor consumes power
+    _on_off_result_key = 'p_comp_kw'
 
     def name_class(self):
         return "heat_pump_controller"
@@ -52,6 +71,11 @@ class HeatPumpController(BasicProsumerController):
         
         # Store the previous compressor power for applying ramp up / ramp down speed constraints
         self.p_comp_previous_kw = np.nan
+        # Whether the ShadowedInputWarning was already emitted (once per controller, not once per step)
+        self._warned_shadowed_t_evap_in = False
+
+        self._check_min_on_time(prosumer, 'min_p_comp_kw', "Heat Pump")
+        self._reset_on_off_state()
 
     @property
     def _t_evap_in_c(self):
@@ -59,6 +83,28 @@ class HeatPumpController(BasicProsumerController):
             return self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         else:
             return self._get_input("t_evap_in_c")
+
+    def _warn_if_t_evap_in_shadowed(self):
+        """
+        Warn (once) when both the evaporator fluid and the mapped ``t_evap_in_c`` input are set: the
+        fluid's temperature wins and the mapped value is ignored. A ``t_evap_in_c`` given as a static
+        element parameter is not reported - it is a default, not a conflicting mapping.
+        """
+        if self._warned_shadowed_t_evap_in:
+            return
+        t_fluid_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
+        t_mapped_c = self._get_input("t_evap_in_c")
+        if np.isnan(t_fluid_c) or np.isnan(t_mapped_c):
+            return
+        self._warned_shadowed_t_evap_in = True
+        warn(
+            (f"{self.name_class()} '{self.name}' at timestep {self.time}: the evaporator receives both a fluid "
+             f"(t={t_fluid_c:.2f} C) and a mapped t_evap_in_c ({t_mapped_c:.2f} C). The fluid's temperature "
+             f"takes precedence; t_evap_in_c is ignored whenever the fluid is set. Disconnect one of the two "
+             f"inputs unless t_evap_in_c is meant as a fallback. (Reported once for this controller.)"),
+            ShadowedInputWarning,
+            stacklevel=2,
+        )
 
     @property
     def _mdot_evap_in_kg_per_s(self):
@@ -167,6 +213,19 @@ class HeatPumpController(BasicProsumerController):
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c)
 
+    def _cop_mode(self, prosumer):
+        """
+        The COP calculation mode: 'lorenz' when the parameter is unset (None, NaN or empty), else
+        'carnot' or 'lorenz' (case insensitive).
+        """
+        mode = self._get_element_param(prosumer, 'mode')
+        if mode is None or (isinstance(mode, float) and np.isnan(mode)) or str(mode).strip() == '':
+            return 'lorenz'
+        mode = str(mode).strip().lower()
+        if mode not in ('carnot', 'lorenz'):
+            raise ValueError(f"Heat pump '{self.name}': unknown COP mode '{mode}', expected 'carnot' or 'lorenz'")
+        return mode
+
     def _calculate_heat_pump(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c):
         """
         Main method for Heat Pump physical calculation during one time step
@@ -188,7 +247,17 @@ class HeatPumpController(BasicProsumerController):
         # - t_evap_in_c <= t_evap_out_c: no heat extracted on the evaporator side
         # - t_cond_out_c <= t_evap_in_c: would imply negative Carnot COP (denominator
         #   of (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c) <= 0)
-        if t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c or t_cond_out_c <= t_evap_in_c:
+        # - in 'lorenz' mode, a condenser log-mean temperature at or below the evaporator's: would
+        #   imply a negative Lorenz COP, although the outlet may still be above the source
+        #   (e.g. a 40 -> 80 °C stream heated from a 77 °C source)
+        cop_mode = self._cop_mode(prosumer)
+        no_lift = t_cond_out_c <= t_cond_in_c or t_evap_in_c <= t_evap_out_c or t_cond_out_c <= t_evap_in_c
+        if not no_lift and cop_mode == 'lorenz':
+            # Log-mean temperatures in K (the difference is the same in C and K)
+            mean_th_k = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
+            mean_tc_k = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
+            no_lift = mean_th_k <= mean_tc_k
+        if no_lift:
             # If there is no demand on the condenser, the Heat Pump is not running
             # We have to take into account ramp down constraints here
             max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
@@ -205,36 +274,24 @@ class HeatPumpController(BasicProsumerController):
                     default_delta_t_evap_c = self._get_element_param(prosumer, 'delta_t_evap_c')
                     return self._ramp_down(prosumer, t_cond_out_c, t_cond_in_c, t_evap_in_c, carnot_efficiency, default_delta_t_evap_c, max_decrease, pinch_c)
                    
-            # Complete shutdown (no ramp constraint or already at zero)
+            # Complete shutdown (no ramp constraint or already at zero): no condenser flow, like the
+            # 'stays off' branch below. Handing the requested flow on at the promised return temperature
+            # would give the responders a stream labelled with a temperature the heat pump did not produce
+            # (a storage that returns it at another temperature books heat that nobody made)
             return (0, 0, 0, 0,
-                    mdot_cond_kg_per_s, t_cond_in_c, t_cond_in_c,
+                    0, t_cond_in_c, t_cond_in_c,
                     0, t_evap_in_c, t_evap_in_c)
 
-        # 3. Calculate carnot cop
-        # FixMe: Why using the condenser output temperature ?
-        cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
-
-        # 4. Calculate cop of heat pump
-        cop_hp = carnot_efficiency * cop_carnot
-
-        # 5. Calculate the compressor power power_comp
+        # 3.-5. COP and compressor power. 'lorenz' (the default) uses the log-mean temperatures of the
+        # condenser and evaporator streams, so a colder return raises the COP; 'carnot' only sees the
+        # condenser outlet temperature
+        if cop_mode == 'carnot':
+            cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
+            cop_hp = carnot_efficiency * cop_carnot
+        else:
+            cop_lorenz = mean_th_k / (mean_th_k - mean_tc_k)
+            cop_hp = carnot_efficiency * cop_lorenz
         p_comp_kw = q_cond_kw / cop_hp
-        
-        # Check COP calculation mode
-        mode = self._get_element_param(prosumer, 'mode')
-        if mode:
-            mode = str(mode).lower()  # Make case insensitive
-            if mode == 'lorenz':
-                # Calculate Lorenz cop
-                mean_th_c = (t_cond_out_c - t_cond_in_c) / log((t_cond_out_c + CELSIUS_TO_K) / (t_cond_in_c + CELSIUS_TO_K))
-                mean_tc_c = (t_evap_in_c - t_evap_out_c) / log((t_evap_in_c + CELSIUS_TO_K) / (t_evap_out_c + CELSIUS_TO_K))
-                cop_lorenz = mean_th_c / (mean_th_c - mean_tc_c)
-                # Calculate cop of heat pump with Lorenz
-                cop_hp_lz = carnot_efficiency * cop_lorenz
-                p_comp_lz_kw = q_cond_kw / cop_hp_lz
-                # Use Lorenz compressor power
-                p_comp_kw = p_comp_lz_kw
-            # else: default 'carnot' mode already calculated above
 
         # 6. Calculate power of evaporator Q_evap
         q_evap_kw = q_cond_kw - p_comp_kw
@@ -247,17 +304,22 @@ class HeatPumpController(BasicProsumerController):
         if np.isnan(max_cop):
             max_cop = None
         if max_cop is not None and cop_hp > max_cop + 1e-3:
-            # If the cop is too high, consider calculate which condenser output temperature the HP can reach
-            # with the max cop
-            t_cond_out_c = (max_cop * (t_evap_in_c + CELSIUS_TO_K) / (max_cop - carnot_efficiency)) - CELSIUS_TO_K
-            (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
-             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                        mdot_cond_kg_per_s,
-                                                                                        t_cond_out_c,
-                                                                                        t_cond_in_c,
-                                                                                        t_evap_in_c,
-                                                                                        pinch_c)
+            # max_cop is an EFFICIENCY bound: cap the COP and keep the REQUESTED
+            # condenser outlet temperature. A previous version instead RAISED
+            # t_cond_out to the temperature where capped Carnot is self-consistent
+            #   t = max_cop·(T_evap)/(max_cop − η) − 273.15
+            # — a "free temperature upgrade" that delivered far hotter fluid than
+            # the downstream demand contract asked for (e.g. a 65 °C DHW request
+            # served at 76–94 °C, tracking the evaporator-side temperature). In a
+            # coupled simulation the downstream storage then overheated above its
+            # design band and an upstream optimiser saw out-of-bounds initial
+            # states every iteration. Real machines modulate at the requested
+            # setpoint with bounded efficiency — they don't overshoot delivery
+            # temperature because the source got warmer.
+            cop_hp = max_cop
+            p_comp_kw = q_cond_kw / cop_hp
+            q_evap_kw = q_cond_kw - p_comp_kw
+            mdot_evap_kg_per_s = q_evap_kw / (cp_evap_kj_per_kgk * abs(t_evap_out_c - t_evap_in_c))
         max_t_cond_out_c = self._get_element_param(prosumer, 'max_t_cond_out_c')
         if np.isnan(max_t_cond_out_c):
             max_t_cond_out_c = None
@@ -294,9 +356,8 @@ class HeatPumpController(BasicProsumerController):
                                                                                             pinch_c)
                 
 
-        max_p_comp_kw = self._get_element_param(prosumer, 'max_p_comp_kw')
-        if np.isnan(max_p_comp_kw):
-            max_p_comp_kw = None
+        max_p_comp_kw = _capped(self._get_element_param(prosumer, 'max_p_comp_kw'),
+                                _setpoint(self, 'max_p_comp_kw_setpoint'))
         if max_p_comp_kw is not None and p_comp_kw > max_p_comp_kw + 1e-3:
             # If the compressor power is too high, consider that only the condenser mass flow will be affected
             # (not the temperatures) and recalculate everything
@@ -366,6 +427,38 @@ class HeatPumpController(BasicProsumerController):
                 mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
                 mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c)
 
+    def _calculate_heat_pump_on_off(self, prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c,
+                                    pinch_c, start_locked, stop_locked):
+        """
+        _calculate_heat_pump, enforcing the minimum running and stop times
+
+        :param start_locked: The heat pump has not been stopped for min_off_time_s yet: it stays off
+        :param stop_locked: The heat pump has not run for min_on_time_s yet: it runs at least at min_p_comp_kw
+        """
+        if start_locked:
+            return (0, 0, 0, 0,
+                    0, t_cond_in_c, t_cond_in_c,
+                    0, t_evap_in_c, t_evap_in_c)
+
+        result = self._calculate_heat_pump(prosumer, mdot_cond_kg_per_s, t_cond_out_c, t_cond_in_c, t_evap_in_c,
+                                           pinch_c)
+        p_comp_kw = result[1]
+        min_p_comp_kw = self._get_element_param(prosumer, 'min_p_comp_kw')
+        if not stop_locked or not p_comp_kw < min_p_comp_kw - 1e-3:
+            return result
+
+        # The demand would stop the heat pump: hold it at min_p_comp_kw instead.
+        # Without a requested condenser temperature lift (no demand), keep the lift of the previous time step
+        if t_cond_out_c - t_cond_in_c <= 1e-3:
+            delta_t_cond_previous_c = self.last_result.get('t_cond_out_c', np.nan) - self.last_result.get('t_cond_in_c', np.nan)
+            if not delta_t_cond_previous_c > 1e-3:
+                return result
+            t_cond_out_c = t_cond_in_c + delta_t_cond_previous_c
+        # With a negligible condenser mass flow, the required compressor power is below min_p_comp_kw while the
+        # heat pump was running: _calculate_heat_pump holds it at min_p_comp_kw. If the temperatures make it
+        # impossible to run (no lift between the evaporator and the condenser), the heat pump stops anyway
+        return self._calculate_heat_pump(prosumer, 1e-6, t_cond_out_c, t_cond_in_c, t_evap_in_c, pinch_c)
+
     def _calculate_heat_pump_reverse(self, prosumer, mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c, t_cond_in_c, t_cond_out_c):
         """
         Main method for Heat Pump physical calculation during one time step
@@ -379,6 +472,18 @@ class HeatPumpController(BasicProsumerController):
         # FixMe: Is it okay to use the condenser input temperature ?
         cop_carnot = (t_cond_out_c + pinch_c + CELSIUS_TO_K) / (t_cond_out_c - t_evap_in_c)
         cop_hp = carnot_efficiency * cop_carnot
+
+        # max_cop is an efficiency bound and must be enforced on this evaporator-driven
+        # path too, not just in _calculate_heat_pump. q_evap is the anchored quantity
+        # here (fixed evaporator mass flow), so capping the COP raises the compressor
+        # power (and hence q_cond) for the same source heat — mirroring the forward
+        # path, which keeps q_cond fixed and raises p_comp. Without this cap, a DHW HP
+        # with a low temperature lift (warm source, 65 °C sink) can return COP 4-6
+        # despite max_cop=4.0.
+        max_cop = self._get_element_param(prosumer, 'max_cop')
+        if not np.isnan(max_cop) and cop_hp > max_cop + 1e-3:
+            cop_hp = max_cop
+
         p_comp_kw = q_evap_kw / (cop_hp - 1)
         q_cond_kw = q_evap_kw + p_comp_kw
 
@@ -436,21 +541,37 @@ class HeatPumpController(BasicProsumerController):
         assert not np.isnan(t_cond_out_required_c), f"Heat Pump {self.name} t_cond_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_cond_in_required_c), f"Heat Pump {self.name} t_cond_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(self._t_evap_in_c), f"Heat Pump {self.name} t_evap_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._warn_if_t_evap_in_shadowed()
         assert t_cond_out_required_c >= t_cond_in_required_c, f"Heat Pump {self.name} t_cond_out_required_c < t_cond_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
         assert mdot_cond_required_kg_per_s >= 0, f"Heat Pump {self.name} mdot_cond_kg_per_s is negative ({mdot_cond_required_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
+        # A heat pump that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+        # A heat pump that has not run for min_on_time_s yet cannot stop: it runs at least at min_p_comp_kw
+        stop_locked = self._is_stop_locked(prosumer)
+
+        return_solver = ReturnTemperatureSolver()
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
+            if nb_runs > MAX_RERUN:
+                raise RuntimeError(
+                    f"Heat Pump {self.name}: did not converge after {MAX_RERUN} iterations at "
+                    f"timestep {self.time} in prosumer {prosumer.name}"
+                )
             pinch_c = self._get_element_param(prosumer, 'pinch_c')
 
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
              mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(prosumer,
-                                                                                        mdot_cond_required_kg_per_s,
-                                                                                        t_cond_out_required_c,
-                                                                                        t_cond_in_required_c,
-                                                                                        self._t_evap_in_c,
-                                                                                        pinch_c)
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_on_off(prosumer,
+                                                                                               mdot_cond_required_kg_per_s,
+                                                                                               t_cond_out_required_c,
+                                                                                               t_cond_in_required_c,
+                                                                                               self._t_evap_in_c,
+                                                                                               pinch_c,
+                                                                                               start_locked,
+                                                                                               stop_locked)
             if not np.isnan(self._mdot_evap_in_kg_per_s):
                 # If the evaporator is fed with a fixed mass flow (not free air)
                 if mdot_evap_kg_per_s > self._mdot_evap_in_kg_per_s:
@@ -488,20 +609,16 @@ class HeatPumpController(BasicProsumerController):
                                                                    overflow_strategy=overflow_strategy)
 
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_cond_required_kg_per_s:
-                # FixMe: Can't test this case in a single model test without mapping (no responders)
-                # If the heat Pump is not able to deliver the required mass flow,
-                # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_cond_kg_per_s) > 1e-8:
-                    t_cond_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_cond_kg_per_s
-                else:
-                    t_cond_in_new_c = t_cond_in_required_c
-                if abs(t_cond_in_new_c - t_cond_in_required_c) > 1:
-                    # If this recalculation changes the condenser input temperature, rerun the calculation
-                    # with the new temperature
-                    t_cond_in_required_c = t_cond_in_new_c
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (mdot_cond_kg_per_s < mdot_cond_required_kg_per_s or return_solver.started)):
+                # If the heat pump is not able to deliver the required mass flow, its condenser return is the
+                # mix of what its responders give back for the flows it delivers, each one returning the same
+                # temperature whatever flow it gets: rerun until the return it is calculated with is that mix
+                t_cond_in_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                                  t_cond_in_required_c)
+                t_cond_in_next_c = return_solver.next_guess(t_cond_in_required_c, t_cond_in_mixed_c, t_returns_c)
+                if t_cond_in_next_c is not None:
+                    t_cond_in_required_c = t_cond_in_next_c
                     rerun = True
 
         # After merit-order capping, ensure mass and energy balance at the interface.
@@ -530,13 +647,15 @@ class HeatPumpController(BasicProsumerController):
             pinch_c = self._get_element_param(prosumer, 'pinch_c')
             (q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
              mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
-             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump(
+             mdot_evap_kg_per_s, t_evap_in_c, t_evap_out_c) = self._calculate_heat_pump_on_off(
                 prosumer,
                 mdot_cond_new,
                 t_cond_out_required_c,
                 t_cond_in_required_c,
                 self._t_evap_in_c,
                 pinch_c,
+                start_locked,
+                stop_locked,
             )
 
         cp_cond_kj_per_kgk = self.cond_fluid.get_heat_capacity(
@@ -553,6 +672,19 @@ class HeatPumpController(BasicProsumerController):
         for mdot_kg_per_s in result_mdot_tab_kg_per_s:
             result_fluid_mix.append({FluidMixMapping.TEMPERATURE_KEY: t_cond_out_c,
                                      FluidMixMapping.MASS_FLOW_KEY: mdot_kg_per_s})
+
+        # Clamp a small negative evaporator load to 0. When the HP is forced ON
+        # at near-zero condenser duty (e.g. forced on overnight with the DHW
+        # tank full, warm ambient loop), the minimum compressor power exceeds the
+        # tiny q_cond, COP dips below 1 and q_evap = q_cond - p_comp goes a few
+        # kW negative. Physically the surplus electrical work is dissipated and
+        # the source draw floors at 0 — not a wiring fault. Only a *gross*
+        # negative (tens of kW) signals a real error, so keep that guard.
+        if q_evap_kw < 0.0:
+            assert q_evap_kw > -5.0, (
+                f"Heat Pump {self.name} q_evap_kw grossly negative ({q_evap_kw}) "
+                f"for timestep {self.time} in prosumer {prosumer.name}")
+            q_evap_kw = 0.0
 
         result = np.array([[q_cond_kw, p_comp_kw, q_evap_kw, cop_hp,
                             mdot_cond_kg_per_s, t_cond_in_c, t_cond_out_c,
@@ -582,10 +714,15 @@ class HeatPumpController(BasicProsumerController):
             assert t_cond_out_c <= max_t_cond_out_c, f"Heat Pump {self.name} t_cond_out_c is higher than the maximum ({t_cond_out_c} > {max_t_cond_out_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
         if np.isnan(self.t_keep_return_c) or mdot_evap_kg_per_s == 0 or abs(t_evap_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-            # If the actual output temperature is the same as the promised one, the storage is correctly applied
+            # If the actual output temperature is the same as the promised one, the storage is correctly applied.
+            # An evaporator source on another level is not rerun: report a return that differs from its promise
+            self._check_return_contract(prosumer, t_evap_out_c, mdot_evap_kg_per_s,
+                                        float(self.evap_fluid.get_heat_capacity(
+                                            CELSIUS_TO_K + (t_evap_out_c + self.t_keep_return_c) / 2)) / 1e3)
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
-            self.t_previous_evap_out_c = np.nan  # FIXME: should be nan ?
+            # The previous evaporator values are the state of the rerun loop within a time step: reset once converged
+            self.t_previous_evap_out_c = np.nan
             self.t_previous_evap_in_c = np.nan
             self.mdot_previous_evap_kg_per_s = np.nan
             self.p_comp_previous_kw = p_comp_kw  # Store the last compressor power value

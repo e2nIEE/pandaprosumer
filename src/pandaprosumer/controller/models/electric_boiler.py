@@ -5,14 +5,36 @@ Module containing the ElectricBoilerController class.
 import numpy as np
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K
+from pandaprosumer.constants import CELSIUS_TO_K, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
+from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
+from pandaprosumer.controller.power_cap import _capped, _setpoint
+
+#: Required feed below the return by less than this is floating-point noise, not a real inversion.
+TEMPERATURE_NOISE_K = 1e-9
+
+
+def _carry_heat(q_fluid_kw, p_el_consumed_kw, mdot_kg_per_s, t_in_c, cp_fluid_kj_per_kgk, delta_t_previous_c):
+    """
+    Make the water carry ``q_fluid_kw`` when the requested lift is ~0 (a boiler held at its minimum power): raise the
+    outlet temperature of the flow there is, else run at the previous step's lift (as the gas boiler does). With
+    neither, the heat has nowhere to go and the boiler stops: booking it would book heat no one receives.
+
+    :return: (mdot_kg_per_s, t_out_c, q_fluid_kw, p_el_consumed_kw)
+    """
+    if mdot_kg_per_s > 1e-9:
+        return mdot_kg_per_s, t_in_c + q_fluid_kw / (mdot_kg_per_s * cp_fluid_kj_per_kgk), q_fluid_kw, p_el_consumed_kw
+    if not np.isnan(delta_t_previous_c) and delta_t_previous_c > 1e-3:
+        return (q_fluid_kw / (cp_fluid_kj_per_kgk * delta_t_previous_c), t_in_c + delta_t_previous_c,
+                q_fluid_kw, p_el_consumed_kw)
+    return 0.0, t_in_c, 0.0, 0.0
 
 
 def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, 
                                     efficiency_percent, max_p_kw, min_p_kw, p_el_consumed_previous_kw,
                                     max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, 
-                                    allow_stop, max_t_out_c=None):
+                                    allow_stop, max_t_out_c=None, delta_t_previous_c=np.nan):
     # Calculate thermal power
     q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
 
@@ -65,9 +87,9 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
             if t_out_c - t_in_c > 1e-3:
                 mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
             else:
-                # If temperature difference is too small, we can't maintain minimum power
-                # This is an edge case that should be handled by the system design
-                pass
+                # No usable lift: the minimum power must leave in the water, at a higher outlet temperature
+                mdot_kg_per_s, t_out_c, q_fluid_kw, p_el_consumed_kw = _carry_heat(
+                    q_fluid_kw, p_el_consumed_kw, mdot_kg_per_s, t_in_c, cp_fluid_kj_per_kgk, delta_t_previous_c)
         elif p_el_consumed_kw < 1e-3 and allow_stop == False and not np.isnan(p_el_consumed_previous_kw) and p_el_consumed_previous_kw > 1e-3:
             # If power would drop to zero but previous power was non-zero and allow_stop is False, maintain minimum power
             p_el_consumed_kw = min_p_kw
@@ -75,9 +97,9 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
             # Always recalculate the fluid mass flow to maintain the requested temperature
             if t_out_c - t_in_c > 1e-3:
                 mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
-            elif mdot_kg_per_s != 0:
-                # If mass flow is zero but we have a temperature difference, use that
-                mdot_kg_per_s = q_fluid_kw / (cp_fluid_kj_per_kgk * (t_out_c - t_in_c))
+            else:
+                mdot_kg_per_s, t_out_c, q_fluid_kw, p_el_consumed_kw = _carry_heat(
+                    q_fluid_kw, p_el_consumed_kw, mdot_kg_per_s, t_in_c, cp_fluid_kj_per_kgk, delta_t_previous_c)
     
     # Check maximum power constraint
     if max_p_kw is not None and p_el_consumed_kw > max_p_kw + 1e-3:
@@ -110,7 +132,7 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
     return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
 
-class ElectricBoilerController(BasicProsumerController):
+class ElectricBoilerController(MinOnOffTimeMixin, BasicProsumerController):
     """
     Controller for electric boilers.
 
@@ -134,34 +156,44 @@ class ElectricBoilerController(BasicProsumerController):
         super().__init__(prosumer, electric_boiler_object, order=order, level=level, in_service=in_service,
                          index=index, name=name, **kwargs)
         self.fluid = prosumer.fluid
+        self._check_min_on_time(prosumer, 'min_p_kw', "Electric Boiler")
+        self._reset_on_off_state()
 
-    def _calculate_electric_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c):
+    def _get_allow_stop(self, prosumer):
+        """
+        The allow_stop element parameter, True if it is not set
+        """
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop is None or np.isnan(allow_stop):
+            allow_stop = True
+        return allow_stop
+
+    def _calculate_electric_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c, allow_stop=None):
         """
         Main method for Electric Boiler physical calculation during one time step
 
         :param mdot_kg_per_s: Mass flow rate in kg/s
         :param t_out_c: Output provided temperature to the feed pipe in °C
         :param t_in_c: Input temperature from return pipe in °C
+        :param allow_stop: Whether the boiler may stop at this time step (default: the element parameter)
 
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
         efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
-        max_p_kw = self._get_element_param(prosumer, 'max_p_kw')
-        if np.isnan(max_p_kw):
-            max_p_kw = None
+        max_p_kw = _capped(self._get_element_param(prosumer, 'max_p_kw'), _setpoint(self, 'max_p_kw_setpoint'))
         min_p_kw = self._get_element_param(prosumer, 'min_p_kw')
         if np.isnan(min_p_kw):
             min_p_kw = None
         p_el_consumed_previous_kw = self.last_result.get('p_kw', np.nan)
+        delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
         max_ramp_up_kw_per_s = self._get_element_param(prosumer, 'max_ramp_up_kw_per_s')
         if np.isnan(max_ramp_up_kw_per_s):
             max_ramp_up_kw_per_s = None
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
         if np.isnan(max_ramp_down_kw_per_s):
             max_ramp_down_kw_per_s = None
-        allow_stop = self._get_element_param(prosumer, 'allow_stop')
-        if allow_stop == None or np.isnan(allow_stop):
-            allow_stop = True
+        if allow_stop is None:
+            allow_stop = self._get_allow_stop(prosumer)
 
         max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
         if np.isnan(max_t_out_c):
@@ -179,7 +211,8 @@ class ElectricBoilerController(BasicProsumerController):
                                                                                                        max_ramp_down_kw_per_s,
                                                                                                        self.resol,
                                                                                                        allow_stop,
-                                                                                                       max_t_out_c)
+                                                                                                       max_t_out_c,
+                                                                                                       delta_t_previous_c)
 
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
@@ -201,21 +234,34 @@ class ElectricBoilerController(BasicProsumerController):
         assert not np.isnan(t_out_required_c), f"Electric Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_in_required_c), f"Electric Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_required_kg_per_s).any(), f"Electric Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        if t_in_required_c - TEMPERATURE_NOISE_K <= t_out_required_c < t_in_required_c:
+            # rounding noise of a fully-served responder (e.g. an upstream tank covered it): nothing left to heat
+            t_out_required_c = t_in_required_c
         assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
+        # A boiler that has not run for min_on_time_s yet behaves as if it could not stop
+        allow_stop = self._get_allow_stop(prosumer) and not self._is_stop_locked(prosumer)
+        # A boiler that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+
+        return_solver = ReturnTemperatureSolver()
         rerun = True
         nb_runs = 0
         while rerun:
             nb_runs += 1
-            if nb_runs > 20:
+            if nb_runs > MAX_RERUN:
                 raise RuntimeError(
-                    f"Electric Boiler {self.name}: did not converge after 20 iterations at "
+                    f"Electric Boiler {self.name}: did not converge after {MAX_RERUN} iterations at "
                     f"timestep {self.time} in prosumer {prosumer.name}"
                 )
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
-                                                                                                   mdot_required_kg_per_s,
-                                                                                                   t_out_required_c,
-                                                                                                   t_in_required_c)
+            if start_locked:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = 0., 0., t_in_required_c, t_in_required_c, 0.
+            else:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
+                                                                                                       mdot_required_kg_per_s,
+                                                                                                       t_out_required_c,
+                                                                                                       t_in_required_c,
+                                                                                                       allow_stop)
 
             overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
             if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
@@ -225,19 +271,16 @@ class ElectricBoilerController(BasicProsumerController):
                                                                    mdot_tab_required_kg_per_s,
                                                                    overflow_strategy=overflow_strategy)
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
-                # If the electric boiler is not able to deliver the required mass flow,
-                # recalculate the input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Boiler is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_in_new_c = t_in_required_c
-                if abs(t_in_new_c - t_in_required_c) > 1:
-                    # If this recalculation changes the input temperature, rerun the calculation
-                    # with the new temperature
-                    t_in_required_c = t_in_new_c
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (mdot_delivered_kg_per_s < mdot_required_kg_per_s or return_solver.started)):
+                # If the electric boiler is not able to deliver the required mass flow, its return is the mix
+                # of what its responders give back for the flows it delivers, each one returning the same
+                # temperature whatever flow it gets: rerun until the return it is calculated with is that mix
+                t_in_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                             t_in_required_c)
+                t_in_next_c = return_solver.next_guess(t_in_required_c, t_in_mixed_c, t_returns_c)
+                if t_in_next_c is not None:
+                    t_in_required_c = t_in_next_c
                     rerun = True
 
         # After merit-order capping, ensure mass and energy balance at the interface:
@@ -250,7 +293,10 @@ class ElectricBoilerController(BasicProsumerController):
             cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
             efficiency_percent = self._get_element_param(prosumer, 'efficiency_percent')
             if mdot_used_kg_per_s > tol:
-                t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                # cp re-evaluated at the new mean temperature, so the stream carries exactly q_kw
+                for _ in range(5):
+                    t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                    cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
                 mdot_delivered_kg_per_s = mdot_used_kg_per_s
                 # Reapply max_t_out_c constraint after mass/energy balance adjustment
                 max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')

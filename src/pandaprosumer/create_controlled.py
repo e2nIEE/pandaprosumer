@@ -1,6 +1,7 @@
 import numpy as np
 
 from pandaprosumer.create import (
+    create_battery_storage,
     create_booster_heat_pump,
     create_chiller,
     create_converter,
@@ -17,8 +18,11 @@ from pandaprosumer.create import (
     create_pv_production,
     create_solar_thermal,
     create_stratified_heat_storage,
+    create_uniform_heat_storage,
 )
 from pandaprosumer.controller import (
+    BatteryStorageController,
+    BatteryStorageControllerData,
     BoosterHeatPumpController,
     BoosterHeatPumpControllerData,
     ChillerController,
@@ -49,9 +53,13 @@ from pandaprosumer.controller import (
     SolarThermalControllerData,
     StratifiedHeatStorageController,
     StratifiedHeatStorageControllerData,
+    UniformHeatStorageController,
+    UniformHeatStorageControllerData,
 )
 from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.plant_pump_coupling import PlantPumpCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.substation_supply_coupling import SubstationSupplyCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
@@ -87,6 +95,52 @@ def create_controlled_network_coupling(net,
                                temp_fluid_map_output_idx=temp_fluid_map_output_idx,
                                mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
                                level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_plant_pump_coupling(net, circ_pump_index, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN plant to the network's circulation pump (`circ_pump_pressure`) and return
+    its controller index.
+
+    Unlike a plain network coupling, the pump injects exactly the heat the plant produced (see
+    `PlantPumpCouplingControl`): the plant's outlet temperature and mass flow (FluidMix mapping) set the pump's
+    `t_flow_k` so that the network receives `Q_plant`, capped at the plant's temperature.
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(circ_pump_index)],
+                                          element_name='circ_pump_pressure',
+                                          input_columns=[],
+                                          result_columns=[])
+
+    n = PlantPumpCouplingControl(net,
+                                 networkcoupling,
+                                 temp_fluid_map_input_col=['t_flow_k'],
+                                 mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
+                                 level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_substation_supply_coupling(net, heat_consumer_index, n_outputs=1, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN substation to the network's supply at a `heat_consumer` and return its
+    controller index.
+
+    Unlike a plain network coupling, only the supply temperature reaches the substation (see
+    `SubstationSupplyCouplingControl`): its mass flow comes from its own demand chain. `n_outputs` is the number
+    of substation elements fed from this consumer (one FluidMix mapping each, orders 0..n_outputs-1).
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(heat_consumer_index)],
+                                          element_name='heat_consumer',
+                                          input_columns=[],
+                                          result_columns=['t_from_k', 't_to_k', 'mdot_from_kg_per_s'])
+
+    n = SubstationSupplyCouplingControl(net,
+                                        networkcoupling,
+                                        temp_fluid_map_output_idx=0,
+                                        n_outputs=n_outputs,
+                                        level=level, order=order, name=name)
 
     return n.index
 
@@ -174,9 +228,11 @@ def create_controlled_heat_pump(prosumer,
                                 max_ramp_down_kw_per_s=np.nan,
                                 max_t_cond_out_c=np.nan,
                                 max_cop=np.nan,
+                                min_on_time_s=np.nan,
+                                min_off_time_s=np.nan,
                                 cond_fluid=None,
                                 evap_fluid=None,
-                                mode='carnot',
+                                mode='lorenz',
                                 name=None,
                                 index=None,
                                 in_service=True,
@@ -216,13 +272,21 @@ def create_controlled_heat_pump(prosumer,
 
             **max_cop** (float, default None) - Maximum COP
 
+            **min_on_time_s** (float, default None) - Minimum running time of the compressor [s]. Once started, \
+                the heat pump cannot stop before it has run for this duration: until then it is held at least at \
+                min_p_comp_kw. Requires a positive min_p_comp_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the compressor [s]. Once stopped, \
+                the heat pump cannot restart before it has been stopped for this duration.
+
             **cond_fluid** (str, default None) - Fluid at the condenser. If None, the \
             prosumer's fluid will be used
 
             **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
             prosumer's fluid will be used
 
-            **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+            **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+            evaporator temperatures) or 'carnot' (condenser outlet temperature only) (case insensitive)
 
             **level** (int, default 0) - The level of the controller
 
@@ -335,6 +399,7 @@ def create_controlled_stratified_heat_storage(prosumer,
                                               height_charge_out_m=0,
                                               height_discharge_out_m=None,
                                               height_discharge_in_m=0,
+                                              auto_ports="",
                                               name=None,
                                               index=None,
                                               in_service=True,
@@ -389,13 +454,9 @@ def create_controlled_stratified_heat_storage(prosumer,
             **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
             Default to the period resolution. May cause divergence of the model if too high. [s]
 
-            **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
-
-            **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
-
-            **height_discharge_out_m** (float, default None) - The height of the outlet discharging point in m.
-
-            **height_discharge_in_m** (float, default None) - The height of the outlet charging point in m.
+            **height_charge_in_m**, **height_charge_out_m**, **height_discharge_out_m**, \
+            **height_discharge_in_m**, **auto_ports** - Where the connections sit, see \
+            ``create_stratified_heat_storage``.
 
             **name** (string, default None) - A custom name for this stratified heat storage
 
@@ -439,6 +500,80 @@ def create_controlled_stratified_heat_storage(prosumer,
                                                                          bypass=bypass,
                                                                          name=name)
     return stratified_heat_storage_controller.index
+
+
+def create_controlled_uniform_heat_storage(prosumer,
+                                           mass_kg=None,
+                                           e_capacity_kwh=None,
+                                           min_useful_temp_c=65.,
+                                           t_full_c=np.nan,
+                                           u_w_per_m2k=0.,
+                                           area_wall_m2=0.,
+                                           t_ext_c=22.5,
+                                           max_remaining_capacity_kwh=1,
+                                           t_discharge_out_tol_c=1e-3,
+                                           max_charge_mdot_kg_per_s=np.nan,
+                                           t_charge_target_c=np.nan,
+                                           name=None,
+                                           index=None,
+                                           in_service=True,
+                                           level=0,
+                                           order=0,
+                                           period=0,
+                                           t_tank_init_c=None,
+                                           **kwargs):
+    """
+    Creates a uniform (fully mixed) heat storage element in prosumer["uniform_heat_storage"] and a uniform heat
+    storage controller
+
+    INPUT:
+        **prosumer** - The prosumer within which this uniform heat storage should be created.
+
+    OPTIONAL:
+        **mass_kg**, **e_capacity_kwh**, **min_useful_temp_c**, **t_full_c**, **u_w_per_m2k**, \
+        **area_wall_m2**, **t_ext_c**, **max_remaining_capacity_kwh**, **t_discharge_out_tol_c**, \
+        **max_charge_mdot_kg_per_s**, **t_charge_target_c** - The element parameters, see \
+        ``create_uniform_heat_storage``. Give exactly one of ``mass_kg`` and ``e_capacity_kwh``.
+
+        **name** (string, default None) - A custom name for this uniform heat storage
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+        **level** (int, default 0) - The level of the controller
+
+        **order** (int, default 0) - The order of the controller
+
+        **period** (int, default 0) - Index of the period, default is 0
+
+        **t_tank_init_c** (float, default None) - Initial tank temperature [°C]. If None, ``t_ext_c``.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created uniform heat storage controller
+
+    EXAMPLE:
+        create_controlled_uniform_heat_storage(prosumer, mass_kg=5000, min_useful_temp_c=60, t_tank_init_c=70)
+    """
+    uhs_index = create_uniform_heat_storage(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level",
+                                                          "t_tank_init_c", "kwargs"}},
+        **kwargs
+    )
+    uniform_heat_storage_controller_data = UniformHeatStorageControllerData(
+        element_name='uniform_heat_storage',
+        element_index=[uhs_index],
+        period_index=period
+    )
+    uniform_heat_storage_controller = UniformHeatStorageController(prosumer,
+                                                                   uniform_heat_storage_controller_data,
+                                                                   order=order,
+                                                                   level=level,
+                                                                   t_tank_init_c=t_tank_init_c,
+                                                                   name=name)
+    return uniform_heat_storage_controller.index
 
 
 def create_controlled_heat_exchanger(prosumer,
@@ -534,6 +669,8 @@ def create_controlled_electric_boiler(prosumer,
                                       efficiency_percent=100,
                                       allow_stop=True,
                                       max_t_out_c=np.nan,
+                                      min_on_time_s=np.nan,
+                                      min_off_time_s=np.nan,
                                       name=None,
                                       index=None,
                                       in_service=True,
@@ -561,6 +698,12 @@ def create_controlled_electric_boiler(prosumer,
             **allow_stop** (bool, default True) - Whether the boiler is allowed to stop completely (reach zero power)
 
             **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C
+
+            **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started, \
+                the boiler cannot stop before it has run for this duration. Requires a positive min_p_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped, \
+                the boiler cannot restart before it has been stopped for this duration.
 
             **name** (string, default None) - The name for this electric boiler
 
@@ -608,6 +751,8 @@ def create_controlled_gas_boiler(prosumer,
                                  efficiency_percent=100,
                                  allow_stop=True,
                                  max_t_out_c=np.nan,
+                                 min_on_time_s=np.nan,
+                                 min_off_time_s=np.nan,
                                  name=None,
                                  index=None,
                                  in_service=True,
@@ -639,6 +784,13 @@ def create_controlled_gas_boiler(prosumer,
 
             **max_t_out_c** (float, default None) - Maximum output temperature constraint in °C. 
                 When set, limits the boiler's output temperature. See edge cases documentation for interaction with allow_stop.
+
+            **min_on_time_s** (float, default None) - Minimum running time of the boiler [s]. Once started,
+                the boiler cannot stop before it has run for this duration: until then it behaves as with
+                allow_stop=False. Requires a positive min_q_kw.
+
+            **min_off_time_s** (float, default None) - Minimum stop time of the boiler [s]. Once stopped,
+                the boiler cannot restart before it has been stopped for this duration: until then it delivers no heat.
 
             **name** (string, default None) - The name for this gas boiler
 
@@ -689,6 +841,10 @@ def create_controlled_dry_cooler(prosumer,
                                  adiabatic_mode=False,
                                  phi_adiabatic_sat_percent=99,
                                  min_delta_t_air_c=0,
+                                 min_fan_speed_pct=np.nan,
+                                 min_p_fan_kw=np.nan,
+                                 max_fan_speed_pct=np.nan,
+                                 max_p_fan_kw=np.nan,
                                  name=None,
                                  index=None,
                                  in_service=True,
@@ -725,6 +881,29 @@ def create_controlled_dry_cooler(prosumer,
            **phi_adiabatic_sat_percent** (float, default 99) - Adiabatic Pre-Cooling saturation level [%]
 
            **min_delta_t_air_c** (float, default 0) - Minimum air temperature difference [C]
+
+           **min_fan_speed_pct** (float, default NaN) - Minimum fan speed as a percentage of the \
+               nominal rotational speed [%]. The fan affinity law makes the fan power scale with the \
+               cube of the air flow (and hence the speed), so when much more cooling capacity is \
+               engaged than the heat-rejection duty requires the computed fan power collapses toward \
+               ~0. A real fan bank cannot run arbitrarily slowly: this floors the reported speed (and \
+               therefore the power) while the fans are actually rejecting heat. NaN disables the \
+               floor. Typical value 20-30. Analogous to ``min_p_kw`` (electric boiler) and \
+               ``min_p_comp_kw`` (heat pump).
+
+           **min_p_fan_kw** (float, default NaN) - Minimum electric power per energised fan [kW]. \
+               Floors the per-fan power once the bank is actually rejecting heat. NaN disables the \
+               floor. Can be combined with ``min_fan_speed_pct`` (the larger floor wins).
+
+           **max_fan_speed_pct** (float, default NaN) - Maximum fan speed as a percentage of the \
+               nominal rotational speed [%]. When the duty exceeds the design point the affinity law \
+               sends the speed above nominal and the per-fan power above its rating; this caps the \
+               reported speed (and hence the power). NaN disables the cap. Typically 100.
+
+           **max_p_fan_kw** (float, default NaN) - Maximum electric power per energised fan [kW]. \
+               Caps the per-fan power. NaN disables the cap. Can be combined with ``max_fan_speed_pct`` \
+               (the smaller cap wins). Note the cap bounds the reported fan electricity only; it does \
+               not derate the heat actually rejected to the air.
 
            **name** (string, default None) - The name for this dry cooler
 
@@ -853,7 +1032,7 @@ def create_controlled_ice_chp(prosumer,
        EXAMPLE:
            create_controlled_ice_chp(prosumer, 350, "ng", 0, "example_ice_chp")
        """
-    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, name, in_service, index, **kwargs)
+    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, in_service=in_service, name=name, index=index, **kwargs)
     ice_chp_controller_data = IceChpControllerData(
         element_name='ice_chp',
         element_index=[ice_chp_index],
@@ -1213,3 +1392,64 @@ def create_controlled_pv_production(
     )
 
     return pv_controller.index
+
+
+def create_controlled_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    init_soc=0.5,
+    name=None,
+    index=None,
+    in_service=True,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    """
+    Creates a battery storage element and its controller.
+
+    The controller reads a signed ``p_requested_kw`` input (positive = discharge, negative = charge),
+    clips it to the power and state-of-charge limits and reports what it did (``p_storage_kw``, ``soc``, ...).
+
+    Parameters are those of :func:`create_battery_storage`, plus ``init_soc`` (initial state of charge,
+    default 0.5), ``period``, ``level`` and ``order``.
+
+    Returns
+    -------
+    int
+        Index of the created battery storage controller.
+    """
+    battery_index = create_battery_storage(
+        prosumer,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        name=name,
+        index=index,
+        in_service=in_service,
+        **kwargs,
+    )
+    battery_storage_object = BatteryStorageControllerData(element_index=[battery_index], period_index=period)
+    controller = BatteryStorageController(
+        prosumer,
+        battery_storage_object,
+        order=order,
+        level=level,
+        init_soc=init_soc,
+        in_service=in_service,
+        name=name,
+    )
+    return controller.index

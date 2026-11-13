@@ -184,10 +184,9 @@ class TestChiller:
         assert chiller_controller.step_results == pytest.approx(np.array([expected_results]), rel=1e-2)
 
 
-    def test_controller_run_control_invalid_source_temperature(self):
+    def test_controller_run_control_switched_off(self):
         """
-        Test the Chiller controller with source temperature too low to operate.
-        Expect the chiller to not be activated.
+        A chiller switched off (ctrl = 0) does not run, whatever its cooling load.
         """
         prosumer = create_empty_prosumer_container()
         period_idx = _default_period(prosumer)
@@ -197,8 +196,8 @@ class TestChiller:
         )
         chiller_controller = prosumer.controller.iloc[chiller_controller_idx].object
 
-        # Set inputs with unreasonably low source temperature
-        chiller_controller.inputs = np.array([[250.15, 285.15, 303.15, 5, 10000, 0.85, 337320, 1]])
+        # t_set_pt_c, t_in_ev_c, t_in_cond_c, dt_cond_c, q_load_kw, n_is, q_max_kw, ctrl
+        chiller_controller.inputs = np.array([[7.0, 12.0, 30.0, 5, 100, 0.85, 200, 0]])
 
         chiller_controller.time_step(prosumer, "2020-01-01 00:00:00")
         chiller_controller.control_step(prosumer)
@@ -217,13 +216,13 @@ class TestChiller:
         idx = create_controlled_chiller(prosumer, order=0, period=period_idx, n_ref="R410A")
         chiller = prosumer.controller.iloc[idx].object
 
-        # Providing inputs with control flag ON (1), but setpoint > inlet
-        chiller.inputs = np.array([[280.15, 285.15, 303.15, 5, 15000, 0.85, 337320, 1]])
+        # Providing inputs with control flag ON (1), but setpoint (14 degC) > inlet (12 degC)
+        chiller.inputs = np.array([[14.0, 12.0, 30.0, 5, 150, 0.85, 200, 1]])
 
         chiller.time_step(prosumer, prosumer.period.iloc[0]["start"])
         chiller.control_step(prosumer)
 
-        expected_outputs = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 285.15, 303.15, 0.0, 0.0, 0.0]])
+        expected_outputs = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 12.0, 30.0, 0.0, 0.0, 0.0]])
 
         assert np.allclose(chiller.step_results, expected_outputs, rtol=1e-3)
 
@@ -235,3 +234,24 @@ class TestChiller:
 
 
 
+
+    def test_running_chiller_takes_its_temperatures_in_celsius(self):
+        """
+        The ``*_c`` inputs are °C (as their names say): a 7 °C set point, 12 °C chilled-water return
+        and 30 °C condenser inlet run the chiller with a plausible EER, and the outlets stay in °C.
+        """
+        prosumer = create_empty_prosumer_container()
+        idx = create_controlled_chiller(prosumer, order=0, period=_default_period(prosumer), n_ref="R410A",
+                                        w_evap_pump=0.0, w_cond_pump=0.0)  # the refrigeration cycle alone
+        chiller = prosumer.controller.iloc[idx].object
+        # t_set_pt_c, t_in_ev_c, t_in_cond_c, dt_cond_c, q_load_kw, n_is, q_max_kw, ctrl: a 100 kW cooling load
+        chiller.inputs = np.array([[7.0, 12.0, 30.0, 5.0, 100.0, 0.7, 200.0, 1]])
+        chiller.time_step(prosumer, prosumer.period.iloc[0]["start"])
+        chiller.control_step(prosumer)
+
+        q_evap, _, w_in_tot, eer, _, t_out_ev, t_out_cond, _, _, q_cond = chiller.step_results[0]
+        assert q_evap == pytest.approx(100.0)
+        assert 2.0 < eer < 8.0
+        assert q_cond > q_evap  # the condenser rejects the cooling plus the compressor work
+        assert t_out_ev == pytest.approx(7.0)
+        assert t_out_cond == pytest.approx(35.0)

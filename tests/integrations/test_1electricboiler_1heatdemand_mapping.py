@@ -1,14 +1,19 @@
+import warnings
+
 import pytest
 import numpy as np
 import pandas as pd
-from pandas.testing import assert_series_equal
+from pandas.testing import assert_frame_equal, assert_series_equal
 
 from pandaprosumer.run_time_series import run_timeseries
 from pandaprosumer.mapping import GenericMapping, FluidMixMapping
+from pandaprosumer.controller.mapped import EnergyLeakWarning
 
 from pandaprosumer import (create_period, DFData, create_empty_prosumer_container,
                            create_controlled_const_profile, create_controlled_electric_boiler,
                            create_controlled_heat_demand)
+
+from tests.integrations.test_overflow_strategy_consistency import _assert_interface_consistent
 
 
 class Test1ElectricBoiler1HeatDemandMapping:
@@ -134,3 +139,55 @@ class Test1ElectricBoiler1HeatDemandMapping:
             "Boiler at min_p_kw on a small demand must overshoot the demand."
         # No overshoot when demand is 0 or above min
         assert not overshoot[~running].any()
+
+
+class Test1ElectricBoiler1HeatDemandMinOnOffTime:
+    """
+    An Electric Boiler with min_on_time_s and min_off_time_s mapped to a Heat Demand that switches on and off every hour
+    """
+
+    def _build(self):
+        prosumer = create_empty_prosumer_container()
+        data = pd.DataFrame({"demand_1": [0, 50, 0, 50, 0, 50, 0, 50, 0, 50]})
+        start = '2020-01-01 00:00:00'
+        resol = 3600
+        end = pd.Timestamp(start) + len(data) * pd.Timedelta(seconds=resol) - pd.Timedelta(seconds=1)
+        period = create_period(prosumer, resol, start, end, 'utc', 'default')
+        data.index = pd.date_range(start, end, freq=f'{resol}s', tz='utc')
+        cp = create_controlled_const_profile(prosumer, ["demand_1"], ["qdemand_kw"],
+                                             DFData(data), period, 0, 0)
+        eb = create_controlled_electric_boiler(prosumer, period=period, level=1, order=0,
+                                               max_p_kw=100, min_p_kw=20,
+                                               min_on_time_s=2 * 3600, min_off_time_s=2 * 3600)
+        hd = create_controlled_heat_demand(prosumer, period=period, level=1, order=1,
+                                           t_feed_demand_c=76.85, t_return_demand_c=30)
+        GenericMapping(container=prosumer, initiator_id=cp, initiator_column="qdemand_kw",
+                       responder_id=hd, responder_column="q_demand_kw", order=1)
+        FluidMixMapping(container=prosumer, initiator_id=eb, responder_id=hd, order=0)
+        return prosumer, period
+
+    def test_min_on_off_time(self):
+        prosumer, period = self._build()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", EnergyLeakWarning)
+            run_timeseries(prosumer, period, True)
+
+        eb_df = prosumer.time_series.loc[0].data_source.df
+        hd_df = prosumer.time_series.loc[1].data_source.df
+
+        # Started at 01:00 (held at min_p_kw at 02:00), stopped at 04:00 (held off at 05:00 despite the demand),
+        # restarted at 07:00 (held at min_p_kw at 08:00)
+        assert eb_df.q_kw.values == pytest.approx([0, 50, 20, 50, 0, 0, 0, 50, 20, 50], abs=.1)
+        assert eb_df.p_kw.values == pytest.approx(eb_df.q_kw.values, abs=.1)
+        assert hd_df.q_uncovered_kw.values == pytest.approx([0, 0, -20, 0, 0, 50, 0, 0, -20, 0], abs=.1)
+        _assert_interface_consistent(eb_df, hd_df, 't_out_c', 't_in_c', 'mdot_kg_per_s', 'q_kw', rtol_q=.01)
+
+    def test_min_on_off_time_rerun(self):
+        """
+        The on/off history is reset at the start of each run, so a second run gives the same results
+        """
+        prosumer, period = self._build()
+        run_timeseries(prosumer, period, True)
+        first_run_df = prosumer.time_series.loc[0].data_source.df.copy()
+        run_timeseries(prosumer, period, True)
+        assert_frame_equal(prosumer.time_series.loc[0].data_source.df, first_run_df)

@@ -18,7 +18,19 @@ class StratifiedHeatStorageControllerData:
     period_index : int, optional
         Index of the period, default is None.
     input_columns : List[str]
-        List of input column names.
+        List of input column names. Both inputs are optional external dispatch
+        setpoints (e.g. from a MILP supervisor or an optimiser result replayed as a
+        time series). NaN (not mapped) or a negative value means "no setpoint":
+        the storage's own charge/discharge logic applies for that timestep.
+        ``0.0`` is a setpoint (force no charge / no discharge).
+
+        **mdot_charge_setpoint_kg_per_s** - Imposed charge mass flow. Clamped to the
+        mass flow actually received from upstream and ignored when the tank is full
+        [kg/s].
+
+        **mdot_discharge_setpoint_kg_per_s** - Imposed discharge mass flow from the top
+        of the storage. Clamped to zero when the top layer is not warmer than the
+        demand return temperature [kg/s].
 
     result_columns : List[str]
         List of result column names. Four flows are reported (received, charge,
@@ -43,18 +55,22 @@ class StratifiedHeatStorageControllerData:
         Total fluid sent to downstream demand (discharge + bypass mixed). ``t_delivered_in_c``
         is the return temperature from downstream [kg/s, °C, °C, kW].
 
-        **e_stored_kwh** - The total stored heat energy in the storage above the element
-         minimum usefully temperature compared to the initial state [kWh]
+        **e_stored_kwh** - The heat stored in every layer compared to the initial state (negative
+        when the tank is colder than it started) [kWh]
+
+        **e_usable_kwh** - The heat the demand can still draw: the layers not colder than
+        ``min_useful_temp_c`` (minus ``MIN_USEFUL_MARGIN_K``), above the demand's return [kWh]
 
     """
     element_index: List[int]
     element_name: str = 'stratified_heat_storage'
     period_index: int = None
-    input_columns: List[str] = field(default_factory=lambda: [])
+    input_columns: List[str] = field(default_factory=lambda: ["mdot_charge_setpoint_kg_per_s",
+                                                              "mdot_discharge_setpoint_kg_per_s"])
     result_columns: List[str] = field(default_factory=lambda: [
         "mdot_received_kg_per_s", "t_received_in_c", "t_received_out_c", "q_received_kw",
         "mdot_charge_kg_per_s", "t_charge_in_c", "t_charge_out_c", "q_charge_kw",
         "mdot_discharge_kg_per_s", "t_discharge_in_c", "t_discharge_out_c", "q_discharge_kw",
         "mdot_delivered_kg_per_s", "t_delivered_in_c", "t_delivered_out_c", "q_delivered_kw",
-        "e_stored_kwh",
+        "e_stored_kwh", "e_usable_kwh",
     ])

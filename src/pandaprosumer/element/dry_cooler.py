@@ -34,6 +34,10 @@ class DryCoolerElementData:
         ('adiabatic_mode', bool),
         ('phi_adiabatic_sat_percent', 'f8'),
         ('min_delta_t_air_c', 'f8'),
+        ('min_fan_speed_pct', 'f8'),
+        ('min_p_fan_kw', 'f8'),
+        ('max_fan_speed_pct', 'f8'),
+        ('max_p_fan_kw', 'f8'),
 
         ('in_service', bool)
     ])

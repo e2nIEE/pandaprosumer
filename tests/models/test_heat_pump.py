@@ -1,11 +1,15 @@
+import warnings
 import pytest
 import numpy as np
 from pandaprosumer import create_empty_prosumer_container, create_period, create_heat_pump, create_controlled_heat_pump
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
+from pandaprosumer.controller.models.heat_pump import ShadowedInputWarning
 
 
 def _default_argument():
-    return {'max_p_comp_kw': 500,
+    # The expected values below were computed with the Carnot COP
+    return {'mode': 'carnot',
+            'max_p_comp_kw': 500,
             'min_p_comp_kw': .01,
             'max_t_cond_out_c': 100,
             'max_cop': 10,
@@ -38,10 +42,10 @@ class TestHeatPump:
         assert len(prosumer.heat_pump) == 1
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
                             "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
-                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
+                            "max_t_cond_out_c", "max_cop", "min_on_time_s", "min_off_time_s", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy"]
-        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
-                           'water', 'water', 'carnot', True, 'dump_proportional']
+        expected_values = [None, 15., .5, np.nan, 5, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan,
+                           'water', 'water', 'lorenz', True, 'dump_proportional']
 
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
 
@@ -64,6 +68,8 @@ class TestHeatPump:
                   'max_ramp_down_kw_per_s': 0.03,
                   'max_t_cond_out_c': 80,
                   'max_cop': 5,
+                  'min_on_time_s': 6 * 3600,
+                  'min_off_time_s': 3 * 3600,
                   'evap_fluid': 'air'}
 
         hp_idx = create_heat_pump(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
@@ -74,9 +80,9 @@ class TestHeatPump:
 
         expected_columns = ["name", "delta_t_evap_c", "carnot_efficiency", "pinch_c", "delta_t_hot_default_c",
                             "max_p_comp_kw", "min_p_comp_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s",
-                            "max_t_cond_out_c", "max_cop", "cond_fluid", "evap_fluid", "mode",
+                            "max_t_cond_out_c", "max_cop", "min_on_time_s", "min_off_time_s", "cond_fluid", "evap_fluid", "mode",
                             "in_service", "overflow_strategy", "custom"]
-        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 'water', 'air', 'carnot',
+        expected_values = ['foo', 15., .5, 5., 10., 300, 10, .02, .03, 80, 5, 6 * 3600, 3 * 3600, 'water', 'air', 'lorenz',
                            False, 'dump_proportional', 'test']
         assert sorted(prosumer.heat_pump.columns) == sorted(expected_columns)
         assert prosumer.heat_pump.iloc[0].values == pytest.approx(expected_values)
@@ -101,7 +107,7 @@ class TestHeatPump:
         hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **_default_argument())
         hp_controller = prosumer.controller.iloc[hp_controller_idx].object
 
-        input_columns_expected = ["t_evap_in_c"]
+        input_columns_expected = ["t_evap_in_c", "max_p_comp_kw_setpoint"]
 
     def test_controller_mode_lorenz(self):
         """
@@ -306,7 +312,7 @@ class TestHeatPump:
         Test the Heat Pump controller with a demand out of working range
         Check that the mass flow and temperature of the fluid dispatched to the demand is at the limit
         """
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -332,7 +338,7 @@ class TestHeatPump:
         Test the Heat Pump controller with 3 demands out of working range
         Test the merit order dispatch logic
         """
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -456,6 +462,38 @@ class TestHeatPump:
         assert hp_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 80.,
                                                              FluidMixMapping.MASS_FLOW_KEY: 2.}]
 
+    def test_controller_run_control_demand_higher_mass_flow_cop_cap(self):
+        """
+        Reverse path (fixed evaporator mass flow exceeds the HP-required flow) must
+        still honour max_cop. With a low temperature lift the uncapped Carnot COP is
+        well above the bound; the cap has to fire on the _calculate_heat_pump_reverse
+        path, not only on the forward path. Regression for the June coupled run where
+        the ECS HP reported COP 4-6 despite max_cop=4.0.
+        """
+        prosumer = create_empty_prosumer_container()
+        params = dict(_default_argument())
+        params['max_cop'] = 4.0
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0,
+                                                        period=_default_period(prosumer),
+                                                        **params)
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        # Low lift (45 -> 50) -> uncapped Carnot COP ~ 0.5 * (50+273.15)/(50-45) ~ 32.
+        # Large condenser demand with a small supplied evaporator flow forces the
+        # HP-required evaporator flow above the supplied flow -> reverse path.
+        hp_controller.inputs = np.array([[45]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 45
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = 1.0
+        hp_controller.t_m_to_deliver = lambda x: (50, 45, [20])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+
+        q_cond_kw, p_comp_kw, _q_evap_kw, cop = hp_controller.step_results[0][:4]
+        assert p_comp_kw > 1e-3, "HP should be running"
+        assert cop == pytest.approx(params['max_cop'], abs=1e-3), \
+            f"reverse-path COP {cop} not capped at {params['max_cop']}"
+        assert q_cond_kw / p_comp_kw == pytest.approx(cop, rel=1e-6), \
+            "q_cond / p_comp must equal the reported (capped) COP"
+
     def test_controller_run_control_demand_lower_mass_flow(self):
         """
         Test the Heat Pump controller with a demand
@@ -483,7 +521,7 @@ class TestHeatPump:
         max_ramp_up_kw_per_s = 50
         max_ramp_down_kw_per_s = 60
         resol_s = 1
-        params = {'carnot_efficiency': 0.5,
+        params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                   'pinch_c': 0,
                   'delta_t_evap_c': 15,
                   'max_p_comp_kw': 500,
@@ -636,7 +674,7 @@ class TestHeatPump:
         
         # Test in Lorenz mode
         hp_controller = prosumer.controller.iloc[hp_controller_index].object
-        prosumer.heat_pump.iloc[0].mode = 'lorenz'
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = 'lorenz'
         
         hp_controller.control_step(prosumer)
         
@@ -745,7 +783,7 @@ class TestHeatPump:
         hp_controller = prosumer.controller.iloc[hp_controller_index].object
         
         # Set the mode
-        prosumer.heat_pump.iloc[0].mode = mode
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = mode
         
         # Test conditions
         t_cond_out_c, t_evap_in_c = 80, 20
@@ -856,3 +894,264 @@ class TestHeatPump:
                     f"({t_cond_out_c}°C, {t_evap_in_c}°C)"
                 )
         
+    @staticmethod
+    def _run_hourly_steps(prosumer, hp_controller, mdot_demands_kg_per_s, n_control_steps=1):
+        """
+        Drive the controller over consecutive hourly time steps with a demand at 80/30 °C and air at 20 °C
+        (a null demand is sent as a heat demand does: no mass flow and no temperature difference).
+        finalize_step is called as in run_timeseries, as it records the on/off state of the heat pump.
+        n_control_steps > 1 re-runs control_step within a time step, as a reapply does.
+        Return the step results of each time step.
+        """
+        results = []
+        for i, mdot_kg_per_s in enumerate(mdot_demands_kg_per_s):
+            time = f"2020-01-01 {i:02d}:00:00"
+            t_feed_c = 80 if mdot_kg_per_s > 0 else 30
+            hp_controller.t_m_to_deliver = lambda x, mdot_kg_per_s=mdot_kg_per_s, t_feed_c=t_feed_c: (t_feed_c, 30, [mdot_kg_per_s])
+            hp_controller.time_step(prosumer, time)
+            for _ in range(n_control_steps):
+                # Air at 20 °C, no compressor power setpoint
+                hp_controller.inputs = np.array([[20, np.nan]])
+                hp_controller.control_step(prosumer)
+            hp_controller.finalize_step(prosumer, time)
+            results.append(hp_controller.step_results[0].copy())
+        return np.array(results)
+
+    @staticmethod
+    def _hourly_controller(**params):
+        prosumer = create_empty_prosumer_container()
+        period = create_period(prosumer, 3600,
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 23:59:59",
+                               timezone="utc")
+        hp_params = {'max_p_comp_kw': 500,
+                     'min_p_comp_kw': 20,
+                     'pinch_c': 0,
+                     'mode': 'carnot',
+                     'overflow_strategy': 'cap'}
+        hp_params.update(params)
+        hp_controller_index = create_controlled_heat_pump(prosumer, period=period, **hp_params)
+        return prosumer, prosumer.controller.iloc[hp_controller_index].object
+
+    # Compressor power for .5 kg/s heated from 30 to 80 °C with air at 20 °C (COP 2.94)
+    P_COMP_ON_KW = 35.537
+
+    @pytest.mark.parametrize("n_control_steps", [1, 2])
+    def test_controller_run_control_min_on_time(self, n_control_steps):
+        """
+        Once started, the heat pump keeps running at min_p_comp_kw when the demand stops,
+        until it has run for min_on_time_s
+        """
+        prosumer, hp_controller = self._hourly_controller(min_on_time_s=3 * 3600)
+        results = self._run_hourly_steps(prosumer, hp_controller, [0, .5, 0, 0, 0, 0], n_control_steps)
+
+        # Started at 01:00: still locked on at 02:00 and 03:00, free to stop at 04:00
+        assert results[:, 1] == pytest.approx([0, self.P_COMP_ON_KW, 20, 20, 0, 0], rel=1e-3)
+        # Without demand, the held heat pump keeps the condenser temperature lift of the previous time step
+        assert results[2:4, 6] - results[2:4, 5] == pytest.approx([50, 50], rel=1e-3)
+        # Energy balance of the held heat pump
+        assert results[:, 0] == pytest.approx(results[:, 1] + results[:, 2], abs=1e-6)
+
+    @pytest.mark.parametrize("n_control_steps", [1, 2])
+    def test_controller_run_control_min_off_time(self, n_control_steps):
+        """
+        Once stopped, the heat pump does not restart when the demand comes back,
+        until it has been stopped for min_off_time_s
+        """
+        prosumer, hp_controller = self._hourly_controller(min_off_time_s=3 * 3600)
+        results = self._run_hourly_steps(prosumer, hp_controller, [.5, 0, .5, .5, .5, .5], n_control_steps)
+
+        p_on = self.P_COMP_ON_KW
+        # Stopped at 01:00: still locked off at 02:00 and 03:00, free to restart at 04:00
+        assert results[:, 1] == pytest.approx([p_on, 0, 0, 0, p_on, p_on], rel=1e-3)
+        # A locked-off heat pump exchanges no heat and delivers no mass flow
+        locked = results[2:4]
+        assert locked[:, 0] == pytest.approx([0, 0])
+        assert locked[:, 4] == pytest.approx([0, 0])
+        assert locked[:, 6] == pytest.approx(locked[:, 5])
+        assert locked[:, 7] == pytest.approx([0, 0])
+
+    def test_controller_run_control_min_on_and_off_time(self):
+        """
+        With a demand alternating every hour, both durations are respected:
+        every run lasts at least min_on_time_s and every stop at least min_off_time_s
+        """
+        prosumer, hp_controller = self._hourly_controller(min_on_time_s=2 * 3600, min_off_time_s=2 * 3600)
+        results = self._run_hourly_steps(prosumer, hp_controller, [0, .5, 0, .5, 0, .5, 0, .5, 0, .5])
+
+        p_on = self.P_COMP_ON_KW
+        # Started at 01:00, stopped at 04:00, restarted at 07:00
+        assert results[:, 1] == pytest.approx([0, p_on, 20, p_on, 0, 0, 0, p_on, 20, p_on], rel=1e-3)
+
+    def test_controller_run_control_min_times_default(self):
+        """
+        Without min_on_time_s and min_off_time_s, the heat pump follows the demand immediately
+        """
+        prosumer, hp_controller = self._hourly_controller()
+        results = self._run_hourly_steps(prosumer, hp_controller, [.5, 0, .5, 0])
+
+        p_on = self.P_COMP_ON_KW
+        assert results[:, 1] == pytest.approx([p_on, 0, p_on, 0], rel=1e-3)
+
+    @pytest.mark.parametrize("mdot_demands_kg_per_s, p_expected_kw", [
+        # Off at the first time step: free to start at the next one
+        ([0, .5, 0], [0, P_COMP_ON_KW, 20]),
+        # On at the first time step: free to stop at the next one
+        ([.5, 0, .5], [P_COMP_ON_KW, 0, 0]),
+    ])
+    def test_controller_run_control_min_times_first_step(self, mdot_demands_kg_per_s, p_expected_kw):
+        """
+        The state at the first time step of a run is assumed to have lasted long enough:
+        only a start or a stop during the run locks the heat pump
+        """
+        prosumer, hp_controller = self._hourly_controller(min_on_time_s=6 * 3600, min_off_time_s=6 * 3600)
+        results = self._run_hourly_steps(prosumer, hp_controller, mdot_demands_kg_per_s)
+
+        assert results[:, 1] == pytest.approx(p_expected_kw, rel=1e-3)
+
+    @pytest.mark.parametrize("min_p_comp_kw", [np.nan, 0])
+    def test_define_controller_min_on_time_without_min_p_comp_kw(self, min_p_comp_kw):
+        """
+        min_on_time_s needs a positive min_p_comp_kw: it is the power that holds the heat pump on
+        """
+        with pytest.raises(ValueError, match="min_on_time_s"):
+            self._hourly_controller(min_p_comp_kw=min_p_comp_kw, min_on_time_s=3600)
+
+@pytest.mark.parametrize("setpoint, expected_p_comp_kw", [(np.nan, 500.), (-1, 500.), (200, 200.)])
+def test_controller_max_p_comp_kw_setpoint_caps_the_compressor(setpoint, expected_p_comp_kw):
+    """A mapped ``max_p_comp_kw_setpoint`` lowers the compressor power for the step; negative or NaN = no cap."""
+    params = {'carnot_efficiency': 0.5, 'pinch_c': 0, 'delta_t_evap_c': 15, 'max_p_comp_kw': 500,
+              'min_p_comp_kw': .01, 'max_t_cond_out_c': 100, 'max_cop': 10}
+    prosumer = create_empty_prosumer_container()
+    idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer), **params)
+    controller = prosumer.controller.iloc[idx].object
+    controller.inputs = np.array([[20, setpoint]])
+    controller.t_m_to_deliver = lambda x: (80, 30, [10])
+    controller.time_step(prosumer, "2020-01-01 00:00:00")
+    controller.control_step(prosumer)
+    assert controller.step_results[0][1] == pytest.approx(expected_p_comp_kw, rel=1e-3)
+
+
+class TestHeatPumpShadowedEvapInput:
+    """
+    A fluid on the evaporator shadows a mapped t_evap_in_c: warn once per controller.
+    """
+
+    @staticmethod
+    def _controller(t_mapped_c, t_fluid_c, mdot_fluid_kg_per_s=np.nan, **params):
+        prosumer = create_empty_prosumer_container()
+        hp_controller_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                                        **{**_default_argument(), **params})
+        hp_controller = prosumer.controller.iloc[hp_controller_idx].object
+        hp_controller.inputs = np.array([[t_mapped_c]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_fluid_c
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY] = mdot_fluid_kg_per_s
+        hp_controller.t_m_to_deliver = lambda x: (80, 30, [2])
+        return prosumer, hp_controller
+
+    @staticmethod
+    def _run(prosumer, hp_controller):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+            hp_controller.control_step(prosumer)
+        return [w for w in caught if issubclass(w.category, ShadowedInputWarning)]
+
+    def test_warns_when_fluid_and_mapped_temperature_both_set(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=5, t_fluid_c=20)
+        shadowed = self._run(prosumer, hp_controller)
+        assert len(shadowed) == 1
+        assert "t_evap_in_c is ignored" in str(shadowed[0].message)
+        # The fluid's temperature is the one used (index 8 = t_evap_in_c of the step results)
+        assert hp_controller.step_results[0][8] == pytest.approx(20.)
+
+    def test_warns_only_once_per_controller(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=5, t_fluid_c=20)
+        assert len(self._run(prosumer, hp_controller)) == 1
+        hp_controller.inputs = np.array([[5]])
+        hp_controller.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = 20
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_with_mapped_temperature_only(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=20, t_fluid_c=np.nan)
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_with_fluid_only(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=np.nan, t_fluid_c=20)
+        assert self._run(prosumer, hp_controller) == []
+
+    def test_no_warning_for_static_parameter_default(self):
+        prosumer, hp_controller = self._controller(t_mapped_c=np.nan, t_fluid_c=20, t_evap_in_c=5)
+        assert self._run(prosumer, hp_controller) == []
+
+
+@pytest.mark.parametrize("mode", [None, np.nan, '', 'lorenz', 'LORENZ'])
+def test_lorenz_cop_is_the_default_and_rises_with_a_colder_return(mode):
+    """The default (Lorenz) COP sees the condenser inlet: a colder return gives a higher COP."""
+    def cop_for_return(t_return_c):
+        prosumer = create_empty_prosumer_container()
+        hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                             max_p_comp_kw=500, min_p_comp_kw=.01, max_t_cond_out_c=100,
+                                             pinch_c=0)
+        prosumer.heat_pump.loc[prosumer.heat_pump.index[0], 'mode'] = mode
+        hp_controller = prosumer.controller.iloc[hp_idx].object
+        hp_controller.inputs = np.array([[20]])
+        hp_controller.t_m_to_deliver = lambda x: (80, t_return_c, [1])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+        return hp_controller.step_results[0][3]
+
+    assert cop_for_return(50) > cop_for_return(70)
+
+
+def test_carnot_cop_ignores_the_return():
+    """The 'carnot' mode only sees the condenser outlet temperature."""
+    def cop_for_return(t_return_c):
+        prosumer = create_empty_prosumer_container()
+        hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                             **_default_argument())
+        hp_controller = prosumer.controller.iloc[hp_idx].object
+        hp_controller.inputs = np.array([[20]])
+        hp_controller.t_m_to_deliver = lambda x: (80, t_return_c, [1])
+        hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        hp_controller.control_step(prosumer)
+        return hp_controller.step_results[0][3]
+
+    assert cop_for_return(50) == pytest.approx(cop_for_return(70))
+
+
+def test_unknown_cop_mode_is_rejected():
+    prosumer = create_empty_prosumer_container()
+    hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                         max_p_comp_kw=500, mode='rankine')
+    hp_controller = prosumer.controller.iloc[hp_idx].object
+    hp_controller.inputs = np.array([[20]])
+    hp_controller.t_m_to_deliver = lambda x: (80, 50, [1])
+    hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+    with pytest.raises(ValueError, match="unknown COP mode"):
+        hp_controller.control_step(prosumer)
+
+
+@pytest.mark.parametrize("mode", ['lorenz', 'carnot'])
+def test_no_temperature_lift_turns_the_heat_pump_off(mode):
+    """
+    A 77 °C source for a 40 -> 80 °C condenser stream: the outlet is above the source, but the
+    condenser's log-mean temperature (~59 °C) is below the evaporator's (77 -> 67 °C, ~72 °C), so
+    there is no lift for the Lorenz COP: the heat pump is off instead of failing on a negative
+    COP. Carnot only sees the outlet, so it still runs.
+    """
+    prosumer = create_empty_prosumer_container()
+    hp_idx = create_controlled_heat_pump(prosumer, order=0, period=_default_period(prosumer),
+                                         **{**_default_argument(), 'mode': mode})
+    hp_controller = prosumer.controller.iloc[hp_idx].object
+    hp_controller.inputs = np.array([[77]])
+    hp_controller.t_m_to_deliver = lambda x: (80, 40, [2])
+    hp_controller.time_step(prosumer, "2020-01-01 00:00:00")
+    hp_controller.control_step(prosumer)
+
+    q_cond_kw, p_comp_kw, _, cop = hp_controller.step_results[0][:4]
+    if mode == 'lorenz':
+        assert (q_cond_kw, p_comp_kw) == (0, 0)
+    else:
+        assert q_cond_kw > 0 and cop > 0

@@ -45,7 +45,7 @@ Input Static Data
     "tank_external_radius_m  ", "tank_external_radius (without insulation)", "m"
     "insulation_thickness_m  ", "insulation thickness", "m"
     "n_layers  ", " Number of layers used for the calculations", "N/A"
-    "min_useful_temp_c  ", "Temperature used as a threshold to calculate the amount of stored energy", "Degree Celsius"
+    "min_useful_temp_c  ", "Temperature the storage asks its source to charge it at, and the lowest top-layer temperature (minus 0.5 K, ``MIN_USEFUL_MARGIN_K``) it still discharges from", "Degree Celsius"
     "k_fluid_w_per_mk  ", "Thermal conductivity of storage fluid (prosumer.fluid)", "W/(mK)"
     "k_insu_w_per_mk ", "Thermal conductivity of insulation", "W/(mK)"
     "k_wall_w_per_mk  ", "Thermal conductivity of the tank wall", "W/(mK)"
@@ -64,13 +64,63 @@ Input Static Data
 Input Time Series
 -------------------
 
+Both inputs are optional dispatch setpoints for an external controller (e.g. a MILP supervisor, or an optimiser
+result replayed through a :ref:`ConstProfileController <const_profile_controller>` and a :ref:`GenericMapping <GenericMapping>`).
+When an input is not mapped (NaN) or negative, no setpoint applies and the storage uses its own charge/discharge logic
+for that timestep. ``0.0`` is a setpoint (force no charge / no discharge). The setpoint is taken into account both in
+the mass flow the storage requests from its upstream producer and in the charge / bypass / discharge split, so the
+mass and energy balances at both FluidMix interfaces still close.
+
+.. csv-table::
+    :header: "Parameter", "Description", "Unit"
+
+    "mdot_charge_setpoint_kg_per_s ", "Imposed charge mass flow. Clamped to the mass flow actually received from\ upstream, ignored when the tank is full. The discharge (if free) is then sized to\ cover the remaining demand energy.", "kg/s"
+    "mdot_discharge_setpoint_kg_per_s ", "Imposed discharge mass flow from the top of the storage. Clamped to zero\ when the top layer is not warmer than the demand return. The bypass (if free) is\ then sized to cover the remaining demand energy and the surplus received charges the tank.", "kg/s"
+
+Output Time Series
+-------------------
+
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
     "mdot_discharge_kg_per_s ", "The storage discharge mass flow", "kg/s"
     "t_discharge_c ", "The storage discharge temperature", "Degree Celsius"
     "q_delivered_kw ", "The storage delivered power to the downstream elements (including bypass)", "kW"
-    "e_stored_kwh ", "The total stored heat energy in the storage above the element minimum usefully temperature compared to the initial state", "kWh"
+    "e_stored_kwh ", "The heat stored in every layer compared to the initial state (negative when the tank is colder than it started)", "kWh"
+    "e_usable_kwh ", "The heat the demand can still draw: the layers not colder than ``min_useful_temp_c`` minus 0.5 K, above the demand's return", "kWh"
+
+Connections
+-----------------------
+The four connections can sit at any height (``shs_ports``). ``height_charge_in_m`` (source feed in, default the
+top), ``height_charge_out_m`` (return to the source, default the bottom), ``height_discharge_out_m`` (to the demand,
+default the top) and ``height_discharge_in_m`` (demand return in, default the bottom) place them on the layer that
+holds that height, the way nozzles sit on a real tank (space heating drawn half-way up, a lukewarm return sent to the
+middle). ``auto_ports`` lists the connections placed by temperature at each step instead: ``charge_in`` and
+``discharge_in`` enter the highest layer not warmer than their water (an ideal stratification lance, leaving the hot
+layers above alone), ``discharge_out`` draws the lowest layer still at the demand's feed temperature (the hottest
+water is kept for later), ``charge_out`` draws the coldest layer (the best return for a heat pump).
+
+The layers are solved in conservative finite volumes: the flow through each interface is what enters the layers
+above it minus what leaves them, carried at the upwind layer's temperature with the superbee limiter, inflows enter
+at their own temperature and outflows leave at their layer's. The heat of the layers therefore changes by exactly
+what the connections bring minus the wall losses, whatever the heights and the flows (the scheme used before, a
+uniform net flow with end-layer boundary terms, lost or created a few percent when charging and discharging at
+once, up to 20 % of a step's exchange; ``tests/models/test_shs_ports.py``). A layer left warmer than the one above
+it (a return hotter than the bottom, a charge colder than the top, a mid-height inflow colder than its layer, an
+inverted initial profile) is mixed with its neighbours after every sub-step until the profile is monotone again,
+at constant heat, the way buoyancy undoes an inversion within minutes in a real tank.
+
+Exchanged energy
+-----------------------
+Over a step the water leaves the tank as a plug: the charge return is the layers the charge pushes out of its outlet
+(from the outlet towards its inlet), the discharge is the layers it draws from its outlet, both at their mean temperature (beyond the tank's mass, the inflow passes
+through). The storage requests from its source the mass that pushes out every bottom layer still more than 0.5 K
+(``MIN_CHARGE_DELTA_T_K``) under the charge temperature and promises it that plug's mean return; on a reapply pass it
+splits the energy the source actually delivered the same way. A charge no warmer than the water it would push out
+passes by without exchange, what the tank cannot take within a step goes to the demand when there is one, and a
+discharge delivers the energy the split planned (or what the tank holds) by drawing the mass that carries it. So the
+heat the storage books equals the change of its layers' energy, up to the wall losses and the solver's numerical
+diffusion (``tests/integrations/test_shs_energy_invariants.py``).
 
 Mapping
 -----------------------

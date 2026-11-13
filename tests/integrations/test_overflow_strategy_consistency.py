@@ -213,7 +213,7 @@ class TestHeatPumpOverflowStrategyDumpOnLast:
         cp = create_controlled_const_profile(prosumer, cp_in, cp_out, DFData(data),
                                              period, level=0, order=0)
         hp = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
-                                         carnot_efficiency=0.5, pinch_c=0,
+                                         mode='carnot', carnot_efficiency=0.5, pinch_c=0,
                                          delta_t_evap_c=5,
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=overflow_strategy)
@@ -435,7 +435,7 @@ class TestPhysicsInvariantsDumpOnLast:
             ["t_evap_in_c", "qdemand_kw", "tdmd_feed_c", "tdmd_return_c"],
             DFData(data), period, level=0, order=0)
         hp = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
-                                         carnot_efficiency=0.5, pinch_c=0,
+                                         mode='carnot', carnot_efficiency=0.5, pinch_c=0,
                                          delta_t_evap_c=5,
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=strategy)
@@ -714,7 +714,7 @@ class TestMassBalanceAtFluidMixInterface:
             ["t_evap_in_c", "qdemand_kw", "tdmd_feed_c", "tdmd_return_c"],
             DFData(data), period, level=0, order=0)
         hp = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
-                                         carnot_efficiency=0.5, pinch_c=0,
+                                         mode='carnot', carnot_efficiency=0.5, pinch_c=0,
                                          delta_t_evap_c=5,
                                          max_p_comp_kw=100, min_p_comp_kw=15,
                                          overflow_strategy=strategy)
@@ -780,7 +780,7 @@ def _run_hp_min_p_scenario(overflow_strategy):
         ["t_evap_in_c", "qdemand_kw", "tdmd_feed_c", "tdmd_return_c"],
         DFData(data), period, level=0, order=0)
     hp = create_controlled_heat_pump(prosumer, level=1, order=0, period=period,
-                                     carnot_efficiency=0.5, pinch_c=0,
+                                     mode='carnot', carnot_efficiency=0.5, pinch_c=0,
                                      delta_t_evap_c=5,
                                      max_p_comp_kw=100, min_p_comp_kw=15,
                                      overflow_strategy=overflow_strategy)

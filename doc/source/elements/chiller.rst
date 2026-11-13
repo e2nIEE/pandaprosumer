@@ -67,6 +67,10 @@ Input Time Series
     "max_chiller_power_col", "Column header of Maximum chiller power", "kJ/h"
     "control_signal_col", "Column header of Control signal", "-"
 
+The cooling load is the ``q_load_kw`` input. Only when it is not mapped does the chiller cool what its
+responders ask for. A heat demand fed from the condenser (``q_cond_kw``) is therefore not a cooling load: the
+condenser heat follows from the cooling load.
+
 
 
 Output Time Series

@@ -18,8 +18,15 @@ class NetworkCouplingControl(BasicProsumerController):
     def __init__(self, net, elmt_ctrl_object, in_service=True, order=0, level=0,
                  temp_fluid_map_input_col=None, mdot_fluid_map_input_col=None,
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
+        # pandapower's control_diagnostic groups controllers by isinstance, so a subclass always falls inside the
+        # plain class's group and the groups overlap. The exact class name and the element make them a
+        # partition, whatever the creation order.
+        kwargs.setdefault("matching_params", {"element_name": elmt_ctrl_object.element_name,
+                                              "element_index": list(elmt_ctrl_object.element_index),
+                                              "coupling_type": type(self).__name__})
         super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
+        self.coupling_type = type(self).__name__
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
         self.treturn_required_k = 't_from_k'
@@ -49,12 +56,31 @@ class NetworkCouplingControl(BasicProsumerController):
         mdot_required_kg_per_s = np.array(net["res_" + self.element_name].loc[self.element_index, self.mdot_required_kg_per_s])
         return tfeed_required_c, treturn_required_c, mdot_required_kg_per_s
 
+    def is_converged(self, net):
+        """
+        Converged once applied AND the prosumer outputs mapped into it are still the ones it wrote into the network.
+
+        A prosumer controller may run again after this coupling wrote its outputs, within the same level: a heat
+        exchanger first answers with a guessed secondary return, writes that heat, then reruns once its demand
+        answers with the real return. Without this check the network kept the first answer (a coupled network: 220 kW
+        extracted from a 42 degC network the exchanger finally drew nothing from, cooling the water to -17 degC
+        and losing the heat). Unconverged, the coupling writes the final outputs and the network is solved again.
+        """
+        if not super().is_converged(net):
+            return False
+        written = getattr(self, "_written_inputs", None)
+        if written is None or self.inputs is None or np.size(self.inputs) == 0:
+            return True
+        return bool(np.allclose(np.nan_to_num(self.inputs, nan=0.), written, rtol=1e-6, atol=1e-6))
+
     def control_step(self, net):
         super().control_step(net)
         # EnergySystem Generic mappings inputs and outputs
-        # Replace NaNs with 0
-        clean_inputs = np.nan_to_num(self.inputs, nan=0.)  # FixMe: should avoid nan case
+        # The inputs are reset to NaN at each time step and the Generic mappings add to them: an input still NaN
+        # received no mapped value this step (e.g. its prosumer controller is out of service), so nothing to write
+        clean_inputs = np.nan_to_num(self.inputs, nan=0.)
         net[self.element_name].loc[self.element_index, self.input_columns] = clean_inputs
+        self._written_inputs = np.array(clean_inputs, dtype=float, copy=True)
 
         results = np.array(net["res_" + self.element_name].loc[self.element_index, self.result_columns])
 
@@ -68,11 +94,15 @@ class NetworkCouplingControl(BasicProsumerController):
                     net[self.element_name].loc[self.element_index, self.mdot_fluid_map_input_col] = mdot_in_kg_per_s
 
         # EnergySystem FluidMix mapping outputs to prosumers
-        if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
-            result_fluid_mix = [
-                {FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
-                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]
-            self.finalize(net, results, result_fluid_mix)
-        else:
-            self.finalize(net, results)
+        self.finalize(net, results, self._fluid_mix_outputs(results))
         self.applied = True
+
+    def _fluid_mix_outputs(self, results):
+        """
+        The fluid outputs (FluidMix mappings) built from this step's results, or None when the coupling
+        declares none. Subclasses override it to hand over something else than the solved (temperature, flow).
+        """
+        if self.temp_fluid_map_output_idx is None or self.mdot_fluid_map_output_idx is None:
+            return None
+        return [{FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
+                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]

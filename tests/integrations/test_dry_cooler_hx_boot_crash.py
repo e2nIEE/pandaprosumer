@@ -18,6 +18,7 @@ behavior with a positive steady-state assertion (energy balance, sensible
 temperatures, non-zero exchanged heat).
 """
 
+import pytest
 import numpy as np
 import pandas as pd
 
@@ -106,11 +107,11 @@ def _build_prosumer():
     )
 
     hx_idx = create_controlled_heat_exchanger(
-        prosumer, period=period, level=1, order=0, name="hx_dc", **HX_PARAMS
+        prosumer, period=period, level=1, order=0, name="hx", **HX_PARAMS
     )
 
     dc_idx = create_controlled_dry_cooler(
-        prosumer, period=period, level=1, order=1, name="dc_dc",
+        prosumer, period=period, level=1, order=1, name="dry_cooler",
         in_service=True, **DC_PARAMS,
     )
 
@@ -133,7 +134,7 @@ def _build_prosumer():
 
 
 def test_dry_cooler_hx_chain_boots_into_steady_state():
-    """hx_dc → dc_dc must boot into a consistent steady state at t=0.
+    """hx → dry_cooler must boot into a consistent steady state at t=0.
 
     With dry_cooler.in_service=True from t=0 and no upstream fluid history,
     the dry-cooler controller must fall back to its nominal design point so
@@ -158,7 +159,7 @@ def test_dry_cooler_hx_chain_boots_into_steady_state():
         err_msg="HX and dry cooler heat exchange should match (energy balance)",
     )
 
-    assert (hx_df["t_1_in_c"] > hx_df["t_1_out_c"]).all(), "BET-side should be cooled by HX"
+    assert (hx_df["t_1_in_c"] > hx_df["t_1_out_c"]).all(), "Primary side should be cooled by HX"
     assert (hx_df["t_2_out_c"] > hx_df["t_2_in_c"]).all(), "Secondary side should be heated by HX"
     assert (dc_df["t_fluid_in_c"] > dc_df["t_fluid_out_c"]).all(), "Dry cooler should cool the fluid"
     assert (dc_df["t_air_out_c"] >= dc_df["t_air_in_c"]).all(), "Air should be heated by dry cooler"
@@ -220,3 +221,28 @@ def test_hx_stalls_when_secondary_cold_side_too_warm_for_primary():
         f"Stalled HX should preserve secondary energy balance (t_2_out >= t_2_in); "
         f"got t_2_in_c={t_2_in_out}, t_2_out_c={t_2_out}"
     )
+
+
+def test_hx_pins_primary_outlet_at_cold_approach_when_secondary_inlet_too_warm():
+    """When the secondary inlet is warmer than ``t_1_in_c - min_delta_t_1_c`` but the primary can still be
+    cooled, calculate_heat_exchanger ignores ``min_delta_t_1_c`` and sets the primary outlet
+    ``HeatExchangerControl.MIN_DELTA_T_COLD_C`` above the secondary inlet, with a consistent energy balance.
+
+    Primary at 40 °C, secondary 36 -> 36.8 °C: ``t_1_in_c - min_delta_t_1_c = 35 °C`` is below the secondary inlet,
+    the hot approach (3.2 K) is above the 3 K cold approach, so the primary leaves at 39 °C.
+    """
+    from pandaprosumer.constants import HeatExchangerControl
+    prosumer, period = _build_prosumer()
+    hx_controller = prosumer.controller.loc[2].object  # cp_bet=0, cp_air=1, hx=2
+
+    t_1_in_c, t_2_in_c, t_2_out_c = 40.0, 36.0, 36.8
+    mdot_1, t_1_in_out, t_1_out, mdot_2, t_2_in_out, t_2_out = hx_controller.calculate_heat_exchanger(
+        prosumer, t_2_out_c=t_2_out_c, t_2_in_c=t_2_in_c, mdot_2_kg_per_s=10.0, t_1_in_c=t_1_in_c)
+
+    assert t_1_out == pytest.approx(t_2_in_c + HeatExchangerControl.MIN_DELTA_T_COLD_C)
+    assert t_1_in_out == pytest.approx(t_1_in_c)
+    assert (t_2_in_out, t_2_out) == pytest.approx((t_2_in_c, t_2_out_c))
+    assert mdot_1 > 0 and mdot_2 > 0
+    cp_1 = hx_controller.primary_fluid.get_heat_capacity(273.15 + (t_1_in_c + t_1_out) / 2)
+    cp_2 = hx_controller.secondary_fluid.get_heat_capacity(273.15 + (t_2_in_c + t_2_out_c) / 2)
+    assert mdot_1 * cp_1 * (t_1_in_c - t_1_out) == pytest.approx(mdot_2 * cp_2 * (t_2_out_c - t_2_in_c), rel=1e-6)

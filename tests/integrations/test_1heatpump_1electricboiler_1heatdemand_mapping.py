@@ -33,7 +33,7 @@ class Test1HeatPump1ElectricBoiler1HeatDemandMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1"]
         cp_result_columns = ["t_evap_in_c", "qdemand_kw"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}

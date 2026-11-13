@@ -5,15 +5,20 @@ Module containing the GasBoilerController class.
 import numpy as np
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K
+from pandaprosumer.constants import CELSIUS_TO_K, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
+from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
+
+#: Required feed below the return by less than this is floating-point noise, not a real inversion.
+TEMPERATURE_NOISE_K = 1e-9
 
 
 def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_kgk, heating_value_kj_per_kg, 
                                efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
                                max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, allow_stop, max_t_out_c=None):
         # FixMe: q_fluid_kw reaches zero only if the max_ramp_down allows it
-        # FixMe: It doesn't prevent fast turn on / turn off of the boiler
+        # Fast turn on / turn off is prevented by min_on_time_s / min_off_time_s (MinOnOffTimeMixin)
         
         # Calculate the demand heating power
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)
@@ -140,7 +145,7 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
         return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, mdot_fuel_kg_per_s
 
 
-class GasBoilerController(BasicProsumerController):
+class GasBoilerController(MinOnOffTimeMixin, BasicProsumerController):
     """
     Controller for gas boilers.
 
@@ -168,15 +173,17 @@ class GasBoilerController(BasicProsumerController):
         min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
         if not np.isnan(max_q_kw) and not np.isnan(min_q_kw) and min_q_kw > max_q_kw:
             raise ValueError(f"Gas Boiler {self.name} in prosumer {prosumer.name} has min_q_kw > max_q_kw ({min_q_kw} > {max_q_kw})")
+        self._check_min_on_time(prosumer, 'min_q_kw', "Gas Boiler")
+        self._reset_on_off_state()
 
-
-    def _calculate_gas_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c):
+    def _calculate_gas_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c, allow_stop=None):
         """
         Main method for Gas Boiler physical calculation during one time step
 
         :param mdot_kg_per_s: Mass flow rate in kg/s
         :param t_out_c: Output provided temperature to the feed pipe in °C
         :param t_in_c: Input temperature from return pipe in °C
+        :param allow_stop: Whether the boiler may stop at this time step (default: the element parameter)
 
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
@@ -196,9 +203,10 @@ class GasBoilerController(BasicProsumerController):
             max_ramp_down_kw_per_s = None
         q_previous_kw = self.last_result.get('q_kw', np.nan)
         delta_t_previous_c = self.last_result.get('t_out_c', np.nan) - self.last_result.get('t_in_c', np.nan)
-        allow_stop = self._get_element_param(prosumer, 'allow_stop')
-        if allow_stop == None or np.isnan(allow_stop):
-            allow_stop = True
+        if allow_stop is None:
+            allow_stop = self._get_element_param(prosumer, 'allow_stop')
+            if allow_stop == None or np.isnan(allow_stop):
+                allow_stop = True
 
         max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
         if np.isnan(max_t_out_c):
@@ -240,16 +248,39 @@ class GasBoilerController(BasicProsumerController):
         assert not np.isnan(t_out_required_c), f"Gas Boiler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_in_required_c), f"Gas Boiler {self.name} t_in_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_required_kg_per_s).any(), f"Gas Boiler {self.name} mdot_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        if t_in_required_c - TEMPERATURE_NOISE_K <= t_out_required_c < t_in_required_c:
+            # rounding noise of a fully-served responder (e.g. an upstream tank covered it): nothing left to heat
+            t_out_required_c = t_in_required_c
         assert t_out_required_c >= t_in_required_c, f"Gas Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop == None or np.isnan(allow_stop):
+            allow_stop = True
+        # A boiler that has not run for min_on_time_s yet behaves as if it could not stop
+        allow_stop = allow_stop and not self._is_stop_locked(prosumer)
+        # A boiler that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+
+        return_solver = ReturnTemperatureSolver()
         rerun = True
+        nb_runs = 0
         while rerun:
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
-                prosumer,
-                mdot_required_kg_per_s,
-                t_out_required_c,
-                t_in_required_c,
-            )
+            nb_runs += 1
+            if nb_runs > MAX_RERUN:
+                raise RuntimeError(
+                    f"Gas Boiler {self.name}: did not converge after {MAX_RERUN} iterations at "
+                    f"timestep {self.time} in prosumer {prosumer.name}"
+                )
+            if start_locked:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = 0., 0., t_in_required_c, t_in_required_c, 0.
+            else:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, mdot_gas_kg_per_s = self._calculate_gas_boiler(
+                    prosumer,
+                    mdot_required_kg_per_s,
+                    t_out_required_c,
+                    t_in_required_c,
+                    allow_stop,
+                )
 
             overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
             if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):
@@ -262,19 +293,16 @@ class GasBoilerController(BasicProsumerController):
             )
 
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_required_kg_per_s:
-                # If the gas boiler is not able to deliver the required mass flow,
-                # recalculate the input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Boiler is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_in_new_c = t_in_required_c
-                if abs(t_in_new_c - t_in_required_c) > 1:
-                    # If this recalculation changes the input temperature, rerun the calculation
-                    # with the new temperature
-                    t_in_required_c = t_in_new_c
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (mdot_delivered_kg_per_s < mdot_required_kg_per_s or return_solver.started)):
+                # If the gas boiler is not able to deliver the required mass flow, its return is the mix of
+                # what its responders give back for the flows it delivers, each one returning the same
+                # temperature whatever flow it gets: rerun until the return it is calculated with is that mix
+                t_in_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                             t_in_required_c)
+                t_in_next_c = return_solver.next_guess(t_in_required_c, t_in_mixed_c, t_returns_c)
+                if t_in_next_c is not None:
+                    t_in_required_c = t_in_next_c
                     rerun = True
 
         # After merit-order capping, ensure mass and energy balance at the interface:
@@ -286,7 +314,10 @@ class GasBoilerController(BasicProsumerController):
         if abs(mdot_delivered_kg_per_s - mdot_used_kg_per_s) > tol:
             cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
             if mdot_used_kg_per_s > tol:
-                t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                # cp re-evaluated at the new mean temperature, so the stream carries exactly q_kw
+                for _ in range(5):
+                    t_out_c = t_in_c + q_kw / (cp_fluid_kj_per_kgk * mdot_used_kg_per_s)
+                    cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
                 mdot_delivered_kg_per_s = mdot_used_kg_per_s
                 # Reapply max_t_out_c constraint after mass/energy balance adjustment
                 max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
@@ -302,10 +333,7 @@ class GasBoilerController(BasicProsumerController):
                     # If allow_stop is False and power dropped below min_q_kw due to temperature constraint,
                     # we need to increase mass flow to maintain minimum power
                     min_q_kw = self._get_element_param(prosumer, 'min_q_kw')
-                    allow_stop = self._get_element_param(prosumer, 'allow_stop')
-                    if allow_stop == None or np.isnan(allow_stop):
-                        allow_stop = True
-                    
+
                     if (not np.isnan(min_q_kw) and allow_stop == False and 
                         q_kw > 1e-3 and q_kw < min_q_kw - 1e-3):
                         # Increase mass flow to achieve min_q_kw at constrained temperature

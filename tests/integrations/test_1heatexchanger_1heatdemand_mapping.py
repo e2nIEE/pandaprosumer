@@ -77,23 +77,27 @@ class Test1HeatExchanger1HeatDemandMapping:
 
         run_timeseries(prosumer, period, True)
 
+        # Step 0: an 80 degC feed is closer than 5 K to the requested 76.85 degC, so the outlet slides to 75 degC
+        # (the exchanger keeps a 5 K hot-end approach rather than pinching) and the demand is slightly uncovered.
+        # The exchanger's heat is the heat its demand receives (the primary flow is sized with the heat
+        # capacity at the primary mean temperature, the one the heat is booked with)
         hx_data = {
-            'q_exchanged_kw': [49.840478, 198.94348, 772.4698, 0.],
-            'mdot_1_kg_per_s': [.245960, .774713, 36.718481, 0.],
+            'q_exchanged_kw': [48.021790, 200., 772.4698, 0.],
+            'mdot_1_kg_per_s': [.232789, .778827, 36.718481, 0.],
             't_1_in_c': [80., 95., 95., 95.],
-            't_1_out_c': [31.56451, 33.67385, 90., 95.],
+            't_1_out_c': [30.689712, 33.67385, 90., 95.],
             'mdot_2_kg_per_s': [.255149, 1.020598, 3.941905, 0.],
             't_2_in_c': [30., 30., 30., 30.],
-            't_2_out_c': [76.85, 76.85, 76.85, 30.]
+            't_2_out_c': [75., 76.85, 76.85, 30.]
         }
 
         hx_expected = pd.DataFrame(hx_data, index=data.index)
 
         dmd_data = {
-            'q_received_kw': [50., 200., 772.4698, 0.],
-            'q_uncovered_kw': [0., 0., 227.53, 0.],
+            'q_received_kw': [48.021790, 200., 772.4698, 0.],
+            'q_uncovered_kw': [1.978210, 0., 227.53, 0.],
             'mdot_kg_per_s': [.255149, 1.020598, 3.941905, 0.],
-            't_in_c': [76.85, 76.85, 76.85, 30.],
+            't_in_c': [75., 76.85, 76.85, 30.],
             't_out_c': [30., 30., 30., 30.]
         }
         hd_expected = pd.DataFrame(dmd_data, index=data.index)
@@ -121,7 +125,9 @@ class Test1HeatExchanger1HeatDemandMapping:
         prosumer, period, hd_controller_index, hx_controller_index = self._define_prosumer_cp_hx_hd(data)
 
         
-        # Test with a feed temperature 69.9°C < demand temperature (76.85°C)
+        # A 69.9 degC feed cannot heat the secondary to the 76.85 degC it asks: no exchange, no primary flow.
+        # (The LMTD dichotomy has no root for a feed below the outlet; run on it anyway, it answered a primary
+        # cooled to 43.6 degC by 2.7 kg/s.)
         prosumer.controller.loc[hd_controller_index].object.t_m_to_receive = lambda p: (76.85, 30, 1.530896781)
         assert (prosumer.controller.loc[hx_controller_index].object.t_m_to_receive_for_t(prosumer, 69.9) ==
-                pytest.approx((69.9, 43.59322222253029, 2.7215440864139606), .001))
+                pytest.approx((69.9, 69.9, 0.), abs=1e-9))
