@@ -1,6 +1,6 @@
 """Energy systems that contain only prosumers (no net) or only nets (no prosumer).
 
-A study with no district-heating / electrical network is still a valid energy system
+An energy system with no district-heating / electrical network is still valid
 (a set of independent prosumers), and a network without any prosumer is valid too.
 The energy-system runner must handle both partial cases instead of raising
 ``NetCalculationNotConverged`` when there is no net to drive convergence.

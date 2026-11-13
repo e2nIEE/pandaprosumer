@@ -409,7 +409,7 @@ class HeatExchangerController(BasicProsumerController):
             # A feed too close to (or colder than) the requested outlet: the outlet slides down with the feed,
             # keeping a hot-end approach of `min_approach_c`. Sliding only below the outlet left a feed a fraction
             # of a degree above it with no approach at all: the LMTD then wants a barely cooled primary, i.e. a
-            # primary flow ten times its nominal one (game sandbox: 9.7 kg/s at 70.2 degC for a 70 degC outlet),
+            # primary flow ten times its nominal one (a coupled network: 9.7 kg/s at 70.2 degC for a 70 degC outlet),
             # which drained the network's heat in one hour and starved every substation the next.
             # Once the outlet reaches the return, the return is only a guess keeping the secondary temperature
             # difference -- a responder whose return is an outcome (a dry cooler) answers with the real one and
@@ -428,7 +428,7 @@ class HeatExchangerController(BasicProsumerController):
             # The secondary must then leave at its INLET temperature, not at the
             # requested outlet: with the primary idle (mdot_1 = 0, q_exchanged = 0)
             # a warm secondary would let the downstream demand book heat this
-            # exchanger never delivered (Paris CPCU<->BET boundary, 0.0006 K at
+            # exchanger never delivered (a 4 MW exchanger asked for 0.0006 K at
             # 18.78 kg/s -> 0.049 kW created on the first step of an ON ramp).
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
@@ -438,7 +438,7 @@ class HeatExchangerController(BasicProsumerController):
                 # Starved by a feed too cold to heat with: a substation's valve opens instead of closing, so
                 # the network still circulates (through the exchanger, unheated) and the plant sees the load.
                 # Closed, a cooled network drew no flow, a heat-led plant (a CHP) saw no demand and the network
-                # never warmed up again (game sandbox: a CHP off overnight stayed off all day).
+                # never warmed up again (a CHP off overnight stayed off all day).
                 mdot_1_kg_per_s = self._starved_primary_flow_kg_per_s(
                     prosumer, mdot_2_asked_kg_per_s, t_out_2_asked_c, t_in_2_asked_c)
             mdot_2_kg_per_s = mdot_2_required_kg_per_s

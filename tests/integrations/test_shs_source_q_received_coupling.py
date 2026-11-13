@@ -18,7 +18,7 @@ bottom-layer mixed return. The reapply loop reconciles ``t_received_out`` with
 first under-tolerance pass. That leftover return-temperature difference times
 ``mdot * cp`` is a spurious energy that appears on the SHS side but not on the
 source side -- the two containers' result tables disagreed by up to ~1 K worth
-of power (tens of kW at the ECS charge mass flows).
+of power (tens of kW at DHW charge mass flows).
 
 The fix tightens ``TEMPERATURE_CONVERGENCE_THRESHOLD_C`` (1 K -> 1e-2 K) so the
 reapply loop actually drives the two return temperatures together, conserving
@@ -113,7 +113,7 @@ def _build_prosumer():
         "max_cop": 4.0,
     }
     hp_idx = create_controlled_heat_pump(
-        prosumer, level=1, order=0, period=period, name="hp_ecs", **hp_params
+        prosumer, level=1, order=0, period=period, name="hp_dhw", **hp_params
     )
 
     init_layer_temps_c = list(np.linspace(INIT_BOTTOM_C, 65.0, N_LAYERS))
@@ -131,7 +131,7 @@ def _build_prosumer():
         period=period,
         level=1,
         order=1,
-        name="shs_ecs",
+        name="shs_dhw",
     )
 
     hd_idx = create_controlled_heat_demand(
@@ -139,7 +139,7 @@ def _build_prosumer():
         level=1,
         order=2,
         period=period,
-        name="hd_ecs",
+        name="hd_dhw",
         t_feed_demand_c=T_FEED_DEMAND,
         t_return_demand_c=T_RETURN_DEMAND,
     )

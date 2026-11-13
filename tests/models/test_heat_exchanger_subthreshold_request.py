@@ -1,6 +1,6 @@
 """A secondary request below the 1e-3 K guard must not create heat at the boundary.
 
-Paris coupled run (`noneB50`, 2026-04-10 13:00): the CPCU->BET exchanger was
+Coupled run: a 4 MW district-heating exchanger was
 asked, on the first step of an OFF->ON ramp toward a 0.148 kW plan, to warm
 18.78 kg/s by 0.0006 K. `control_step` treats a requested secondary warming
 below 1e-3 K as "nothing to exchange" and zeroes the PRIMARY (mdot_1 = 0,
@@ -16,7 +16,7 @@ from pandaprosumer import create_empty_prosumer_container, create_period, create
 
 CP_W = 4186.0
 
-PARIS_CPCU_HX = {
+DHN_HX_4MW = {
     't_1_in_nom_c': 80,
     't_1_out_nom_c': 40,
     't_2_in_nom_c': 17,
@@ -35,7 +35,7 @@ def _period(prosumer):
 
 def _run_hx(t_2_out_c, mdot_2_kg_per_s=18.78, t_2_in_c=17., t_1_in_c=80.):
     prosumer = create_empty_prosumer_container()
-    idx = create_controlled_heat_exchanger(prosumer, order=0, period=_period(prosumer), **PARIS_CPCU_HX)
+    idx = create_controlled_heat_exchanger(prosumer, order=0, period=_period(prosumer), **DHN_HX_4MW)
     hx = prosumer.controller.iloc[idx].object
     hx.inputs = np.array([[t_1_in_c]])
     hx.t_m_to_deliver = lambda x: (t_2_out_c, t_2_in_c, [mdot_2_kg_per_s])

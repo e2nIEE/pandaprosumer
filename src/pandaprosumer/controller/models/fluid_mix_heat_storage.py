@@ -422,12 +422,12 @@ class FluidMixHeatStorageController(BasicProsumerController):
 
         # Optional explicit charging target. Without it the charge request
         # follows the downstream demand's feed temperature: when that demand
-        # asks for the minimum usable feed (e.g. TminECS), the tank is charged
+        # asks for the minimum usable feed (e.g. a DHW minimum), the tank is charged
         # AT the usability threshold and stores zero margin — it drains on the
         # first source-off hour and the demand goes uncovered while the
         # upstream producer idles. Setting t_charge_target_c to the producer's
-        # design outlet (e.g. an optimiser's constant condenser setpoint,
-        # TcstCondOut) makes the tank charge toward its design top temperature.
+        # design outlet (e.g. an optimiser's constant condenser setpoint)
+        # makes the tank charge toward its design top temperature.
         t_charge_target_c = self._get_element_param(prosumer, 't_charge_target_c')
         if t_charge_target_c is not None and not np.isnan(t_charge_target_c):
             t_required_in_c = max(t_required_in_c, float(t_charge_target_c))
@@ -731,7 +731,7 @@ class FluidMixHeatStorageController(BasicProsumerController):
 
         # NaN-to-zero guard at the contract boundary. ``_t_received_in_c`` and
         # ``_mdot_received_kg_per_s`` are NaN whenever the upstream FluidMix
-        # initiator is off (e.g. HP_ON=0 from the optimiser). A NaN here
+        # initiator is off (e.g. a heat pump switched off by an optimiser). A NaN here
         # signals "no flow contract", not "unknown value": physically the
         # side carries no enthalpy and the temperature is irrelevant. Treat
         # as zero so the bypass branch and the tank solver downstream see
