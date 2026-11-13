@@ -155,7 +155,9 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [16.693, 0.15916, 90., 65., .4, 50., 60.]
+        q_exchanged_kw = .4 * 4.1834 * (60 - 50)  # the secondary's heat, cp at its 55 degC mean
+        mdot_1_kg_per_s = q_exchanged_kw / (4.1934 * (90 - 65))  # cp at the primary's 77.5 degC mean
+        expected = [q_exchanged_kw, mdot_1_kg_per_s, 90., 65., .4, 50., 60.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [{FluidMixMapping.TEMPERATURE_KEY: 60.,
                                                              FluidMixMapping.MASS_FLOW_KEY: .4}]
@@ -412,8 +414,13 @@ class TestHeatExchanger:
         hx_controller.time_step(prosumer, "2020-01-01 00:00:00")
         hx_controller.control_step(prosumer)
 
-        expected = [10.9042, 0.518526, 93., 88, .077384, 55., 88.68328]
+        # Half the primary flow the demand needs: the exchanger keeps the 70 degC outlet asked and delivers the
+        # secondary flow that primary heats to it (the inverse of the nominal calculation), 19.96 kW on both sides
+        mdot_2_kg_per_s = .3178352
+        q_kw = 19.95903
+        assert q_kw == pytest.approx(mdot_2_kg_per_s * 4.18530 * (70 - 55), .001)  # cp at the secondary mean
+        expected = [q_kw, 0.518526, 93., 83.84421, mdot_2_kg_per_s, 55., 70.]
         assert hx_controller.step_results == pytest.approx(np.array([expected]), .001)
         assert hx_controller.result_mass_flow_with_temp == [
-            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(88.68328, .001),
-             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(.077384, .001)}]
+            {FluidMixMapping.TEMPERATURE_KEY: pytest.approx(70., .001),
+             FluidMixMapping.MASS_FLOW_KEY: pytest.approx(mdot_2_kg_per_s, .001)}]

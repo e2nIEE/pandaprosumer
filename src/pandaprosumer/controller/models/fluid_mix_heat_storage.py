@@ -7,12 +7,17 @@ external charge / discharge setpoints, and the reapply loop that keeps the retur
 sources. A storage model only provides the physics of its tank (see the hooks below).
 """
 
+import logging
+
 import numpy as np
 
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
 from pandaprosumer.mapping import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.models.shs_ports import plug_order
+
+logger = logging.getLogger(__name__)
 
 #: The tank is charged AT min_useful_temp_c, so a full tank sits on that threshold and the first wall
 #: loss leaves its top a few mK below it. The residual-discharge gate accepts a top layer down to this
@@ -428,11 +433,20 @@ class FluidMixHeatStorageController(BasicProsumerController):
             t_required_in_c = max(t_required_in_c, float(t_charge_target_c))
 
         self._resolve_ports(prosumer, t_required_in_c, t_demand_in_c, t_demand_out_c)
+        # TODO: Is the return temp the bottom layer temp or the responders' t_return ?
+        t_charge_out_c = self._t_charge_out
 
         # If the storage is full -> do not required heat from upstream for charging
         if self._is_tank_full(prosumer, t_required_in_c, mdot_demand_kg_per_s):
             # FixMe: Go here if min_useful_temp_c = t_charge_in_c > t_required_in_c = t_demand_out_c
-            return t_demand_out_c, t_demand_in_c, mdot_bypass_demand_kg_per_s
+            forward_request = (t_demand_out_c, t_demand_in_c, mdot_bypass_demand_kg_per_s)
+            if np.isnan(self.t_previous_out_charge_c) or not np.isnan(mdot_charge_setpoint_kg_per_s):
+                return forward_request
+            # A source that delivered more than this bypass (held at its minimum) is re-asked, like a charging
+            # tank's source, for what it delivered at the return its surplus gives back (_reapply_request):
+            # returning the forward request here promised the demanded return whatever it delivered
+            return self._reapply_request(prosumer, t_demand_out_c, t_demand_in_c, mdot_bypass_demand_kg_per_s,
+                                         t_charge_out_c, forward_request)
 
         if not np.isnan(mdot_charge_setpoint_kg_per_s):
             # Forced charge: ask upstream for exactly that (the cap below still applies).
@@ -578,6 +592,8 @@ class FluidMixHeatStorageController(BasicProsumerController):
             # No usable delivery to anchor on -- keep the forward request.
             return forward_request
         self._resolve_ports(prosumer, t_in_c, t_demand_in_c, t_demand_out_c)
+        # What each demand asks for: the split dispatches the bypass over them in merit order
+        mdot_demand_tab_kg_per_s = np.asarray(self._t_m_demand(prosumer)[2], dtype=float)
 
         if not np.isnan(self.mdot_previous_demand_kg_per_s):
             # Split as the previous pass's split did: a demand already served in parallel takes no bypass.
@@ -619,23 +635,55 @@ class FluidMixHeatStorageController(BasicProsumerController):
             stored_kgk = mass_kg * (t_in_c - t_charge_out_c)
             if mdot_demand_kg_per_s > 0 and heat_kgk - stored_kgk > 1e-9 and delta_t_bypass_c > 1e-9:
                 mdot_bypass_kg_per_s += (heat_kgk - stored_kgk) / self.resol / delta_t_bypass_c
+            t_bypass_return_c, _ = self._bypass_return_c(prosumer, mdot_bypass_kg_per_s, mdot_demand_tab_kg_per_s,
+                                                         t_demand_in_c)
         else:
             # Source cannot even cover the bypass (the storage will discharge the
             # rest), or the tank is full (whole stream bypassed): no charge, the
             # delivered energy goes to the demand.
             mdot_charge_kg_per_s = 0.0
+            mdot_bypass_kg_per_s = 0.0
+            t_bypass_return_c = t_demand_in_c
             if delta_t_bypass_c > 1e-9:
-                mdot_bypass_kg_per_s = q_prev_w / (cp_bypass_j_per_kgk * delta_t_bypass_c)
-            else:
-                mdot_bypass_kg_per_s = 0.0
+                # A source held at its minimum delivers more than the demands ask for: the split dumps the
+                # surplus on the last demand, so the return is their mix for those flows, and that return sets
+                # the mass the delivered energy carries, hence the surplus: the same fixed point a capped
+                # producer solves for its return. Promised at the demanded mix (46.9 °C for 53.5 °C given
+                # back), the source booked 10 kW of a 50 kW bypass that its demands never saw.
+                return_solver = ReturnTemperatureSolver()
+                for _ in range(MAX_RERUN):
+                    cp_bypass_j_per_kgk = float(self.fluid.get_heat_capacity(
+                        CELSIUS_TO_K + (t_in_c + t_bypass_return_c) / 2))
+                    mdot_bypass_kg_per_s = q_prev_w / (cp_bypass_j_per_kgk * (t_in_c - t_bypass_return_c))
+                    t_mixed_c, t_returns_c = self._bypass_return_c(prosumer, mdot_bypass_kg_per_s,
+                                                                   mdot_demand_tab_kg_per_s, t_demand_in_c)
+                    t_next_c = return_solver.next_guess(t_bypass_return_c, t_mixed_c, t_returns_c)
+                    if t_next_c is None or t_in_c - t_next_c <= 1e-9:
+                        break
+                    t_bypass_return_c = t_next_c
 
         mdot_required_kg_per_s = mdot_bypass_kg_per_s + mdot_charge_kg_per_s
         if mdot_required_kg_per_s > 1e-12:
             t_required_out_c = (mdot_charge_kg_per_s * t_charge_out_c
-                                + mdot_bypass_kg_per_s * t_demand_in_c) / mdot_required_kg_per_s
+                                + mdot_bypass_kg_per_s * t_bypass_return_c) / mdot_required_kg_per_s
         else:
             t_required_out_c = t_in_c
         return t_in_c, t_required_out_c, mdot_required_kg_per_s
+
+    def _bypass_return_c(self, prosumer, mdot_bypass_kg_per_s, mdot_demand_tab_kg_per_s, t_demand_in_c):
+        """
+        Return (°C) of a bypass of ``mdot_bypass_kg_per_s`` to the demands: the demanded mix ``t_demand_in_c``
+        up to what they ask for; beyond it, their mix for the flows the split dispatches, the surplus going to
+        the last one (``dump_on_last``, as in :meth:`control_step`).
+
+        :return: A Tuple (return (float), the demands' returns (np.array[float]))
+        """
+        if mdot_bypass_kg_per_s <= np.sum(mdot_demand_tab_kg_per_s) + 1e-9:
+            return t_demand_in_c, self.get_treturn_tab_c(prosumer)
+        result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_bypass_kg_per_s,
+                                                               mdot_demand_tab_kg_per_s,
+                                                               overflow_strategy="dump_on_last")
+        return self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s, t_demand_in_c)
 
     @property
     def _t_charge_out(self):
@@ -954,9 +1002,18 @@ class FluidMixHeatStorageController(BasicProsumerController):
         assert t_demand_in_c >= 0, f"Storage {self.name} t_demand_in_c is negative ({t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
 
         layer_temp_init_c = self._layer_temps_c.copy()
+        # Every pass starts from the tank as it is, not from the previous pass's outcome: the discharge is
+        # sized on the outlet layer's temperature, and handing a pass the plug-flow outlet temperature the
+        # previous one delivered (colder than the top layer when the tank drains over the step) switched the
+        # sizing between its mixing and its energy formula every pass (0.01 kg/s then 0.5 kg/s for a 0.05 K
+        # change of the return: no fixed point for the return, 9 kW off the balance with the demands)
+        t_discharge_out_init_c = t_discharge_out_c
 
+        return_solver = ReturnTemperatureSolver()
         rerun = True
+        nb_runs = 0
         while rerun:
+            nb_runs += 1
             self._layer_temps_c = layer_temp_init_c.copy()
 
             (q_delivered_kw, q_bypass_kw, q_discharge_kw, q_received_kw, q_charge_kw, e_stored_kwh, e_usable_kwh,
@@ -968,7 +1025,7 @@ class FluidMixHeatStorageController(BasicProsumerController):
                                                                                         self._t_received_in_c,
                                                                                         t_demand_out_c,
                                                                                         t_demand_in_c,
-                                                                                        t_discharge_out_c,
+                                                                                        t_discharge_out_init_c,
                                                                                         self._mdot_received_kg_per_s,
                                                                                         self._t_charge_out)
 
@@ -985,20 +1042,24 @@ class FluidMixHeatStorageController(BasicProsumerController):
                                                                    overflow_strategy="dump_on_last")
 
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_delivered_kg_per_s < mdot_demand_kg_per_s:
-                # If the storage is not able to deliver the required mass flow,
-                # recalculate the discharge input temperature, considering that all the downstream elements will
-                # still return the same temperature, even if the mass flow delivered to them by the storage is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_delivered_kg_per_s) > 1e-8:
-                    t_return_demand_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_delivered_kg_per_s
-                else:
-                    t_return_demand_new_c = t_demand_in_c
-                if abs(t_return_demand_new_c - t_demand_in_c) > 1:
-                    # If this recalculation changes the return temperature, rerun the calculation
-                    # with the new temperature
-                    t_demand_in_c = t_return_demand_new_c
-                    rerun = True
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (abs(mdot_delivered_kg_per_s - mdot_demand_kg_per_s) > 1e-9 or return_solver.started)):
+                # If the storage does not deliver the required mass flow (short of it, or dumping a surplus on
+                # the last demand), the return of its demands is the mix of what they give back for the flows
+                # it delivers, each one returning the same temperature whatever flow it gets: rerun until the
+                # return it is calculated with is that mix
+                t_return_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                                 t_demand_in_c)
+                t_return_next_c = return_solver.next_guess(t_demand_in_c, t_return_mixed_c, t_returns_c)
+                if t_return_next_c is not None:
+                    if nb_runs >= MAX_RERUN:
+                        logger.warning(
+                            f"Storage {self.name}: return of its demands not converged after {MAX_RERUN} iterations "
+                            f"({t_demand_in_c:.3f} °C calculated, {t_return_mixed_c:.3f} °C given back) at "
+                            f"timestep {self.time} in prosumer {prosumer.name}")
+                    else:
+                        t_demand_in_c = t_return_next_c
+                        rerun = True
 
         self.last_result = {
             "mdot_received_kg_per_s": mdot_received_kg_per_s,

@@ -83,6 +83,26 @@ class BasicProsumerController(MappedController):
 
         return treturn_tab_c
 
+    def _mixed_return_temperature_c(self, prosumer, result_mdot_tab_kg_per_s, default_c):
+        """
+        Return temperature the responders give back for the mass flows dispatched to them.
+
+        The responders' expected returns (:meth:`get_treturn_tab_c`) weighted by the flows the
+        producer actually sends them, assuming each one returns the same temperature whatever flow
+        it gets.
+
+        :param prosumer: The prosumer object
+        :param result_mdot_tab_kg_per_s: Mass flow dispatched to each responder (kg/s)
+        :param default_c: Mix returned when no flow is dispatched (°C)
+        :return: A Tuple (mixed return (float), the responders' returns (np.array[float]))
+        """
+        t_return_tab_c = self.get_treturn_tab_c(prosumer)
+        mdot_total_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
+        if abs(mdot_total_kg_per_s) <= 1e-8:
+            return default_c, t_return_tab_c
+        t_mixed_c = np.sum(np.asarray(result_mdot_tab_kg_per_s) * t_return_tab_c) / mdot_total_kg_per_s
+        return t_mixed_c, t_return_tab_c
+
     def t_m_to_deliver(self, prosumer):
         """
         Calculates the feed temperature and mass flow to deliver

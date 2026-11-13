@@ -11,6 +11,7 @@ from pandapipes import call_lib
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
 from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
 from pandaprosumer.controller.power_cap import _capped, _setpoint
 
@@ -549,6 +550,7 @@ class HeatPumpController(MinOnOffTimeMixin, BasicProsumerController):
         # A heat pump that has not run for min_on_time_s yet cannot stop: it runs at least at min_p_comp_kw
         stop_locked = self._is_stop_locked(prosumer)
 
+        return_solver = ReturnTemperatureSolver()
         rerun = True
         nb_runs = 0
         while rerun:
@@ -607,20 +609,16 @@ class HeatPumpController(MinOnOffTimeMixin, BasicProsumerController):
                                                                    overflow_strategy=overflow_strategy)
 
             rerun = False
-            if len(self._get_mapped_responders(prosumer)) > 1 and mdot_cond_kg_per_s < mdot_cond_required_kg_per_s:
-                # FixMe: Can't test this case in a single model test without mapping (no responders)
-                # If the heat Pump is not able to deliver the required mass flow,
-                # recalculate the condenser input temperature, considering that all the downstream elements will be
-                # still return the same temperature, even if the mass flow delivered to them by the Heat Pump is lower
-                t_return_tab_c = self.get_treturn_tab_c(prosumer)
-                if abs(mdot_cond_kg_per_s) > 1e-8:
-                    t_cond_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_cond_kg_per_s
-                else:
-                    t_cond_in_new_c = t_cond_in_required_c
-                if abs(t_cond_in_new_c - t_cond_in_required_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
-                    # If this recalculation changes the condenser input temperature, rerun the calculation
-                    # with the new temperature
-                    t_cond_in_required_c = t_cond_in_new_c
+            if (len(self._get_mapped_responders(prosumer)) > 1
+                    and (mdot_cond_kg_per_s < mdot_cond_required_kg_per_s or return_solver.started)):
+                # If the heat pump is not able to deliver the required mass flow, its condenser return is the
+                # mix of what its responders give back for the flows it delivers, each one returning the same
+                # temperature whatever flow it gets: rerun until the return it is calculated with is that mix
+                t_cond_in_mixed_c, t_returns_c = self._mixed_return_temperature_c(prosumer, result_mdot_tab_kg_per_s,
+                                                                                  t_cond_in_required_c)
+                t_cond_in_next_c = return_solver.next_guess(t_cond_in_required_c, t_cond_in_mixed_c, t_returns_c)
+                if t_cond_in_next_c is not None:
+                    t_cond_in_required_c = t_cond_in_next_c
                     rerun = True
 
         # After merit-order capping, ensure mass and energy balance at the interface.
