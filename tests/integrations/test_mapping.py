@@ -344,4 +344,31 @@ class TestMapping:
 
         assert responder_controller.inputs[0][0] == mapped_values[0] * 1000 + 273.15
 
-# ToDO: Test merit order (both ways)
+    def test_generic_unknown_column_raises(self):
+        """
+        A Generic mapping on a column the controller does not have names the controller and its columns
+        """
+        prosumer = create_empty_prosumer_container(check_order=False)
+        initiator_index = _init_dummy_controller(prosumer, [], ['ctrl_out'], name="init")
+        responder_index = _init_dummy_controller(prosumer, ['ctrl_in'], [], name="resp")
+        initiator = prosumer.controller.loc[initiator_index, 'object']
+        initiator.step_results = np.array([[1.]])
+
+        GenericMapping(container=prosumer, initiator_id=initiator_index, initiator_column="wrong_out",
+                       responder_id=responder_index, responder_column="ctrl_in", order=0)
+        with pytest.raises(ValueError, match=re.escape(
+                "'wrong_out' is not a result column of controller 'init' (its result columns: ['ctrl_out'])")):
+            self._map(prosumer, initiator)
+
+    def test_generic_unknown_operation_raises(self):
+        prosumer = create_empty_prosumer_container(check_order=False)
+        initiator_index = _init_dummy_controller(prosumer, [], ['ctrl_out'])
+        responder_index = _init_dummy_controller(prosumer, ['ctrl_in'], [])
+        initiator = prosumer.controller.loc[initiator_index, 'object']
+        initiator.step_results = np.array([[1.]])
+
+        GenericMapping(container=prosumer, initiator_id=initiator_index, initiator_column="ctrl_out",
+                       responder_id=responder_index, responder_column="ctrl_in", order=0,
+                       application_operation="multiply")
+        with pytest.raises(ValueError, match="Application operation 'multiply' not supported"):
+            self._map(prosumer, initiator)

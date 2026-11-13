@@ -18,7 +18,7 @@ def _calculate_gas_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_per_k
                                efficiency_percent, max_q_kw, min_q_kw, q_previous_kw, delta_t_previous_c,
                                max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, time_step_s, allow_stop, max_t_out_c=None):
         # FixMe: q_fluid_kw reaches zero only if the max_ramp_down allows it
-        # FixMe: It doesn't prevent fast turn on / turn off of the boiler
+        # Fast turn on / turn off is prevented by min_on_time_s / min_off_time_s (MinOnOffTimeMixin)
         
         # Calculate the demand heating power
         q_fluid_kw = mdot_kg_per_s * cp_fluid_kj_per_kgk * (t_out_c - t_in_c)

@@ -3,6 +3,19 @@ import numpy as np
 from .base import BaseMapping
 
 
+def _column_index(columns, column, controller, kind, mapping):
+    """
+    Index of ``column`` in the ``kind`` ("result" or "input") columns of ``controller``, with an error naming the
+    mapping, the controller and the available columns if it is not one of them.
+    """
+    try:
+        return list(columns).index(column)
+    except ValueError:
+        mapping_name = getattr(mapping, "name", "GenericMapping")
+        raise ValueError(f"{mapping_name}: '{column}' is not a {kind} column of controller "
+                         f"'{getattr(controller, 'name', controller)}' (its {kind} columns: {list(columns)})") from None
+
+
 def _apply_mapping(mapping, initiator_controller, responder_controller, initiator_column, responder_column,
                    conversion_function, sign):
     """Apply one Generic add/subtract mapping, idempotently across reapply re-fires.
@@ -27,8 +40,10 @@ def _apply_mapping(mapping, initiator_controller, responder_controller, initiato
     inputs inside `control_step`, and a stale (un-stamped) book entry would then
     be wrongly subtracted from the next step's fresh value.
     """
-    init_col_idx = initiator_controller.result_columns.index(initiator_column)  # ToDo: add detailed error if IndexError
-    resp_col_idx = responder_controller.input_columns.index(responder_column)
+    init_col_idx = _column_index(initiator_controller.result_columns, initiator_column,
+                                 initiator_controller, "result", mapping)
+    resp_col_idx = _column_index(responder_controller.input_columns, responder_column,
+                                 responder_controller, "input", mapping)
     initiator_result = initiator_controller.step_results[:, init_col_idx]
     mapped_value = sign * conversion_function(initiator_result)
     book = responder_controller.__dict__.setdefault("_generic_mapping_contribs", {})
@@ -48,7 +63,6 @@ def _add_mapping(initiator_controller, responder_controller, initiator_column, r
                    initiator_column, responder_column, conversion_function, sign=1.0)
 
 
-# ToDo: test subtract mapping and exception, do we need subtract (for el coupling)?
 def _subtract_mapping(initiator_controller, responder_controller, initiator_column, responder_column,
                       conversion_function=lambda x: x, mapping=None):
     _apply_mapping(mapping, initiator_controller, responder_controller,

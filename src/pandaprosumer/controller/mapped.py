@@ -376,11 +376,27 @@ class MappedController(Controller):
         :return: List of mapped initiators
         """
         list_initiators = self._get_mapped_initiators(container, remove_duplicate)
-        self_level = container.controller.loc[container.controller.object == self].level.values[0]
+        return [initiator for initiator in list_initiators if self._on_same_level(container, initiator)]
 
-        list_initiators = [initiator for initiator in list_initiators if container.controller.loc[container.controller.object == initiator].level.values[0] == self_level]
+    @staticmethod
+    def _level_of(container, controller):
+        """
+        The level of a controller in the container's controller table (an int, or a list of levels).
+        """
+        return container.controller.loc[container.controller.object == controller].level.values[0]
 
-        return list_initiators
+    @staticmethod
+    def _levels_overlap(level_a, level_b):
+        """
+        True if two controller levels share a value. A level is an int or, without check_order, a list of levels.
+        """
+        return bool(set(np.atleast_1d(level_a).tolist()) & set(np.atleast_1d(level_b).tolist()))
+
+    def _on_same_level(self, container, other):
+        """
+        True if the controller ``other`` runs on (one of) the level(s) of this controller.
+        """
+        return self._levels_overlap(self._level_of(container, self), self._level_of(container, other))
 
     def _unapply_initiators(self, container):
         """
@@ -390,15 +406,11 @@ class MappedController(Controller):
         """
         # Recursive unapply all the controllers for which this controller is the responder at the same level
         # so they will be re-executed
-        # FixMe: level can be an array, use 'in' instead
         for initiator in self._get_mapped_initiators(container):
-            initiator_level = container.controller.loc[container.controller.object == initiator].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
-            if initiator_level == self_level and initiator.applied:
+            if self._on_same_level(container, initiator) and initiator.applied:
                 initiator.applied = False
                 for initiator_initiator in initiator._get_mapped_initiators(container):
-                    initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
-                    if initiator_initiator_level == initiator_level:
+                    if initiator._on_same_level(container, initiator_initiator):
                         initiator.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                                FluidMixMapping.MASS_FLOW_KEY: np.nan}
                 initiator._unapply_initiators(container)
@@ -413,9 +425,7 @@ class MappedController(Controller):
         # Recursive unapply all the controllers for which this controller is the initiator
         # so they will be re-executed
         for responder in self._get_mapped_responders(container):
-            responder_level = container.controller.loc[container.controller.object == responder].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
-            if responder_level == self_level and responder.applied:
+            if self._on_same_level(container, responder) and responder.applied:
                 responder.applied = False
                 responder.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                        FluidMixMapping.MASS_FLOW_KEY: np.nan}

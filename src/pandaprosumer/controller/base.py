@@ -66,9 +66,8 @@ class BasicProsumerController(MappedController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
-        # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
-        # m = pd.Series(0, index=self.element_index)
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+        # This is the request. A producer that cannot deliver all of it solves its actual return itself
+        # (ReturnTemperatureSolver).
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return np.array([])
@@ -118,9 +117,8 @@ class BasicProsumerController(MappedController):
         :param prosumer: The prosumer object.
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float]).
         """
-        # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
-        # m = pd.Series(0, index=self.element_index)
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+        # This is the request. A producer that cannot deliver all of it solves its actual return itself
+        # (ReturnTemperatureSolver).
 
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:

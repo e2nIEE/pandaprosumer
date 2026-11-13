@@ -83,7 +83,9 @@ def retrieve_data(controller_order, fct_name):
     for levelorder in controller_order:
         for ctrl, prosumer in levelorder:
 
-            if hasattr(ctrl, 'has_elements') and ctrl.has_elements:  # FixMe: Should be has_elements or has_period ?
+            # Gate on has_elements, not has_period: the hooks may have side effects (MinOnOffTimeMixin resets
+            # its on/off state in time_series_initialization), and return no data without a period anyway
+            if hasattr(ctrl, 'has_elements') and ctrl.has_elements:
                 #if ctrl in ctrl_list:
                 #    continue
                 #else:
