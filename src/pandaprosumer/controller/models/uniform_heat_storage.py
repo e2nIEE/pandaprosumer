@@ -214,8 +214,8 @@ class UniformHeatStorageController(FluidMixHeatStorageController):
         A charge is also capped at the tank's mass, one tank volume per step (it then closes 1 − 1/e ≈ 63 % of
         the gap; the next steps close the rest). Without that cap a tank a few kelvin under the charge
         temperature asks its source for several tank volumes of water that come back almost as hot as they
-        left: a power-limited source serving the tank and a demand then iterates on a return close to its
-        own feed and does not converge.
+        left: a power-limited source serving the tank and a demand then gets a return close to its own feed,
+        and pushes a large flow for little heat.
         """
         if delta_t_c <= MIN_CHARGE_DELTA_T_K:
             return 0.0

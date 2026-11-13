@@ -162,15 +162,15 @@ def test_full_tank_bypasses_the_source_to_the_demand():
     assert hd.q_uncovered_kw.values == pytest.approx(0, abs=0.1)
 
 
-@pytest.mark.parametrize("source, max_q_kw", [("gb", 200), ("hp", None)])
+@pytest.mark.parametrize("source, max_q_kw", [("gb", 200), ("gb", 80), ("gb", 60), ("hp", None)])
 def test_tank_in_parallel_with_its_source(source, max_q_kw):
     """
     source -> demand and source -> tank -> demand: no leak (EnergyLeakWarning is an error here), the tank is
     charged by the source's surplus.
 
-    The boiler is sized above the demand: a gas boiler at its maximum power serving two responders, the second
-    returning water above ~70 °C (a tank near its charge temperature, or a plain heat demand), does not converge
-    within its own MAX_RERUN iterations, with any storage model.
+    A boiler under the 120 kW peak runs at its maximum power while the tank, near its charge temperature, returns
+    water above 70 °C: it stopped with ``Gas Boiler ...: did not converge after 20 iterations`` before the boilers
+    solved their return with :class:`ReturnTemperatureSolver`.
     """
     dfs = _build_and_run(source=source, parallel=True, max_q_kw=max_q_kw)
     uhs, hd = dfs["uhs"], dfs["hd"]
