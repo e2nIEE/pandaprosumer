@@ -40,6 +40,18 @@ class EnergyLeakWarning(UserWarning):
     pass
 
 
+class ControllerStateError(AssertionError):
+    """
+    Raised when a controller reaches a physically inconsistent state: a NaN input, a negative mass flow or
+    power, a feed colder than its return, a storage that diverged...
+
+    It replaces the bare ``assert`` statements of the controllers: unlike them it is still raised when Python
+    runs with ``-O``. It subclasses ``AssertionError`` so that code catching ``AssertionError`` keeps working.
+    Raise it through ``MappedController._check``, which adds the controller context to the message.
+    """
+    pass
+
+
 class MappedController(Controller):
     """
     Base class for all prosumer controllers that are associated to an element and can be mapped.
@@ -569,6 +581,25 @@ class MappedController(Controller):
                 )
 
         return mdot_res_tab_kg_per_s
+
+    def _check(self, condition, message, container=None):
+        """
+        Raise ControllerStateError if ``condition`` is false.
+
+        Use it instead of ``assert`` for the consistency checks of a controller: the message is prefixed with the
+        controller class, its name, the timestep and (if given) the prosumer, and the check still runs under
+        ``python -O``.
+
+        :param condition: The condition that must hold
+        :param message: What is wrong, without the controller context (e.g. "t_out_c is NaN")
+        :param container: The prosumer container, to name it in the message
+        """
+        if condition:
+            return
+        context = f"{self.name_class()} '{self.name}' at timestep {self.time}"
+        if container is not None:
+            context += f" in prosumer '{container.name}'"
+        raise ControllerStateError(f"{context}: {message}")
 
     def _check_fluid_mix_balance(self, container, q_kw, mdot_kg_per_s,
                                  t_out_c, t_in_c, result_mdot_tab_kg_per_s,

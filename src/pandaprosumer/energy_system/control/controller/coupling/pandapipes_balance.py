@@ -74,14 +74,14 @@ class PandapipesBalanceControl(BasicProsumerController):
             net.heat_consumer.loc[hc_element_index, "controlled_mdot_kg_per_s"] = mdot_kg_per_s
 
         if not self.first:
-            assert not np.isnan(net.heat_consumer["_pandaprosumer_t_feed_c"]).any(), \
-                "The heat_consumer elements must have a '_pandaprosumer_t_feed_c' attribute"
-            assert not np.isnan(net.heat_consumer["controlled_mdot_kg_per_s"]).any(), \
-                "The heat_consumer elements must have a 'controlled_mdot_kg_per_s' attribute"
-            assert not np.isnan(net.heat_consumer["qext_w"]).any(), \
-                "The heat_consumer elements must have a 'qext_w' attribute"
-            assert not np.isnan(net.circ_pump_pressure["t_flow_k"]).any(), \
-                "The circ_pump_pressure elements must have a 't_flow_k' attribute"
+            self._check(not np.isnan(net.heat_consumer["_pandaprosumer_t_feed_c"]).any(),
+                        "The heat_consumer elements must have a '_pandaprosumer_t_feed_c' attribute")
+            self._check(not np.isnan(net.heat_consumer["controlled_mdot_kg_per_s"]).any(),
+                        "The heat_consumer elements must have a 'controlled_mdot_kg_per_s' attribute")
+            self._check(not np.isnan(net.heat_consumer["qext_w"]).any(),
+                        "The heat_consumer elements must have a 'qext_w' attribute")
+            self._check(not np.isnan(net.circ_pump_pressure["t_flow_k"]).any(),
+                        "The circ_pump_pressure elements must have a 't_flow_k' attribute")
 
             q_ext_thresold_w = 5000
             tfeed_set_tab_c = [net.heat_consumer.loc[consumer, "_pandaprosumer_t_feed_c"] for consumer in net.heat_consumer.index if net.heat_consumer.loc[consumer, "qext_w"] > q_ext_thresold_w]

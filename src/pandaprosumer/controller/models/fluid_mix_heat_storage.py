@@ -741,18 +741,14 @@ class FluidMixHeatStorageController(BasicProsumerController):
         if np.isnan(mdot_received_kg_per_s):
             mdot_received_kg_per_s = 0.0
         if np.isnan(t_received_in_c):
-            assert mdot_received_kg_per_s == 0, (
-                f"Storage {self.name}: t_received_in_c is NaN but "
-                f"mdot_received_kg_per_s is non-zero ({mdot_received_kg_per_s}) "
-                f"-- upstream initiator contract violation at timestep {self.time}."
-            )
+            self._check(mdot_received_kg_per_s == 0,
+                        f"t_received_in_c is NaN but mdot_received_kg_per_s is non-zero "
+                        f"({mdot_received_kg_per_s}) -- upstream initiator contract violation", prosumer)
             t_received_in_c = float(self._layer_temps_c[-1])
         if np.isnan(t_demand_in_c):
-            assert mdot_demand_kg_per_s == 0, (
-                f"Storage {self.name}: t_demand_in_c is NaN but "
-                f"mdot_demand_kg_per_s is non-zero ({mdot_demand_kg_per_s}) "
-                f"-- downstream demand contract violation at timestep {self.time}."
-            )
+            self._check(mdot_demand_kg_per_s == 0,
+                        f"t_demand_in_c is NaN but mdot_demand_kg_per_s is non-zero "
+                        f"({mdot_demand_kg_per_s}) -- downstream demand contract violation", prosumer)
             t_demand_in_c = float(self._layer_temps_c[0])
         self._resolve_ports(prosumer, t_received_in_c, t_demand_in_c, t_demand_out_c)
 
@@ -997,9 +993,9 @@ class FluidMixHeatStorageController(BasicProsumerController):
         self._resolve_ports(prosumer, self._t_received_in_c, t_demand_in_c, t_demand_out_c)
         t_discharge_out_c = self._layer_temps_c[self._ports[2]]
 
-        assert mdot_demand_kg_per_s >= 0, f"Storage {self.name} mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_out_c >= t_demand_in_c, f"Storage {self.name} t_demand_out_c < t_demand_in_c is negative ({t_demand_out_c} < {t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
-        assert t_demand_in_c >= 0, f"Storage {self.name} t_demand_in_c is negative ({t_demand_in_c}) for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(mdot_demand_kg_per_s >= 0, f"mdot_demand_kg_per_s is negative ({mdot_demand_kg_per_s})", prosumer)
+        self._check(t_demand_out_c >= t_demand_in_c, f"t_demand_out_c < t_demand_in_c ({t_demand_out_c} < {t_demand_in_c})", prosumer)
+        self._check(t_demand_in_c >= 0, f"t_demand_in_c is negative ({t_demand_in_c})", prosumer)
 
         layer_temp_init_c = self._layer_temps_c.copy()
         # Every pass starts from the tank as it is, not from the previous pass's outcome: the discharge is
