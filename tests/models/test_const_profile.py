@@ -167,3 +167,13 @@ class TestConstProfile:
         assert not const_profile_controller.is_converged(prosumer)
         const_profile_controller.control_step(prosumer)
         assert const_profile_controller.is_converged(prosumer)
+
+
+def test_missing_column_raises_at_creation():
+    """A profile column absent from the data source is reported when the controller is created, with its name"""
+    import pytest
+    prosumer = create_empty_prosumer_container()
+    period, data_source = _define_and_get_period_and_data_source(prosumer)
+    with pytest.raises(ValueError, match=r"\['not_a_column'\] not found in the data source"):
+        create_controlled_const_profile(prosumer, ["Tin_cond", "not_a_column"], ["Tin_cond", "x"], data_source,
+                                        period)

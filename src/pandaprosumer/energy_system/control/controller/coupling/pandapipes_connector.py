@@ -91,7 +91,7 @@ class PandapipesConnectorController(BasicProsumerController):
 
         mdot_delivered_kg_per_s = mdot_required_kg_per_s
 
-        #FixMe : if self._mdot_received_kg_per_s is nan then mdot_bypass_kg_per_s/ t_return_out_c are not defined
+        # Without a received mass flow (NaN, free inlet), all the required flow is delivered with no bypass
         mdot_bypass_kg_per_s = 0
         t_return_out_c = t_in_required_c
 
@@ -101,18 +101,17 @@ class PandapipesConnectorController(BasicProsumerController):
             if not np.isnan(self._mdot_received_kg_per_s):
                 # If the inlet is fed with a fixed mass flow (not free air)
                 if mdot_delivered_kg_per_s >= self._mdot_received_kg_per_s:
-                    # If the inlet mass flow is higher than the one required,
-                    # recalculate the secondary mass flow to reduce the heat demand to reduce the inlet mass flow
+                    # If the inlet mass flow is not higher than the one required,
+                    # deliver all of it (the demand is reduced to the inlet mass flow), no bypass
                     mdot_bypass_kg_per_s = 0
                     mdot_delivered_kg_per_s = self._mdot_received_kg_per_s
                     t_return_out_c = t_in_required_c
                 else:
-                    # If the inlet mass flow is lower than the one required,
+                    # If the inlet mass flow is higher than the one required,
                     # model a bypass on the inlet side where the extra mass flow doesn't exchange heat.
-                    # Recalculate the output temperature
+                    # Recalculate the output temperature (the received mass flow is > 0 in this branch)
                     mdot_bypass_kg_per_s = self._mdot_received_kg_per_s - mdot_delivered_kg_per_s
                     t_return_out_c = (mdot_bypass_kg_per_s * self._t_received_in_c + mdot_delivered_kg_per_s * t_in_required_c) / self._mdot_received_kg_per_s
-                    # FixMe: What if self._mdot_received_kg_per_s==0 ?
 
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer,
                                                                    mdot_delivered_kg_per_s,

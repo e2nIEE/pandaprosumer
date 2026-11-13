@@ -15,7 +15,6 @@ class Test1HeatPump1HeatDemandMapping:
 
     def test_mapping(self):
         prosumer = create_empty_prosumer_container()
-        # ToDo: add case where demand = 0w in tests
         # ToDo: test equivalence different inputs for demand
         data = pd.DataFrame({"Tin_evap": [25, 25, 25, 25],
                              "demand_1_kw": [50, 200, 337.512 + 30, 0],

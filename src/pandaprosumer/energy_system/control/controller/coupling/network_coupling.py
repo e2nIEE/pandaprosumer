@@ -76,8 +76,9 @@ class NetworkCouplingControl(BasicProsumerController):
     def control_step(self, net):
         super().control_step(net)
         # EnergySystem Generic mappings inputs and outputs
-        # Replace NaNs with 0
-        clean_inputs = np.nan_to_num(self.inputs, nan=0.)  # FixMe: should avoid nan case
+        # The inputs are reset to NaN at each time step and the Generic mappings add to them: an input still NaN
+        # received no mapped value this step (e.g. its prosumer controller is out of service), so nothing to write
+        clean_inputs = np.nan_to_num(self.inputs, nan=0.)
         net[self.element_name].loc[self.element_index, self.input_columns] = clean_inputs
         self._written_inputs = np.array(clean_inputs, dtype=float, copy=True)
 

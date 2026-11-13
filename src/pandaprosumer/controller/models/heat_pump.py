@@ -721,7 +721,8 @@ class HeatPumpController(MinOnOffTimeMixin, BasicProsumerController):
                                             CELSIUS_TO_K + (t_evap_out_c + self.t_keep_return_c) / 2)) / 1e3)
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
-            self.t_previous_evap_out_c = np.nan  # FIXME: should be nan ?
+            # The previous evaporator values are the state of the rerun loop within a time step: reset once converged
+            self.t_previous_evap_out_c = np.nan
             self.t_previous_evap_in_c = np.nan
             self.mdot_previous_evap_kg_per_s = np.nan
             self.p_comp_previous_kw = p_comp_kw  # Store the last compressor power value

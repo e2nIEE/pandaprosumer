@@ -57,7 +57,8 @@ class FluidMixMapping(BaseMapping):
         :param initiator_controller: The initiating controller
         :param responder_controller: The responding controller
         """
-        # FixMe: Will break if the order are not 0, 1, 2, ...
+        # The orders of the FluidMix mappings of an initiator index its fluid outputs (0, 1, 2, ...):
+        # an order with no matching output raises a ValueError below
         if self._check_order():
             self.check_controllers_orders(initiator_controller, responder_controller)
 

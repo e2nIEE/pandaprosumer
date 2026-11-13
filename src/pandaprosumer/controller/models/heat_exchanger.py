@@ -8,7 +8,7 @@ from pandapipes import call_lib
 
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.controller.return_temperature import ReturnTemperatureSolver
-from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN
+from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C, MAX_RERUN, HeatExchangerControl
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
@@ -240,8 +240,7 @@ class HeatExchangerController(BasicProsumerController):
         if min_x >= 1 :
             # If t_2_in_c >= max_t_1_out, ignore min_delta_t_1_c but calculate which q_exchanged will give
             # a higher t_1_out_c
-            # ToDo: create test for this case
-            min_delta_t_cold_c = 3  # ToDo: constant
+            min_delta_t_cold_c = HeatExchangerControl.MIN_DELTA_T_COLD_C
             # Stall the HX when the secondary cold-side is so warm that even a
             # minimal `min_delta_t_cold_c` approach drives t_1_out_c above t_1_in_c.
             # Physically the exchanger cannot cool the primary in this regime — pretend
