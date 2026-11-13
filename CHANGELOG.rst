@@ -1,3 +1,15 @@
+[upcoming release]
+------------------------------
+- [CHANGED] Support Python 3.10 to 3.14 (was 3.10 and 3.11 only)
+- [CHANGED] Require pandapower >= 3.3.3 and pandapipes >= 0.14.0 (tested up to pandapipes 0.16 and pandapower 3.5); numpy >= 2.2 and < 2.5, scipy >= 1.15, numba >= 0.61.2; CoolProp 8 supported
+- [CHANGED] Element creation passes its entries to pandapower's ``_set_entries`` as a dictionary (pandapower 3 API)
+- [CHANGED] Prosumer controllers no longer forward extra keyword arguments to the pandapower ``Controller`` (pandapower >= 3.3 rejects them; older versions ignored them)
+- [FIXED] Controllers are looked up in the controller table by identity instead of ``==``, which compared all their attributes recursively (slow, and a deprecation warning on Python >= 3.13)
+- [FIXED] Chiller with CoolProp 8: thermodynamic properties are evaluated at a single state point and returned as floats
+- [REMOVED] Unused dependencies: astral, converter, pyomo, savReaderWriter, seaborn, simbench; openpyxl moved to the ``test`` extra
+- [REMOVED] Unused ``HeatDemandEnergySystemController`` and ``PandapipesBalanceControl``
+
+
 [0.1.3] 2025-11-20
 ------------------------------
 - [ADDED] Solar thermal model

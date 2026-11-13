@@ -53,7 +53,9 @@ class TestMapping:
         assert len(dummy_controller._get_mapped_responders(prosumer, remove_duplicate=False)) == 0
         assert len(dummy_controller._get_mappings(prosumer)) == 0
         assert len(dummy_controller2._get_mappings(prosumer)) == 0
-        assert dummy_controller2.t_m_to_deliver(prosumer) == pytest.approx((0, 0, np.array([])))
+        t_feed_c, t_ret_c, mdot_tab_kg_per_s = dummy_controller2.t_m_to_deliver(prosumer)
+        assert (t_feed_c, t_ret_c) == pytest.approx((0, 0))
+        assert len(mdot_tab_kg_per_s) == 0
         assert dummy_controller2.t_m_to_receive(prosumer) == pytest.approx((0, 0, 0))
 
         dummy_controller2.t_m_to_deliver = lambda container: (100, 30.5, np.array([1, 5.2, 0.3]))
@@ -291,7 +293,8 @@ class TestMapping:
 
         # dummy_controller_dmd required now nothing from dummy_controller_prod
         tfeed_c, tret_c, mdot_tab_kg_per_s = dummy_controller_mid.t_m_to_deliver(prosumer)
-        assert (tfeed_c, tret_c, mdot_tab_kg_per_s) == pytest.approx((120, 120, np.array([0.])))
+        assert (tfeed_c, tret_c) == pytest.approx((120, 120))
+        assert mdot_tab_kg_per_s == pytest.approx(np.array([0.]))
         mass_flow_with_temp = [{FluidMixMapping.TEMPERATURE_KEY: tfeed_c,
                                 FluidMixMapping.MASS_FLOW_KEY: sum(mdot_tab_kg_per_s)}]
 

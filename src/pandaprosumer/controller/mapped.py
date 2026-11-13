@@ -61,9 +61,11 @@ class MappedController(Controller):
         """
         Initializes the BasicProsumerController.
         """
-        super().__init__(container, in_service, order, level, index, False,
-                         drop_same_existing_ctrl, True, overwrite,
-                         matching_params, **kwargs)
+        # pandapower >= 3.3 Controller takes no **kwargs (older versions accepted and ignored them),
+        # so the extra keyword arguments of the prosumer controllers are not forwarded.
+        super().__init__(container, name=name, in_service=in_service, order=order, level=level, index=index,
+                         recycle=False, drop_same_existing_ctrl=drop_same_existing_ctrl, initial_run=True,
+                         overwrite=overwrite, matching_params=matching_params)
 
         if getattr(container, "check_order", False):
             if isinstance(order, list):
@@ -329,6 +331,22 @@ class MappedController(Controller):
         else:
             return list_initiators
 
+    @staticmethod
+    def _controller_level(container, controller):
+        """
+        Returns the level of a controller in the controller table of a container.
+
+        The row is found by identity: ``==`` on pandapower controllers compares all their attributes recursively
+        (DeepDiff), which is slow, warns on Python >= 3.13 and would match a distinct controller with the same
+        parameters.
+
+        :param container: The container object
+        :param controller: The controller object
+        :return: The level of the controller
+        """
+        mask = [obj is controller for obj in container.controller.object]
+        return container.controller.loc[mask].level.values[0]
+
     def _get_mapped_initiators_on_same_level(self, container, remove_duplicate=True):
         """
         Returns a list of all the controllers for which this controller is the responder.
@@ -337,9 +355,9 @@ class MappedController(Controller):
         :return: List of mapped initiators
         """
         list_initiators = self._get_mapped_initiators(container, remove_duplicate)
-        self_level = container.controller.loc[container.controller.object == self].level.values[0]
+        self_level = self._controller_level(container, self)
 
-        list_initiators = [initiator for initiator in list_initiators if container.controller.loc[container.controller.object == initiator].level.values[0] == self_level]
+        list_initiators = [initiator for initiator in list_initiators if self._controller_level(container, initiator) == self_level]
 
         return list_initiators
 
@@ -353,12 +371,12 @@ class MappedController(Controller):
         # so they will be re-executed
         # FixMe: level can be an array, use 'in' instead
         for initiator in self._get_mapped_initiators(container):
-            initiator_level = container.controller.loc[container.controller.object == initiator].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
+            initiator_level = self._controller_level(container, initiator)
+            self_level = self._controller_level(container, self)
             if initiator_level == self_level and initiator.applied:
                 initiator.applied = False
                 for initiator_initiator in initiator._get_mapped_initiators(container):
-                    initiator_initiator_level = container.controller.loc[container.controller.object == initiator_initiator].level.values[0]
+                    initiator_initiator_level = self._controller_level(container, initiator_initiator)
                     if initiator_initiator_level == initiator_level:
                         initiator.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,
                                                                FluidMixMapping.MASS_FLOW_KEY: np.nan}
@@ -374,8 +392,8 @@ class MappedController(Controller):
         # Recursive unapply all the controllers for which this controller is the initiator
         # so they will be re-executed
         for responder in self._get_mapped_responders(container):
-            responder_level = container.controller.loc[container.controller.object == responder].level.values[0]
-            self_level = container.controller.loc[container.controller.object == self].level.values[0]
+            responder_level = self._controller_level(container, responder)
+            self_level = self._controller_level(container, self)
             if responder_level == self_level and responder.applied:
                 responder.applied = False
                 responder.input_mass_flow_with_temp = {FluidMixMapping.TEMPERATURE_KEY: np.nan,

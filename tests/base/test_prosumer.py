@@ -20,7 +20,7 @@ class TestProsumer:
 
     def test_controller_columns(self):
         prosumer = create_empty_prosumer_container()
-        expected = sorted(['in_service', 'level', 'object', 'order'])
+        expected = sorted(['in_service', 'level', 'name', 'object', 'order'])
         assert sorted(prosumer.controller.columns.to_list()) == expected
 
     def test_mapping_columns(self):

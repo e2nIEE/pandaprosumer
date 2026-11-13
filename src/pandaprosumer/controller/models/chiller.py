@@ -2,6 +2,18 @@ import numpy as np
 from CoolProp.CoolProp import PropsSI
 from pandaprosumer.controller.base import BasicProsumerController
 
+
+def _props_si(output, name1, value1, name2, value2, fluid):
+    """
+    Evaluate CoolProp ``PropsSI`` at a single state point and return a float.
+
+    The inputs may be scalars or one-element arrays of any dimension (e.g. ``np.array([p])`` where ``p``
+    is already a one-element array). CoolProp 6 accepted these and returned a scalar; CoolProp 8 rejects
+    multi-dimensional inputs and returns a one-element array, which breaks the assembly of the results.
+    """
+    return float(PropsSI(output, name1, np.asarray(value1).item(), name2, np.asarray(value2).item(), fluid))
+
+
 class ChillerController(BasicProsumerController):
     """Definition of the Class for the Controller"""
 
@@ -140,15 +152,15 @@ class ChillerController(BasicProsumerController):
                 self._t_in_ev_c - self.element_instance.t_sh[0] - self.element_instance.pp_evap[0],
             )
 
-            p_evap = PropsSI("P", "T", t_evap, "Q", 1, self.element_instance.n_ref[0])
+            p_evap = _props_si("P", "T", t_evap, "Q", 1, self.element_instance.n_ref[0])
 
             # Calculate the compressor inlet conditions
             t_suc = t_evap + self.element_instance.t_sh[0]
             p_suc = p_evap  # check if this exactly what in line 94
 
-            h_suc = PropsSI("H", "T", t_suc, "P", np.array([p_suc]), self.element_instance.n_ref[0])
+            h_suc = _props_si("H", "T", t_suc, "P", np.array([p_suc]), self.element_instance.n_ref[0])
 
-            s_suc = PropsSI("S", "T", t_suc, "P", np.array([p_suc]), self.element_instance.n_ref[0])
+            s_suc = _props_si("S", "T", t_suc, "P", np.array([p_suc]), self.element_instance.n_ref[0])
 
             # Calculate the condenser temperature
             t_cond = (
@@ -158,16 +170,16 @@ class ChillerController(BasicProsumerController):
                     + self.element_instance.t_sc[0]
             )
 
-            p_cond = PropsSI("P", "T", t_cond, "Q", 1, self.element_instance.n_ref[0])
+            p_cond = _props_si("P", "T", t_cond, "Q", 1, self.element_instance.n_ref[0])
 
             # Calculate isentropic enthalpy
-            h_is = PropsSI("H", "P", np.array([p_cond]), "S", np.array([s_suc]), self.element_instance.n_ref[0])
+            h_is = _props_si("H", "P", np.array([p_cond]), "S", np.array([s_suc]), self.element_instance.n_ref[0])
 
             # Calculate the compressor discharge conditions
             h_dis = h_suc + (h_is - h_suc) / self._n_is
 
             # Calculate the conditions at the output of the condenser
-            h_cond_out = PropsSI(
+            h_cond_out = _props_si(
                 "H", "P", np.array([p_cond]), "T", np.array([t_cond]) - self.element_instance.t_sc[0],
                 self.element_instance.n_ref[0]
             )
@@ -179,7 +191,7 @@ class ChillerController(BasicProsumerController):
             m_cond_kg_per_s = q_load_ef / (self.element_instance.cp_water[0] * self._dt_cond_c)
 
             # Check if the pinchpoint at the bubble point is fulfilled; calculate the enthalpy and the water temperature at the bubble point and the water temperature
-            h_bub = PropsSI("H", "P", np.array([p_cond]), "Q", 1, self.element_instance.n_ref[0])
+            h_bub = _props_si("H", "P", np.array([p_cond]), "Q", 1, self.element_instance.n_ref[0])
             t_bub = self._t_in_cond_c + (
                     m_ref * (h_bub - h_cond_out) / (self.element_instance.cp_water[0] * m_cond_kg_per_s)
             )
@@ -187,10 +199,10 @@ class ChillerController(BasicProsumerController):
             if (t_bub + self.element_instance.pp_cond[0]) > t_cond:
                 # The pinchpoint is not met-> Recalculate the condenser conditions, discharge and refrigerant flow rate.
                 t_cond = t_bub + self.element_instance.pp_cond[0]
-                p_cond = PropsSI("P", "T", t_cond, "Q", 1, self.element_instance.n_ref[0])
-                h_is = PropsSI("H", "P", p_cond, "S", s_suc, self.element_instance.n_ref[0])
+                p_cond = _props_si("P", "T", t_cond, "Q", 1, self.element_instance.n_ref[0])
+                h_is = _props_si("H", "P", p_cond, "S", s_suc, self.element_instance.n_ref[0])
                 h_dis = h_suc + (h_is - h_suc) / self._n_is
-                h_cond_out = PropsSI(
+                h_cond_out = _props_si(
                     "H", "P", np.array([p_cond]), "T", t_cond - self.element_instance.t_sc[0],
                     self.element_instance.n_ref[0]
                 )
@@ -211,7 +223,7 @@ class ChillerController(BasicProsumerController):
             w_in_tot_kw = w_in + w_pump
 
             # Calculate the compressor discharge temperature
-            t_dis = PropsSI("T", "P", np.array([p_cond]), "H", h_dis, self.element_instance.n_ref[0])
+            t_dis = _props_si("T", "P", np.array([p_cond]), "H", h_dis, self.element_instance.n_ref[0])
 
             # Calculate temperatures and water flow rates
             # PM: same as before

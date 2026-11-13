@@ -91,7 +91,7 @@ def create_period(prosumer, resolution_s, start=None, end=None, timezone=None, n
     entries = dict(zip(["name", "start", "end", "resolution_s", "timezone"],
                        [name, start, end, resolution_s, timezone]))
 
-    _set_entries(prosumer, "period", index, **entries)
+    _set_entries(prosumer, "period", index, entries=entries)
     return int(index)
 
 
@@ -185,7 +185,7 @@ def create_heat_pump(prosumer,
              max_cop, cond_fluid, evap_fluid, mode, overflow_strategy, in_service])
     )
 
-    _set_entries(prosumer, "heat_pump", index, **entries, **kwargs)
+    _set_entries(prosumer, "heat_pump", index, entries={**entries, **kwargs})
 
     # _add_to_entries_if_not_nan(prosumer, "heat_pump", entries, index, "max_p_comp_kw", max_p_comp_kw)
     # _add_to_entries_if_not_nan(prosumer, "heat_pump", entries, index, "min_p_comp_kw", min_p_comp_kw)
@@ -234,7 +234,7 @@ def create_heat_demand(prosumer,
     entries = dict(zip(["name", "t_feed_demand_c", "t_return_demand_c", "in_service"],
                        [name, t_feed_demand_c, t_return_demand_c, in_service]))
 
-    _set_entries(prosumer, "heat_demand", index, **entries, **kwargs)
+    _set_entries(prosumer, "heat_demand", index, entries={**entries, **kwargs})
 
     return int(index)
 
@@ -368,7 +368,7 @@ def create_stratified_heat_storage(prosumer,
                         t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, height_charge_in_m,
                         height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
 
-    _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
+    _set_entries(prosumer, "stratified_heat_storage", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -459,7 +459,7 @@ def create_heat_exchanger(prosumer,
                         delta_t_hot_default_c, max_q_kw, min_delta_t_1_c, primary_fluid, secondary_fluid,
                         in_service]))
 
-    _set_entries(prosumer, "heat_exchanger", index, **entries, **kwargs)
+    _set_entries(prosumer, "heat_exchanger", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -533,7 +533,7 @@ def create_dry_cooler(prosumer,
                         t_fluid_in_nom_c, t_fluid_out_nom_c, fans_number,
                         adiabatic_mode, phi_adiabatic_sat_percent, min_delta_t_air_c, in_service]))
 
-    _set_entries(prosumer, "dry_cooler", index, **entries, **kwargs)
+    _set_entries(prosumer, "dry_cooler", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -591,7 +591,7 @@ def create_electric_boiler(prosumer,
     entries = dict(zip(["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
                        [name, max_p_kw, min_p_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
-    _set_entries(prosumer, "electric_boiler", index, **entries, **kwargs)
+    _set_entries(prosumer, "electric_boiler", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -652,7 +652,7 @@ def create_gas_boiler(prosumer,
     entries = dict(zip(["name", "max_q_kw", "min_q_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "heating_value_kj_per_kg", "efficiency_percent", "allow_stop", "max_t_out_c", "overflow_strategy", "in_service"],
                        [name, max_q_kw, min_q_kw, max_ramp_up_kw_per_s, max_ramp_down_kw_per_s, heating_value_kj_per_kg, efficiency_percent, allow_stop, max_t_out_c, overflow_strategy, in_service]))
 
-    _set_entries(prosumer, "gas_boiler", index, **entries, **kwargs)
+    _set_entries(prosumer, "gas_boiler", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -696,7 +696,7 @@ def create_booster_heat_pump(
         )
     )
 
-    _set_entries(prosumer, "booster_heat_pump", index, **entries, **kwargs)
+    _set_entries(prosumer, "booster_heat_pump", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -725,7 +725,7 @@ def create_ice_chp(prosumer, size, fuel, altitude=0, in_service=True, name=None,
         )
     )
 
-    _set_entries(prosumer, "ice_chp", index, **entries, **kwargs)
+    _set_entries(prosumer, "ice_chp", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -742,7 +742,7 @@ def create_heat_storage(prosumer,
 
     entries = dict(zip(['name', 'q_capacity_kwh', 'in_service'], [name, q_capacity_kwh, in_service]))
 
-    _set_entries(prosumer, "heat_storage", index, **entries, **kwargs)
+    _set_entries(prosumer, "heat_storage", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -836,7 +836,7 @@ def create_chiller(
         )
     )
 
-    _set_entries(prosumer, "chiller", index, **entries, **kwargs)
+    _set_entries(prosumer, "chiller", index, entries={**entries, **kwargs})
     return int(index)
 
 
@@ -963,7 +963,7 @@ def create_solar_thermal(prosumer,
         )
     )
 
-    _set_entries(prosumer, "solar_thermal", index, **entries, **kwargs)
+    _set_entries(prosumer, "solar_thermal", index, entries={**entries, **kwargs})
 
     return int(index)
 
@@ -1003,7 +1003,7 @@ def create_converter(prosumer,
     entries = dict(zip(["name", "cp_water", "in_service"],
                        [name, cp_water, in_service]))
 
-    _set_entries(prosumer, "converter", index, **entries, **kwargs)
+    _set_entries(prosumer, "converter", index, entries={**entries, **kwargs})
 
     return int(index)
 
@@ -1148,5 +1148,5 @@ def create_pv_production(
         )
     )
 
-    _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
+    _set_entries(prosumer, "pv_production", index, entries={**entries, **kwargs})
     return int(index)

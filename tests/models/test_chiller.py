@@ -184,6 +184,29 @@ class TestChiller:
         assert chiller_controller.step_results == pytest.approx(np.array([expected_results]), rel=1e-2)
 
 
+    def test_controller_run_control_with_demand(self):
+        """
+        Test the Chiller controller with a cooling demand, so that the refrigerant cycle is computed.
+        Expect finite results and an evaporator power equal to the demand (below the maximum capacity).
+        Guards the CoolProp calls against multi-dimensional inputs, rejected by CoolProp 8.
+        """
+        prosumer = create_empty_prosumer_container()
+        chiller_controller_idx = create_controlled_chiller(
+            prosumer, order=0, period=_default_period(prosumer), n_ref="R410A"
+        )
+        chiller_controller = prosumer.controller.iloc[chiller_controller_idx].object
+        q_load_kw = 10000.
+        chiller_controller.q_to_deliver_kw = lambda prosumer: q_load_kw
+
+        chiller_controller.inputs = np.array([[280.15, 285.15, 303.15, 5, 0, 0.85, 337320, 1]])
+        chiller_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chiller_controller.control_step(prosumer)
+
+        assert chiller_controller.step_results.shape == (1, len(chiller_controller.result_columns))
+        assert np.isfinite(chiller_controller.step_results).all()
+        q_evap_kw = chiller_controller.step_results[0, chiller_controller.result_columns.index("q_evap_kw")]
+        assert q_evap_kw == pytest.approx(q_load_kw)
+
     def test_controller_run_control_invalid_source_temperature(self):
         """
         Test the Chiller controller with source temperature too low to operate.

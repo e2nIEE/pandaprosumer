@@ -111,7 +111,7 @@ class BasicProsumerController(MappedController):
         for responder in responders:
             same_container = False
             for _, controller_row in prosumer.controller.iterrows():
-                if controller_row.object == responder:
+                if controller_row.object is responder:
                     same_container = True
             if same_container:
                 tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(prosumer)
@@ -121,7 +121,7 @@ class BasicProsumerController(MappedController):
                     if found_container:
                         break
                     for _, controller_row in mapping_row.object.responder_net.controller.iterrows():
-                        if controller_row.object == responder:
+                        if controller_row.object is responder:
                             found_container = True
                             container = mapping_row.object.responder_net
                             tfeed_i, treturn_i, mdot_i = responder.t_m_to_receive(container)

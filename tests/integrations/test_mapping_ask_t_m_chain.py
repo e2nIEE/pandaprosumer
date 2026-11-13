@@ -54,7 +54,9 @@ class TestMappingAskTMChain:
 
         responder_controller.t_m_to_receive = lambda container: (100, 30.5, 3.5)
 
-        assert initiator_controller.t_m_to_deliver(prosumer) == pytest.approx((100, 30.5, [3.5]))
+        t_feed_c, t_ret_c, mdot_tab_kg_per_s = initiator_controller.t_m_to_deliver(prosumer)
+        assert (t_feed_c, t_ret_c) == pytest.approx((100, 30.5))
+        assert mdot_tab_kg_per_s == pytest.approx([3.5])
 
     def test_2to1_fluimix_add(self):
         """
@@ -83,8 +85,12 @@ class TestMappingAskTMChain:
 
         responder_controller.t_m_to_receive = lambda container: (100, 30.5, 3.5)
 
-        assert initiator_controller1.t_m_to_deliver(prosumer) == pytest.approx((100, 30.5, [3.5]))
-        assert initiator_controller2.t_m_to_deliver(prosumer) == pytest.approx((100, 30.5, [3.5]))
+        t_feed_c, t_ret_c, mdot_tab_kg_per_s = initiator_controller1.t_m_to_deliver(prosumer)
+        assert (t_feed_c, t_ret_c) == pytest.approx((100, 30.5))
+        assert mdot_tab_kg_per_s == pytest.approx([3.5])
+        t_feed_c, t_ret_c, mdot_tab_kg_per_s = initiator_controller2.t_m_to_deliver(prosumer)
+        assert (t_feed_c, t_ret_c) == pytest.approx((100, 30.5))
+        assert mdot_tab_kg_per_s == pytest.approx([3.5])
 
     def test_1to2_fluidmix(self):
         """

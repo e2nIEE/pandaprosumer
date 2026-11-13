@@ -12,7 +12,7 @@ authors=[
 description = "A prosumer simulation tool that complements pandapower and pandapipes in the simulation of multi energy systems"
 readme = "README.rst"
 license = { file = "LICENSE" }
-requires-python = ">=3.10,<3.12"
+requires-python = ">=3.10"
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
@@ -26,25 +26,23 @@ classifiers = [
     "Programming Language :: Python :: 3",
     # Add the specific Python versions supported here, e.g.:
     "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11"
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14"
 ]
 dependencies = [
-    "astral==3.2",
-    "converter==1.0.0",
+    "CoolProp>=6.7.0",
     "matplotlib>=3.9.0",
-    "numpy>=1.25.0",
-    "pandapipes==0.12.0",
-    "pandapower>=2.14.11",
+    "numba>=0.61.2",
+    # pandas 2.x (required by pandapower) predates numpy 2.5 and emits a deprecation warning on every
+    # Timedelta under numpy 2.5; pandapower >= 3.5 also caps numpy < 2.5.
+    "numpy>=2.2,<2.5",
+    "pandapipes>=0.14.0",
+    "pandapower>=3.3.3",
     "pandas~=2.3",
-    "savReaderWriter==3.4.2",
-    "scipy>=1.11.0",
-    "seaborn==0.12.2",
-    "simbench==1.4.0",
-    "tqdm==4.66.3",
-    "numba==0.59.1",
-    "openpyxl==3.1.5",
-    "CoolProp==6.7.0",
-    "pyomo==6.6.1"
+    "scipy>=1.15",
+    "tqdm>=4.67"
 ]
 keywords = [
     "prosumer", "analysis", "controller", "automation", "grid", "energy", "engineering",
@@ -62,11 +60,11 @@ Changelog = "https://github.com/e2nIEE/pandaprosumer/blob/develop/CHANGELOG.rst"
 [project.optional-dependencies]
 docs = ["numpydoc>=1.5.0", "sphinx>=5.3.0", "sphinx_rtd_theme>=1.1.1", "sphinxcontrib.bibtex>=2.5.0", "sphinx-pyproject"]
 plotting = ["plotly", "igraph", "pvlib"]
-test = ["pytest==8.3.3", "pytest-xdist", "pytest-split", "nbmake", "pvlib", "setuptools; python_version >= '3.10'"]
+test = ["pytest>=8.3.3", "pytest-xdist", "pytest-split", "nbmake", "openpyxl>=3.1.5", "pvlib", "setuptools"]
 all = [
     "numpydoc>=1.5.0", "sphinx>=5.3.0", "sphinx_rtd_theme>=1.1.1", "sphinxcontrib.bibtex>=2.5.0", "sphinx-pyproject",
-    "plotly", "igraph",
-    "pytest==8.3.3", "pytest-xdist", "pytest-split", "nbmake", "setuptools; python_version >= '3.10'"
+    "plotly", "igraph", "pvlib",
+    "pytest>=8.3.3", "pytest-xdist", "pytest-split", "nbmake", "openpyxl>=3.1.5", "setuptools"
 ]
 
 [tool.setuptools.packages.find]

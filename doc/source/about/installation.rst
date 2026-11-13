@@ -3,6 +3,11 @@
 Installation
 =====================
 
+Requirements
+------------
+pandaprosumer supports Python 3.10 to 3.14. It requires pandapower >= 3.3.3 and pandapipes >= 0.14.0, which pip installs
+automatically.
+
 Through pip
 ------------
 The easiest way to install pandapipes is through pip:

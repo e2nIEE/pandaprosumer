@@ -50,6 +50,7 @@ def get_default_prosumer_container_structure():
         "version": __version__,
         "comp_list": [],
         "controller": [('object', dtype(object)),
+                       ('name', dtype(object)),
                        ('in_service', "bool"),
                        ('order', dtype(object)),
                        ('level', dtype(object))],
