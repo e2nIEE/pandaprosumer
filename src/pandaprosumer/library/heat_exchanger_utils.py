@@ -50,12 +50,19 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
             # dichotomy_fun is strictly decreasing on [x_min, x_max], 0 < x < 1
             x_max = 1 - 1e-10
             x_min = (a - 1) / (a - 0.001)
+            is_increasing = False
         else:
-            # dichotomy_fun is strictly increasing on [x_max, x_min], x < 0
+            # 0 < a < 1: x < 0 (the cold approach is larger than the hot one), dichotomy_fun is strictly
+            # increasing at its root: 0 at x = 0, positive on [(a - 1) / a, 0[ and negative far enough on the left.
+            # The dichotomy was run as on a decreasing function and stopped on the edge (a - 1) / a instead of
+            # the root: the primary left 3 K colder than the LMTD allows (85 -> 60.6 degC instead of 63.4 degC
+            # for a 80 degC secondary feed returning at 53 degC). A fixed left edge 3 (a - 1) / a missed the
+            # root below a = 0.27 (the cold approach more than ten times the hot one).
             x_max = (a - 1) / a
-            x_min = 3 * x_max
+            x_min = _expand_until_sign(dichotomy_fun, x_max, negative=True)
+            is_increasing = True
 
-        x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max, is_increasing=False)
+        x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max, is_increasing=is_increasing)
         return (1 - x_mean) * delta_t
     else:
         dichotomy_fun = lambda x: a * x - np.log(1 + x) if (1 + x) > 1e-10 else float('inf')
@@ -64,11 +71,26 @@ def calculate_temperature_difference(a, delta_t, is_cold=True):
             x_max = -1 + 1e-10
             x_min = (1 - a) / (a - 0.001)
         else:
-            # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0
+            # dichotomy_fun is strictly increasing on [x_min, x_max], x > 0; the right edge is pushed until
+            # dichotomy_fun is positive there (a fixed 3 x_min missed the root below a = 0.27)
             x_min = max((1 - a) / (a - 0.001), -0.999)
-            x_max = 3 * x_min
+            x_max = _expand_until_sign(dichotomy_fun, x_min, negative=False)
         x_mean = solve_dichotomy(dichotomy_fun, x_min, x_max)
         return (1 + x_mean) * delta_t
+
+
+def _expand_until_sign(f, x_edge, negative):
+    """
+    The point ``3 * x_edge``, pushed away from 0 by doubling until ``f`` has the requested sign there:
+    an edge for a dichotomy whose root lies beyond ``x_edge`` on that side.
+    """
+    x = 3 * x_edge
+    for _ in range(60):
+        if (f(x) < 0) == negative:
+            return x
+        x *= 2
+    logger.warning(f"Dichotomy bracket: no sign change of f found up to x={x}")
+    return x
 
 
 def compute_temp(q_ratio, q_u_w, t_in_c, t_fluid_in_c, t_fluid_out_c,
@@ -104,21 +126,28 @@ def compute_temp(q_ratio, q_u_w, t_in_c, t_fluid_in_c, t_fluid_out_c,
             lmtd_n = (delta_t_hot_n - delta_t_cold_n) / np.log(delta_t_hot_n / delta_t_cold_n)
         a = delta_t / (q_ratio * lmtd_n)
 
-        if a > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
-            # The exchanger is far oversized for the requested duty (q_ratio << 1): the LMTD
-            # solution `a*x + log(1-x) = 0` has 1-x = exp(-a) below double precision, which the
-            # dichotomy cannot resolve. Its a -> inf limit is well defined though: the outlet
-            # pinches on the other side's inlet (delta_t_result -> 0). Take that limit instead
-            # of giving up (the former `t_out_c = t_in_c` zeroed this side while the caller kept
-            # the other side's result -> energy created at the exchanger boundary).
-            logger.debug(f"Heat Exchanger far below nominal duty (a={a:.1f} > "
-                         f"{HeatExchangerControl.OUT_OF_RANGE_THRESHOLD}, q_u_w={q_u_w:.0f}W, "
-                         f"t_in_c={t_in_c}°C, t_fluid_out_c={t_fluid_out_c}°C): pinching the outlet "
-                         f"on the other side's inlet t_fluid_in_c={t_fluid_in_c}°C")
-            delta_t_result = 0.
+        if a <= 0:
+            # No approach on the side the duty is driven from (the primary feed at or below the secondary
+            # outlet asked, the air at or above the fluid outlet asked): no exchange. The dichotomy has no
+            # root for a <= 0; run on it anyway, it returned a bracket edge (a 69.9 degC feed "heating" a
+            # secondary to 76.85 degC and leaving at 43.6 degC).
+            t_out_c = t_in_c
         else:
-            delta_t_result = calculate_temperature_difference(a, delta_t, is_cold=not heat_consumer)
-        t_out_c = t_fluid_in_c - delta_t_result if heat_consumer else t_fluid_in_c + delta_t_result
+            if a > HeatExchangerControl.OUT_OF_RANGE_THRESHOLD:
+                # The exchanger is far oversized for the requested duty (q_ratio << 1): the LMTD
+                # solution `a*x + log(1-x) = 0` has 1-x = exp(-a) below double precision, which the
+                # dichotomy cannot resolve. Its a -> inf limit is well defined though: the outlet
+                # pinches on the other side's inlet (delta_t_result -> 0). Take that limit instead
+                # of giving up (the former `t_out_c = t_in_c` zeroed this side while the caller kept
+                # the other side's result -> energy created at the exchanger boundary).
+                logger.debug(f"Heat Exchanger far below nominal duty (a={a:.1f} > "
+                             f"{HeatExchangerControl.OUT_OF_RANGE_THRESHOLD}, q_u_w={q_u_w:.0f}W, "
+                             f"t_in_c={t_in_c}°C, t_fluid_out_c={t_fluid_out_c}°C): pinching the outlet "
+                             f"on the other side's inlet t_fluid_in_c={t_fluid_in_c}°C")
+                delta_t_result = 0.
+            else:
+                delta_t_result = calculate_temperature_difference(a, delta_t, is_cold=not heat_consumer)
+            t_out_c = t_fluid_in_c - delta_t_result if heat_consumer else t_fluid_in_c + delta_t_result
     # Find the primary mass flow rate so that the heat exchanged by the fluid on the primary side is equal to q_u
     # mdot_1_kg_per_s = q_u_w / (cp_1_j_per_kgk * (t_1_in_c - t_1_out_c))
     # mdot_air_kg_per_s = q_u_w / (cp_air_j_per_kgk * (t_air_out_c - t_air_in_c))

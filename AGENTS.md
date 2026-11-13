@@ -124,6 +124,45 @@ FluidMix responders must:
    so the `EnergyLeakWarning` fires if dispatched mdot diverges from the
    producer's recorded mdot.
 
+### Return of a producer short of mass flow (`ReturnTemperatureSolver`)
+
+A producer that delivers less than its several responders ask for (at its
+maximum power, or short of primary flow) gets back the mix of their returns
+weighted by the flows merit order gives them, which depends on the return it
+assumed: a fixed point. Gas Boiler, Electric Boiler, Heat Pump, Heat Exchanger
+and Stratified Heat Storage solve it with
+`controller/return_temperature.py::ReturnTemperatureSolver` (secant steps
+inside the bracket of the responders' returns) and
+`BasicProsumerController._mixed_return_temperature_c`. Plain substitution
+`t <- mix(t)` is too slow when the last responder returns close to the feed
+(a gas boiler at full power, second demand returning above ~70 °C:
+`did not converge after 20 iterations`) and cycles when the mix jumps with the
+assumed return (a storage's discharge gate; or, before it was fixed, the
+storage's loop feeding a pass the outlet temperature of the previous one). Use
+the solver in any new producer's rerun loop, rerun when the delivered flow
+differs from the demanded one in either direction (a surplus dumped on the last
+responder changes the mix too), dispatch any surplus inside the loop (not after
+it), and start every pass from the same state. Size a flow with the heat
+capacity at the mean temperature of the stream it is booked with, as the
+demands do (the exchanger sized its primary flow at the primary inlet: 0.45 %
+between its heat and its demands').
+`tests/integrations/test_capped_producer_two_demands.py`,
+`tests/integrations/test_shs_two_demands_short_return.py`,
+`tests/integrations/test_hx_short_primary_two_demands.py`.
+
+A producer short of what it is fed answers with the inverse of its own forward
+model, not with another model: the heat exchanger short of primary flow keeps
+the secondary outlet asked and delivers the secondary flow for which its
+forward LMTD calculation draws the primary flow it gets (a dichotomy on the
+forward calculation, `calculate_heat_exchanger_reverse`). Its former reverse
+kept the forward solution's primary outlet and solved the LMTD the other way:
+a primary 0.03 % short gave a secondary outlet 2 K colder with 9 % more flow.
+The LMTD dichotomy (`library/heat_exchanger_utils.py`) must find a root on
+both sides of `x = 0`: for `0 < a < 1` it was run as on a decreasing function
+and returned a bracket edge, the primary leaving 3 K colder than the LMTD
+allows. `tests/models/test_heat_exchanger_reverse.py` pins the roots, the
+inverse and its continuity.
+
 ### `EnergyLeakWarning`
 
 Defined in `src/pandaprosumer/controller/mapped.py`. Emitted when energy
