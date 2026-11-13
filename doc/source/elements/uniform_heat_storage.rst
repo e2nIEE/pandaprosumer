@@ -219,7 +219,3 @@ Edge cases and limits
   the hot water on top of a stratified tank matters.
 - **Constant mass.** The mass of water is constant (the density change with the temperature is neglected) and the
   heat capacity is evaluated at the tank temperature at the start of each step.
-- **Gas boiler at its maximum power with several responders.** A gas boiler at its maximum power that serves the
-  tank and a demand in parallel can fail to converge (``Gas Boiler ...: did not converge``) when the tank, close to its
-  charge temperature, returns water above ~70 °C. This comes from the gas boiler's own iteration on the return of
-  its responders and happens as well with two heat demands.
