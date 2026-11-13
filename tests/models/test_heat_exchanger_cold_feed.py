@@ -1,6 +1,6 @@
 """A primary feed colder than the secondary requires must not drive the guessed secondary return below freezing.
 
-Game sandbox, 2026-10-20: a 10 kW heat pump for ~300 kW of buildings. The network pump injects exactly the
+Field case: a 10 kW heat pump for ~300 kW of buildings. The network pump injects exactly the
 plant's heat, so the network water cools hour after hour and reaches a care-home substation (85/50 -> 40/70)
 at 11 degC. When the feed is colder than the requested secondary outlet, `control_step` slides the outlet down
 to `t_1_in - 5` and, once that falls under the secondary return, guesses the return by keeping the secondary
@@ -111,7 +111,7 @@ class TestColdPrimaryFeed:
 class TestFeedJustAboveTheOutlet:
     """
     A feed a fraction of a degree above the requested outlet used to keep that outlet with no hot-end approach:
-    in the coupled game network (325 kW at 71.1 degC) the primary then left barely cooled at 15.5 kg/s, ten times
+    in a coupled network (325 kW at 71.1 degC) the primary then left barely cooled at 15.5 kg/s, ten times
     its nominal flow, which drained the network's heat in one hour and starved every substation the next. The
     outlet now slides from 5 K above the requested one, so the primary flow is continuous across that threshold.
     """
@@ -135,7 +135,7 @@ class TestStarvedValveOpen:
     """
     A substation starved by a feed too cold to heat with opens its valve rather than closing it: the network keeps
     circulating through it, unheated, so a heat-led plant sees the load and can warm the network up again. Closed,
-    a game network cooled overnight drew 0.3 kg/s, a CHP saw 78 kW (under its minimum load) and stayed off all day.
+    a network cooled overnight drew 0.3 kg/s, a CHP saw 78 kW (under its minimum load) and stayed off all day.
     """
 
     def test_a_starved_exchanger_draws_its_nominal_flow_and_exchanges_nothing(self):

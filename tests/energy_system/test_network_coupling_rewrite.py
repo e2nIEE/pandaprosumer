@@ -1,7 +1,7 @@
 """
 A coupling that writes prosumer outputs into the network is not converged while those outputs changed after it wrote
 them: a substation exchanger reruns within the level once its demand answers, and the network must get the final
-answer, not the first (game sandbox: 220 kW extracted from a 42 degC network the exchanger finally drew nothing
+answer, not the first (a coupled network: 220 kW extracted from a 42 degC network the exchanger finally drew nothing
 from, cooling the water below 0 degC and losing the heat).
 """
 import numpy as np

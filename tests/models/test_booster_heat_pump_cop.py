@@ -20,7 +20,7 @@ def _cop(lift_k, coeff):
 
 class TestBoosterCop:
     def test_a_small_lift_gets_the_cop_of_the_smallest_fitted_lift(self):
-        # The demo flat: a 20 degC source and a 23 degC floor-heating sink gave a COP of 20.7
+        # A flat with a 20 degC source and a 23 degC floor-heating sink gave a COP of 20.7
         assert booster_cop(23.1, 20.0, WATER_WATER2) == pytest.approx(_cop(MIN_LIFT_K, WATER_WATER2))
         assert booster_cop(23.1, 20.0, WATER_WATER2) < 12.0
 

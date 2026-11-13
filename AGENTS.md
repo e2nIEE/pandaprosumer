@@ -20,14 +20,6 @@ uv pip install --python .venv/bin/python -e ".[all,docs,plotting,test]"
 .venv/bin/python -m pytest -n auto -q
 ```
 
-**SenergyNets platform note.** In the SenergyNets platform workspace this checkout sits
-next to `panda-energy-system` (cloned as `pandaprosumer` or `pandaprosumer_os`), and this
-same `.venv` is the shared test environment for both repos — `panda-energy-system` is
-editable-installed into it (`--no-deps`; recipe in `panda-energy-system/CLAUDE.md`). Keep
-the checkout on the `senergynets-platform` branch there: the install is editable, so the
-checked-out branch is what `panda-energy-system` imports, and `develop` lacks APIs it needs
-(e.g. `create_controlled_plant_pump_coupling`).
-
 ## Codebase patterns to know
 
 ### Producer / responder consistency at the FluidMix interface
@@ -49,9 +41,9 @@ for the helper `_assert_interface_consistent` and examples).
 
 ### Coupled district-heating networks (energy system)
 
-SenergyNets runs this library inside pandapipes networks through
-`panda-energy-system` (its `CLAUDE.md` → "One time step"). Behaviours a change
-here must keep, each pinned by a test:
+Prosumers coupled to pandapipes networks (`energy_system` package: network
+couplings, plant pump coupling, `StepPipeflow`). Behaviours a change here must
+keep, each pinned by a test:
 
 - **A writing network coupling re-converges** (`NetworkCouplingControl.is_converged`):
   a prosumer controller may run again after the coupling wrote its outputs into the
@@ -81,7 +73,7 @@ here must keep, each pinned by a test:
   `_exchange` and `FluidMixHeatStorageController._forced_charge_reapply_request`): the common flow goes
   charge → discharge and return → source, only the net flow crosses the layers, when
   the charge is no colder than the outlet layer. Each outlet booked without the other
-  stream lost ~1.7 MWh a day in a game tank.
+  stream lost ~1.7 MWh a day in a tank behind a district heating plant.
   `tests/integrations/test_shs_charge_discharge_short_circuit.py`.
 - **A forced charge setpoint is the producers' whole flow** to the tank (bypass = the
   rest of what arrives): a fill-rate setpoint caps the source. Leave the charge free
@@ -104,7 +96,7 @@ here must keep, each pinned by a test:
 Check energy balances, not only the KPIs, when touching any of these: plant heat =
 circulation-pump heat, `res_heat_consumer.qext_w` = the substations' `q_exchanged_kw`,
 a tank's Σ(received − delivered) = its `e_stored_kwh` change (+ small losses). A
-discriminating test needs game-like steps (15 min to 1 h): at 5 min most of these
+discriminating test needs steps of 15 min to 1 h: at 5 min most of these
 effects vanish.
 
 ### `overflow_strategy` and `_merit_order_mass_flow`

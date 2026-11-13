@@ -1,6 +1,6 @@
 """A stratified heat storage whose downstream reports a return below the freezing point of water.
 
-Field case (SenergyNets game, a plant piped through a 2 000 kWh tank into a district heating network): when the
+Field case (a plant piped through a 2 000 kWh tank into a district heating network): when the
 electricity price rose the tank stopped charging, the network cooled within the hour and, between two iterations
 of the step, its pump reported the water coming back at -7.3 degC. The tank asserted ``t_demand_in_c >= 0`` and
 stopped the whole run. Liquid water below 0 degC is an artefact of an unsettled network solve: the tank takes it as

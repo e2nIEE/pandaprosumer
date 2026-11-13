@@ -110,7 +110,7 @@ def _build_prosumer(q_demand_kw):
         init_layer_temps_c=init_layer_temps_c,
         period=period,
         level=1, order=0,
-        name="shs_ecs",
+        name="shs_dhw",
         **SHS_PARAMS,
     )
 
@@ -118,7 +118,7 @@ def _build_prosumer(q_demand_kw):
         prosumer,
         level=1, order=1,
         period=period,
-        name="hd_ecs",
+        name="hd_dhw",
         t_feed_demand_c=T_FEED_DEMAND_C,
         t_return_demand_c=T_RETURN_DEMAND_C,
     )

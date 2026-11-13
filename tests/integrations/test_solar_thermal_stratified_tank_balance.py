@@ -1,7 +1,7 @@
 """
 Solar collectors charging a stratified tank: the heat the collectors book is the heat the tank receives.
 
-Field case (SenergyNets "Solar house" demo, one-hour steps): collectors -> stratified tank -> floor heating, a gas
+Field case (a solar house, one-hour steps): collectors -> stratified tank -> floor heating, a gas
 boiler topping the floor heating up. The collectors computed their gain from the 30 degC ``inlet_temperature_C``
 input while the tank booked what it received from the water it really gave back (its ~19 degC bottom layer): the
 tank received 327 kWh from collectors that made 212 kWh, and the house's balance did not close (115 kWh short).

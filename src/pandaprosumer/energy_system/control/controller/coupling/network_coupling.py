@@ -62,7 +62,7 @@ class NetworkCouplingControl(BasicProsumerController):
 
         A prosumer controller may run again after this coupling wrote its outputs, within the same level: a heat
         exchanger first answers with a guessed secondary return, writes that heat, then reruns once its demand
-        answers with the real return. Without this check the network kept the first answer (game sandbox: 220 kW
+        answers with the real return. Without this check the network kept the first answer (a coupled network: 220 kW
         extracted from a 42 degC network the exchanger finally drew nothing from, cooling the water to -17 degC
         and losing the heat). Unconverged, the coupling writes the final outputs and the network is solved again.
         """

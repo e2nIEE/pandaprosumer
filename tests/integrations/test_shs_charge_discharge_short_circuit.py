@@ -1,7 +1,7 @@
 """
 A tank charged and discharged at once through the same connections: the common flow short-circuits it.
 
-SenergyNets game: a heat pump capped under a forced charge setpoint put all it made into the tank while the
+Field case: a heat pump capped under a forced charge setpoint put all it made into the tank while the
 network was served from the discharge. Each outlet was booked as if the other stream did not exist -- the
 discharge drawn from the start-of-step layers, colder than the charge entering the same top layer -- so a tank
 charged with 440 kW gave 140 kW at 51 degC to the network, its stored energy flat: ~1.7 MWh lost a day. The
@@ -21,7 +21,7 @@ from tests.integrations.test_shs_forced_setpoints import (
     _run,
 )
 
-#: 15 min steps: long enough for the charge to cross a good part of the tank within a step, as in the game's hours
+#: 15 min steps: long enough for the charge to cross a good part of the tank within a step, as hourly steps do
 RESOL_S = 900
 
 

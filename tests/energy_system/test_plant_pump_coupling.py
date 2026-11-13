@@ -69,7 +69,7 @@ def _coupling_at_step_start():
 
 def test_the_coupling_waits_for_a_plant_that_runs_again_before_it_delivers():
     """
-    Field case (SenergyNets game, a heat pump charging a tank that feeds the network): when the tank's schedule
+    Field case (a heat pump charging a tank that feeds the network): when the tank's schedule
     changed, its return missed the one it promised its sources, so it ran them again on the next pass and
     delivered nothing on the first one. The coupling fixed the plant's heat on that first pass, at 0: the network
     ran cold for the hour while the tank booked the heat it discharged.

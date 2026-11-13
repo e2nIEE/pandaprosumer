@@ -72,7 +72,7 @@ def _input_fingerprint(net):
     Digest of every pipeflow input of the net (the declared input columns of each component table).
 
     Called before every pipeflow, so it hashes the columns' numpy buffers directly: hashing the tables with
-    `pd.util.hash_pandas_object` cost about a sixth of a whole game run.
+    `pd.util.hash_pandas_object` cost about a sixth of a whole coupled run.
     """
     digest = hashlib.sha1()
     try:

@@ -7,9 +7,9 @@ controller). The responder's input must reflect the LATEST contribution of each
 mapping, not the SUM over passes.
 
 Pre-fix, `_add_mapping` did `inputs = nan_to_num(previous) + mapped`, so a
-2-pass negotiation doubled the mapped power. Observed in the Paris BET coupled
-run as `net.heat_consumer[0].qext_w` = exactly 2×/3× `hp_ecs.q_evap_kw` at DEMix
-schedule transitions (33/564 steps of the December week) — a ~1000 kW phantom
+2-pass negotiation doubled the mapped power. Observed in a coupled run as
+`net.heat_consumer[0].qext_w` = exactly 2×/3× a heat pump's `q_evap_kw` at
+schedule transitions (33 of 564 steps of a week) — a ~1000 kW phantom
 extraction that shocks the loop temperature.
 
 Distinct mappings (several initiators legitimately summing into one responder

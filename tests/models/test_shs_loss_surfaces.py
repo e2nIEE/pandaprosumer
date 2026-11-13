@@ -11,8 +11,7 @@ isothermal idle tank loses `U · (2A + N·S_lat) · (T − T_ext)`.
 
 History: the controller used `S1 = Sl = A + S_lat` (the cross-section counted on
 every interior layer as well) and `SN = S_lat` (no top disc) — with 20 layers the
-as-coded UA was ≈ 2× the cylinder's. Surfaced by the Paris demo heat-loss study
-(`scripts/heat_loss_study.py`, 2026-09-09).
+as-coded UA was ≈ 2× the cylinder's. Surfaced by a heat-loss study of an idle tank.
 """
 import numpy as np
 import pytest

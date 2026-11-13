@@ -13,7 +13,7 @@ def _apply_mapping(mapping, initiator_controller, responder_controller, initiato
     controller). The responder input must hold the LATEST contribution of each
     mapping, not the sum over passes: summing passes doubled the mapped power
     (exact ×2/×3 `qext_w` on a network write controller at schedule transitions
-    in the Paris BET coupled run — a ~1000 kW phantom extraction). So each
+    in a coupled run — a ~1000 kW phantom extraction). So each
     mapping's last contribution is remembered on the responder
     (`_generic_mapping_contribs`) and REPLACED on re-fire, while distinct
     mappings (several initiators feeding one input) still sum as 'add' intends.

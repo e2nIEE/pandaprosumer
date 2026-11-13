@@ -1,6 +1,6 @@
 """A stratified heat storage that starts the day full, is drained, and must then ask to be charged again.
 
-Field case (SenergyNets game, a CHP piped through a 1 000 kWh tank into a district heating network): a tank behind a
+Field case (a CHP piped through a 1 000 kWh tank into a district heating network): a tank behind a
 CHP starts full (every layer at the 85 degC feed) and serves the night. Drained to 37-44 degC, below its 50 degC
 useful temperature, it then never charged again although the CHP had 200 kW to spare: the "tank full" test measured
 the remaining capacity from the INITIAL layers (85 degC -> 0 kWh storable at 85 degC) minus the energy stored above

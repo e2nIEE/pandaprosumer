@@ -87,7 +87,7 @@ def _build_prosumer():
         "min_p_comp_kw": MIN_P_COMP_KW, "max_p_comp_kw": 393, "delta_t_hot_default_c": 5,
     }
     hp_idx = create_controlled_heat_pump(
-        prosumer, level=1, order=0, period=period, name="hp_ecs", **hp_params
+        prosumer, level=1, order=0, period=period, name="hp_dhw", **hp_params
     )
 
     # Initial thermocline bottom = demand return, top = demand feed: a full tank
@@ -97,11 +97,11 @@ def _build_prosumer():
         prosumer, tank_height_m=TANK_H, tank_internal_radius_m=TANK_R, n_layers=N_LAYERS,
         max_dt_s=MAX_DT_S, max_charge_mdot_kg_per_s=10.0, min_useful_temp_c=MIN_USEFUL,
         t_ext_c=T_EXT, init_layer_temps_c=init_layer_temps_c, period=period,
-        level=1, order=1, name="shs_ecs",
+        level=1, order=1, name="shs_dhw",
     )
 
     hd_idx = create_controlled_heat_demand(
-        prosumer, level=1, order=2, period=period, name="hd_ecs",
+        prosumer, level=1, order=2, period=period, name="hd_dhw",
         t_feed_demand_c=T_FEED_DEMAND, t_return_demand_c=T_RETURN_DEMAND,
     )
 
