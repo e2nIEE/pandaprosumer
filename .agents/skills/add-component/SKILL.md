@@ -19,7 +19,9 @@ Before starting, read an existing component of the closest type with the
 
 - **Producer → demand** (boiler-like): `gas_boiler` or `electric_boiler`.
 - **Heat pump family** (has a compressor floor `min_p_comp_kw`): `heat_pump`.
-- **Storage**: `stratified_heat_storage`.
+- **Storage**: a hot-water tank subclasses `FluidMixHeatStorageController`
+  (`fluid_mix_heat_storage.py`) and implements only its tank physics hooks: copy
+  `uniform_heat_storage` (one mixed layer) or `stratified_heat_storage` (layers).
 - **Cooling**: `chiller`, `dry_cooler`.
 
 Copying the nearest sibling and adapting it is far safer than writing from scratch,

@@ -18,6 +18,7 @@ from pandaprosumer.create import (
     create_pv_production,
     create_solar_thermal,
     create_stratified_heat_storage,
+    create_uniform_heat_storage,
 )
 from pandaprosumer.controller import (
     BatteryStorageController,
@@ -52,6 +53,8 @@ from pandaprosumer.controller import (
     SolarThermalControllerData,
     StratifiedHeatStorageController,
     StratifiedHeatStorageControllerData,
+    UniformHeatStorageController,
+    UniformHeatStorageControllerData,
 )
 from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
@@ -497,6 +500,80 @@ def create_controlled_stratified_heat_storage(prosumer,
                                                                          bypass=bypass,
                                                                          name=name)
     return stratified_heat_storage_controller.index
+
+
+def create_controlled_uniform_heat_storage(prosumer,
+                                           mass_kg=None,
+                                           e_capacity_kwh=None,
+                                           min_useful_temp_c=65.,
+                                           t_full_c=np.nan,
+                                           u_w_per_m2k=0.,
+                                           area_wall_m2=0.,
+                                           t_ext_c=22.5,
+                                           max_remaining_capacity_kwh=1,
+                                           t_discharge_out_tol_c=1e-3,
+                                           max_charge_mdot_kg_per_s=np.nan,
+                                           t_charge_target_c=np.nan,
+                                           name=None,
+                                           index=None,
+                                           in_service=True,
+                                           level=0,
+                                           order=0,
+                                           period=0,
+                                           t_tank_init_c=None,
+                                           **kwargs):
+    """
+    Creates a uniform (fully mixed) heat storage element in prosumer["uniform_heat_storage"] and a uniform heat
+    storage controller
+
+    INPUT:
+        **prosumer** - The prosumer within which this uniform heat storage should be created.
+
+    OPTIONAL:
+        **mass_kg**, **e_capacity_kwh**, **min_useful_temp_c**, **t_full_c**, **u_w_per_m2k**, \
+        **area_wall_m2**, **t_ext_c**, **max_remaining_capacity_kwh**, **t_discharge_out_tol_c**, \
+        **max_charge_mdot_kg_per_s**, **t_charge_target_c** - The element parameters, see \
+        ``create_uniform_heat_storage``. Give exactly one of ``mass_kg`` and ``e_capacity_kwh``.
+
+        **name** (string, default None) - A custom name for this uniform heat storage
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+        **level** (int, default 0) - The level of the controller
+
+        **order** (int, default 0) - The order of the controller
+
+        **period** (int, default 0) - Index of the period, default is 0
+
+        **t_tank_init_c** (float, default None) - Initial tank temperature [°C]. If None, ``t_ext_c``.
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created uniform heat storage controller
+
+    EXAMPLE:
+        create_controlled_uniform_heat_storage(prosumer, mass_kg=5000, min_useful_temp_c=60, t_tank_init_c=70)
+    """
+    uhs_index = create_uniform_heat_storage(
+        prosumer,
+        **{k: v for k, v in locals().items() if k not in {"prosumer", "period", "order", "level",
+                                                          "t_tank_init_c", "kwargs"}},
+        **kwargs
+    )
+    uniform_heat_storage_controller_data = UniformHeatStorageControllerData(
+        element_name='uniform_heat_storage',
+        element_index=[uhs_index],
+        period_index=period
+    )
+    uniform_heat_storage_controller = UniformHeatStorageController(prosumer,
+                                                                   uniform_heat_storage_controller_data,
+                                                                   order=order,
+                                                                   level=level,
+                                                                   t_tank_init_c=t_tank_init_c,
+                                                                   name=name)
+    return uniform_heat_storage_controller.index
 
 
 def create_controlled_heat_exchanger(prosumer,
