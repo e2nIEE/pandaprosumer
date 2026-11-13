@@ -1,4 +1,4 @@
-﻿.. _heat_demand_element:
+.. _heat_demand_element:
 
 =======================
 Heat Demand
@@ -40,11 +40,10 @@ Input Static Data
 .. csv-table:: 
    :header: "Parameter", "Description", "Unit"
 
-   "name", "Unique name or identifier for the gas boiler element.", "N/A"
-   "q_demand_kw", "Demand heat power", "kW"
-   "mdot_demand_kg_per_s", "Demand required mass flow", "kg/s"
-    "t_feed_demand_c ", "Demand required feed temperature level", "Degree Celsius"
-    "t_return_demand_c ", "Demand required return temperature level", "Degree Celsius"
+   "name", "Unique name or identifier for the heat demand element.", "N/A"
+   "t_feed_demand_c", "Default feed temperature level used if no time-series value is provided.", "Degree Celsius"
+   "t_return_demand_c", "Default return temperature level used if no time-series value is provided.", "Degree Celsius"
+   "in_service", "True for in_service or False for out of service", "boolean"
 
 
 
@@ -54,12 +53,11 @@ Input Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "q_demand_kw ", "Demand heat power ", "kW"
+    "q_demand_kw ", "Demand heat power", "kW"
     "mdot_demand_kg_per_s  ", "Demand required mass flow", "kg/s"
     "t_feed_demand_c", "Demand required feed temperature level", "Degree Celsius"
     "t_return_demand_c", "Demand required return temperature level", "Degree Celsius"
-
-
+    "q_received_kw", "Heat power already received from upstream elements (optional, for chained mappings)", "kW"
 
 
 Output Time Series
@@ -68,7 +66,11 @@ Output Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
+    "q_received_kw", "Heat power effectively received at the demand", "kW"
     "q_uncovered_kw", "Uncovered heat power. Can be negative if the power provided is greater than the required power", "kW"
+    "mdot_kg_per_s", "Mass flow rate actually received by the demand", "kg/s"
+    "t_in_c", "Actual inlet temperature of the demand", "Degree Celsius"
+    "t_out_c", "Actual outlet temperature of the demand", "Degree Celsius"
 
 
 Mapping
@@ -89,7 +91,8 @@ The Heat Demand Controller can be mapped using :ref:`FluidMixMapping <FluidMixMa
 Model
 =================
 
-.. autofunction:: pandaprosumer.controller.models.HeatDemandController
+.. autoclass:: pandaprosumer.controller.models.heat_demand.HeatDemandController
+    :members:
 
 The heat demand model take four inputs :math:`Q`, :math:`\dot{m}`, :math:`T_\text{feed}` and :math:`T_\text{return}`
 

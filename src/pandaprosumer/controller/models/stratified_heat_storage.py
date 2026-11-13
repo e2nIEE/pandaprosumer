@@ -78,7 +78,7 @@ def phi(r):
     elif limiterName == "vanleer":  # Not used
         return (r + abs(r)) / (1 + abs(r))
     else:
-        raise Exception("only superbee and van Leer are supported")
+        raise ValueError("only superbee and van Leer are supported")
 
 
 @njit
@@ -111,9 +111,7 @@ def tvd_convection_step(layer_temps_c,
     T_charge = t_charge_c
     T_amb = t_ext_c
     T_1 = T[0]
-    T_2 = T[1]
     T_N = T[-1]
-    T_N_minus_1 = T[-2]
     m_cC_p = mdot_charge_kg_per_s * cp_j_per_kgk
     m_dC_p = mdot_discharge_kg_per_s * cp_j_per_kgk
     m_eC_p = (mdot_charge_kg_per_s - mdot_discharge_kg_per_s) * cp_j_per_kgk
@@ -145,7 +143,6 @@ def tvd_convection_step(layer_temps_c,
         if den1[i] >= eps:
             theta[i] = num[i] / den[i]
 
-    scheme = "superbee"
     limiter = phi(theta)
 
     # T = np.array(T)
@@ -289,6 +286,17 @@ class StratifiedHeatStorageController(BasicProsumerController):
         self.t_previous_in_charge_c = np.nan
         self.mdot_previous_in_kg_per_s = np.nan
 
+        # Stagnation guard for the reapply loop: if the SHS's computed return
+        # temperature stays within STAGNATION_TOL_C of its previous value for
+        # MAX_REAPPLY_STAGNATION_COUNT consecutive iterations within the same
+        # timestep, we've hit a fixed point that the upstream initiator cannot
+        # reconcile (the SHS bottom-layer temp is incompatible with the
+        # initiator's expected t_keep_return_c). Accept and proceed rather
+        # than reapplying forever and timing out the outer max_iter budget.
+        self._reapply_last_t_received_out_c = np.nan
+        self._reapply_stagnation_count = 0
+        self._reapply_last_time = None
+
         # Used for debugging
         self.plot = plot
         self.bypass = bypass
@@ -298,6 +306,26 @@ class StratifiedHeatStorageController(BasicProsumerController):
             self.t_discharge_tab_c = []
             self.mdot_charge_tab_kg_per_s = []
             self.mdot_discharge_tab_kg_per_s = []
+
+    def _effective_max_dt_s(self, prosumer,
+                            mdot_charge_kg_per_s,
+                            mdot_discharge_kg_per_s,
+                            rho_kg_per_m3=None):
+        """Return the per-substep time-step used by the TVD solver.
+
+        - numeric -> use the pinned value unchanged.
+        - ``None`` / ``NaN`` (legacy default) -> use ``self.resol`` (no
+          sub-stepping). Preserves the historic behaviour of every test
+          that relied on the default.
+
+        ``mdot_charge_kg_per_s``, ``mdot_discharge_kg_per_s`` and
+        ``rho_kg_per_m3`` are accepted for forward-compatibility with a
+        future CFL-based auto-derivation; today they are unused.
+        """
+        user_max_dt = self._get_element_param(prosumer, 'max_dt_s')
+        if user_max_dt is None or (isinstance(user_max_dt, float) and np.isnan(user_max_dt)):
+            return float(self.resol)
+        return float(user_max_dt)
 
     @property
     def _t_received_in_c(self):
@@ -347,6 +375,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
         m_layer_kg = self.A_m2 * self.dz_m * rho_mean_kg_per_m3
         nb_cold_layers = np.sum(np.array(self._layer_temps_c) < t_required_in_c)
         mdot_charge_kg_per_s = nb_cold_layers * m_layer_kg / self.resol
+
+        # Optional cap so the SHS doesn't ask the upstream producer for more
+        # mass flow than it can supply. Without this, oversized cold-layer
+        # counts trigger an unbounded reapply loop and ControllerNotConverged.
+        max_charge_mdot = self._get_element_param(prosumer, 'max_charge_mdot_kg_per_s')
+        if max_charge_mdot is not None and not np.isnan(max_charge_mdot):
+            mdot_charge_kg_per_s = min(mdot_charge_kg_per_s, float(max_charge_mdot))
 
         mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
         if mdot_required_kg_per_s == 0:
@@ -453,6 +488,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
             #
             # mdot_discharge_kg_per_s = np.sum(mdot_demand_tab_kg_per_s)
 
+        # FixMe: the feature of loading at intermediate layer is not working anymore with the TVD scheme
         height_charge_in_m = self._get_element_param(prosumer, 'height_charge_in_m')
         height_charge_out_m = self._get_element_param(prosumer, 'height_charge_out_m')
         height_discharge_out_m = self._get_element_param(prosumer, 'height_discharge_out_m')
@@ -466,12 +502,10 @@ class StratifiedHeatStorageController(BasicProsumerController):
         rho_kg_per_m3 = self.fluid.get_density(CELSIUS_TO_K + np.mean(self._layer_temps_c))
         t_ext_c = self._get_element_param(prosumer, 't_ext_c')
 
-        k_fluid_w_per_mk = self._get_element_param(prosumer, 'k_fluid_w_per_mk')
-        # dt_max_s = (self.dz_m ** 2 * rho_kg_per_m3 * cp_discharge_j_per_kgk) / (2 * k_fluid_w_per_mk)
-        if np.isnan(self._get_element_param(prosumer, 'max_dt_s')):
-            max_dt_s = self.resol
-        else:
-            max_dt_s = self._get_element_param(prosumer, 'max_dt_s')
+        max_dt_s = self._effective_max_dt_s(prosumer,
+                                            mdot_charge_kg_per_s,
+                                            mdot_discharge_kg_per_s,
+                                            rho_kg_per_m3)
         self._layer_temps_c = tvd_resolution_in_time(layer_temps_c=np.array(self._layer_temps_c),
                                                      mdot_charge_kg_per_s=mdot_charge_kg_per_s,
                                                      t_charge_c=t_received_in_c,
@@ -518,7 +552,13 @@ class StratifiedHeatStorageController(BasicProsumerController):
         else:
             t_received_out_c = (mdot_charge_kg_per_s * t_charge_out_c + mdot_bypass_kg_per_s * t_demand_in_c) / (mdot_charge_kg_per_s + mdot_bypass_kg_per_s)
 
-        return (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
+        cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
+        q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
+
+        cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
+        q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
+
+        return (q_delivered_kw, q_bypass_kw, q_discharge_kw, q_received_kw, q_charge_kw, e_stored_kwh,
                 mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
                 mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
                 mdot_charge_kg_per_s, t_charge_out_c,
@@ -580,7 +620,7 @@ class StratifiedHeatStorageController(BasicProsumerController):
         while rerun:
             self._layer_temps_c = layer_temp_init_c.copy()
 
-            (q_delivered_kw, q_bypass_kw, q_discharge_kw, e_stored_kwh,
+            (q_delivered_kw, q_bypass_kw, q_discharge_kw, q_received_kw, q_charge_kw, e_stored_kwh,
              mdot_received_kg_per_s, t_received_in_c, t_received_out_c,
              mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c,
              mdot_charge_kg_per_s, t_charge_out_c,
@@ -613,25 +653,29 @@ class StratifiedHeatStorageController(BasicProsumerController):
                     t_demand_in_c = t_return_demand_new_c
                     rerun = True
 
-        # result = np.array([[mdot_discharge_kg_per_s,
-        #                     t_discharge_out_c,
-        #                     q_delivered_kw,
-        #                     e_stored_kwh]])
-
-        cp_received_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_received_out_c) / 2)
-        q_received_kw = mdot_received_kg_per_s * cp_received_j_per_kgk * (t_received_in_c - t_received_out_c) / 1e3
-        cp_charge_j_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_received_in_c + t_charge_out_c) / 2)
-        q_charge_kw = mdot_charge_kg_per_s * cp_charge_j_per_kgk * (t_received_in_c - t_charge_out_c) / 1e3
-
-        result = np.array([[mdot_discharge_kg_per_s,
-                            t_discharge_out_c,
-                            q_discharge_kw,
+        result = np.array([[mdot_received_kg_per_s, t_received_in_c, t_received_out_c, q_received_kw,
+                            mdot_charge_kg_per_s, t_received_in_c, t_charge_out_c, q_charge_kw,
+                            mdot_discharge_kg_per_s, t_demand_in_c, t_discharge_out_c, q_discharge_kw,
+                            mdot_delivered_kg_per_s, t_demand_in_c, t_delivered_out_c, q_delivered_kw,
                             e_stored_kwh]])
 
         self.last_result = {
+            "mdot_received_kg_per_s": mdot_received_kg_per_s,
+            "t_received_in_c": t_received_in_c,
+            "t_received_out_c": t_received_out_c,
+            "q_received_kw": q_received_kw,
+            "mdot_charge_kg_per_s": mdot_charge_kg_per_s,
+            "t_charge_in_c": t_received_in_c,
+            "t_charge_out_c": t_charge_out_c,
+            "q_charge_kw": q_charge_kw,
             "mdot_discharge_kg_per_s": mdot_discharge_kg_per_s,
+            "t_discharge_in_c": t_demand_in_c,
             "t_discharge_out_c": t_discharge_out_c,
             "q_discharge_kw": q_discharge_kw,
+            "mdot_delivered_kg_per_s": mdot_delivered_kg_per_s,
+            "t_delivered_in_c": t_demand_in_c,
+            "t_delivered_out_c": t_delivered_out_c,
+            "q_delivered_kw": q_delivered_kw,
             "e_stored_kwh": e_stored_kwh,
         }
 
@@ -656,13 +700,38 @@ class StratifiedHeatStorageController(BasicProsumerController):
         # assert mdot_received_kg_per_s >= 0, f"SHS {self.name} mdot_received_kg_per_s is negative ({mdot_received_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
         # assert mdot_delivered_kg_per_s >= 0, f"SHS {self.name} mdot_delivered_kg_per_s is negative ({mdot_delivered_kg_per_s}) for timestep {self.time} in prosumer {prosumer.name}"
 
-        if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0:
-            # If the actual output temperature is the same as the promised one, the storage is correctly applied
+        # Stagnation detection across reapply iterations within the same
+        # timestep: if t_received_out_c has not changed meaningfully across
+        # consecutive reapplies, the upstream/SHS pair is at an irreconcilable
+        # fixed point (e.g. HP wants t_return=58 but SHS bottom layer is 64);
+        # accepting and proceeding is strictly better than exhausting the
+        # outer max_iter budget and raising ControllerNotConverged.
+        STAGNATION_TOL_C = 1e-2
+        MAX_REAPPLY_STAGNATION_COUNT = 3
+        if self._reapply_last_time != self.time:
+            # New timestep -- reset stagnation tracking.
+            self._reapply_last_time = self.time
+            self._reapply_last_t_received_out_c = np.nan
+            self._reapply_stagnation_count = 0
+        if (not np.isnan(self._reapply_last_t_received_out_c)
+                and not np.isnan(t_received_out_c)
+                and abs(t_received_out_c - self._reapply_last_t_received_out_c) < STAGNATION_TOL_C):
+            self._reapply_stagnation_count += 1
+        else:
+            self._reapply_stagnation_count = 0
+        self._reapply_last_t_received_out_c = t_received_out_c
+        stagnated = self._reapply_stagnation_count >= MAX_REAPPLY_STAGNATION_COUNT
+
+        if np.isnan(self.t_keep_return_c) or mdot_received_kg_per_s == 0 or abs(t_received_out_c - self.t_keep_return_c) < TEMPERATURE_CONVERGENCE_THRESHOLD_C or len(self._get_mapped_initiators_on_same_level(prosumer)) == 0 or stagnated:
+            # If the actual output temperature is the same as the promised one, the storage is correctly applied.
+            # Also break out when the reapply loop has stagnated -- see comment above.
             self.finalize(prosumer, result, result_fluid_mix)
             self.applied = True
             self.t_previous_out_charge_c = np.nan
             self.t_previous_in_charge_c = np.nan
             self.mdot_previous_in_kg_per_s = np.nan
+            self._reapply_last_t_received_out_c = np.nan
+            self._reapply_stagnation_count = 0
         else:
             # Else, reapply the upstream controllers with the new temperature so no energy appears or disappears
             self._layer_temps_c = layer_temp_init_c

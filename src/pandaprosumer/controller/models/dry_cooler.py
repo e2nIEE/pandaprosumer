@@ -9,12 +9,12 @@ from scipy import optimize
 import pandapipes
 
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
-from pandaprosumer.constants import CELSIUS_TO_K
+from pandaprosumer.constants import CELSIUS_TO_K, LATENT_HEAT_VAPORIZATION_WATER_J_PER_KG
 from pandaprosumer.controller.base import BasicProsumerController
 from pandaprosumer.constants import TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 
 def _get_wet_bulb_temperature(t_db_c, phi_air_in_percent):
@@ -118,15 +118,55 @@ class DryCoolerController(BasicProsumerController):
         mdot_required_kg_per_s = self._get_input('mdot_fluid_kg_per_s', prosumer)
 
         if not np.isnan(self.t_previous_out_c):
-            assert self.mdot_previous_in_kg_per_s >= 0
-            assert self.t_previous_in_c + 1e-9 >= self.t_previous_out_c
+            if self.mdot_previous_in_kg_per_s < 0:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: previous-step mass flow is negative "
+                    f"({self.mdot_previous_in_kg_per_s} kg/s)"
+                )
+            if self.t_previous_in_c + 1e-9 < self.t_previous_out_c:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: previous-step t_in_c ({self.t_previous_in_c}) is "
+                    f"colder than t_out_c ({self.t_previous_out_c})"
+                )
             if self.t_previous_in_c < self.t_previous_out_c:
                 self.t_previous_in_c = self.t_previous_out_c
             return self.t_previous_in_c, self.t_previous_out_c, self.mdot_previous_in_kg_per_s
         else:
-            assert mdot_required_kg_per_s >= 0
-            assert t_feed_required_c >= t_return_required_c
+            # Boot-time fallback: when no upstream input has been mapped yet and
+            # there is no previous-step history, fall back to nominal design
+            # conditions so an upstream HX (or similar) can bootstrap a
+            # consistent first-step state instead of propagating nans.
+            if np.isnan(t_feed_required_c):
+                t_feed_required_c = self._get_element_param(prosumer, 't_fluid_in_nom_c')
+            if np.isnan(t_return_required_c):
+                t_return_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
+            if np.isnan(mdot_required_kg_per_s):
+                mdot_required_kg_per_s = self._nominal_mdot_fluid_kg_per_s(prosumer)
+            if mdot_required_kg_per_s < 0:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: required mass flow is negative "
+                    f"({mdot_required_kg_per_s} kg/s)"
+                )
+            if t_feed_required_c < t_return_required_c:
+                raise ValueError(
+                    f"Dry Cooler {self.name}: required t_in_c ({t_feed_required_c}) is colder "
+                    f"than t_out_c ({t_return_required_c})"
+                )
             return t_feed_required_c, t_return_required_c, mdot_required_kg_per_s
+
+    def _nominal_mdot_fluid_kg_per_s(self, prosumer):
+        t_air_in_nom_c = self._get_element_param(prosumer, 't_air_in_nom_c')
+        t_air_out_nom_c = self._get_element_param(prosumer, 't_air_out_nom_c')
+        t_fluid_in_nom_c = self._get_element_param(prosumer, 't_fluid_in_nom_c')
+        t_fluid_out_nom_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
+        qair_nom_m3_per_h = self._get_element_param(prosumer, 'qair_nom_m3_per_h')
+        t_mean_air_k = CELSIUS_TO_K + (t_air_in_nom_c + t_air_out_nom_c) / 2
+        rho_air = self.cooling_fluid.get_density(t_mean_air_k)
+        cp_air = self.cooling_fluid.get_heat_capacity(t_mean_air_k)
+        mdot_air_nom_kg_per_s = qair_nom_m3_per_h * rho_air / 3600
+        q_nom_w = mdot_air_nom_kg_per_s * cp_air * (t_air_out_nom_c - t_air_in_nom_c)
+        cp_fluid = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_fluid_in_nom_c + t_fluid_out_nom_c) / 2)
+        return q_nom_w / (cp_fluid * (t_fluid_in_nom_c - t_fluid_out_nom_c))
 
     def _calculate_air_cooled_heat_exchanger(self, prosumer, t_fluid_in_c, t_fluid_out_c, mdot_fluid_kg_per_s, t_air_in_c):
         """
@@ -172,13 +212,20 @@ class DryCoolerController(BasicProsumerController):
         a_cold = delta_t_cold_c / (q_ratio * lmtd_nom)
 
         min_delta_t_air_c = self._get_element_param(prosumer, 'min_delta_t_air_c')
-        min_t_air_out_c = t_air_in_c + min_delta_t_air_c
-        max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
-        if max_x <= -1:
-            max_x = -0.999
-        min_a = np.log(1 + max_x) / max_x
+        if np.isnan(min_delta_t_air_c):
+            min_delta_t_air_c = None
 
-        if min_delta_t_air_c and a_cold < min_a:
+        if min_delta_t_air_c is not None:
+            min_t_air_out_c = t_air_in_c + min_delta_t_air_c
+            max_x = (t_fluid_in_c - min_t_air_out_c) / delta_t_cold_c - 1
+            if max_x <= -1:
+                max_x = -0.999
+            min_a = np.log(1 + max_x) / max_x
+            apply_min_delta_t_constraint = a_cold < min_a
+        else:
+            apply_min_delta_t_constraint = False
+
+        if apply_min_delta_t_constraint:
             # If 'a' is too low, q_exchanged_w is too big so reduce mdot_fluid_kg_per_s
             # else t_air_out_c would be colder than t_air_in_c
             a_cold = min_a
@@ -214,12 +261,14 @@ class DryCoolerController(BasicProsumerController):
         t_fluid_mean_c = (t_out_required_c + t_in_required_c) / 2
         cp_fluid_kj_per_kg_k = self.fluid.get_heat_capacity(CELSIUS_TO_K + t_fluid_mean_c) / 1000
 
-        t_air_in_c = self._get_input('t_air_in_c', prosumer)
+        t_air_in_original_c = self._get_input('t_air_in_c', prosumer)
+        t_air_in_c = t_air_in_original_c
         phi_air_in_percent = self._get_input('phi_air_in_percent', prosumer)
         phi_air_out_percent = self._get_element_param(prosumer, 'phi_adiabatic_sat_percent')
+        adiabatic_mode = self._get_element_param(prosumer, 'adiabatic_mode')
 
         # If the adiabatic mode is activated, the air is pre-cooled
-        if self._get_element_param(prosumer, 'adiabatic_mode'):
+        if adiabatic_mode:
             t_air_in_c = _adiabatic_pre_cooling(t_air_in_c, phi_air_in_percent, phi_air_out_percent)
 
         # Air heat exchanger calculation
@@ -229,6 +278,14 @@ class DryCoolerController(BasicProsumerController):
                                                                                                        t_out_required_c,
                                                                                                        mdot_fluid_kg_per_s,
                                                                                                        t_air_in_c)
+        # Water consumption in adiabatic mode: sensible heat removed from air = latent heat for evaporation
+        if adiabatic_mode and mdot_air_kg_per_s > 0 and t_air_in_original_c > t_air_in_c:
+            cp_air_j_per_kgk = self.cooling_fluid.get_heat_capacity(CELSIUS_TO_K + (t_air_in_original_c + t_air_in_c) / 2)
+            q_sensible_w = mdot_air_kg_per_s * cp_air_j_per_kgk * (t_air_in_original_c - t_air_in_c)
+            mdot_water_kg_per_s = q_sensible_w / LATENT_HEAT_VAPORIZATION_WATER_J_PER_KG
+        else:
+            mdot_water_kg_per_s = 0.0
+
         rho_air_kg_per_m3 = self.cooling_fluid.get_density(CELSIUS_TO_K + (t_air_in_c + t_air_out_c) / 2)
         mdot_air_m3_per_h = mdot_air_kg_per_s * 3600 / rho_air_kg_per_m3
         q_exchanged_kw = mdot_fluid_kg_per_s * cp_fluid_kj_per_kg_k * (t_fluid_in_c - t_fluid_out_c)
@@ -244,7 +301,8 @@ class DryCoolerController(BasicProsumerController):
 
         return (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
                 mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
-                mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c)
+                mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c,
+                mdot_water_kg_per_s)
 
     def _save_state(self):
         """Backup states before Run"""
@@ -288,6 +346,8 @@ class DryCoolerController(BasicProsumerController):
         mdot_supplied_kg_per_s = self.input_mass_flow_with_temp[FluidMixMapping.MASS_FLOW_KEY]
         t_in_supplied_c = self.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY]
         t_out_required_c = self._get_input('t_out_c', prosumer)
+        if np.isnan(t_out_required_c):
+            t_out_required_c = self._get_element_param(prosumer, 't_fluid_out_nom_c')
 
         assert not np.isnan(t_in_supplied_c), f"Dry Cooler {self.name} t_in_supplied_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(t_out_required_c), f"Dry Cooler {self.name} t_out_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
@@ -295,10 +355,11 @@ class DryCoolerController(BasicProsumerController):
 
         (q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
          mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
-         mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c) = self._calculate_dry_cooler(prosumer,
-                                                                                        mdot_supplied_kg_per_s,
-                                                                                        t_in_supplied_c,
-                                                                                        t_out_required_c)
+         mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c,
+         mdot_water_kg_per_s) = self._calculate_dry_cooler(prosumer,
+                                                           mdot_supplied_kg_per_s,
+                                                           t_in_supplied_c,
+                                                           t_out_required_c)
 
         if not np.isnan(mdot_supplied_kg_per_s):
             # If the primary is fed with a fixed mass flow (not free air)
@@ -318,7 +379,8 @@ class DryCoolerController(BasicProsumerController):
 
         result = np.array([[q_exchanged_kw, p_fans_kw, n_rpm, mdot_air_m3_per_h,
                             mdot_air_kg_per_s, t_air_in_c, t_air_out_c,
-                            mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c]])
+                            mdot_fluid_kg_per_s, t_fluid_in_c, t_fluid_out_c,
+                            mdot_water_kg_per_s]])
 
         self.last_result = {
             "q_exchanged_kw": q_exchanged_kw,
@@ -331,6 +393,7 @@ class DryCoolerController(BasicProsumerController):
             "mdot_fluid_kg_per_s": mdot_fluid_kg_per_s,
             "t_fluid_in_c": t_fluid_in_c,
             "t_fluid_out_c": t_fluid_out_c,
+            "mdot_water_kg_per_s": mdot_water_kg_per_s,
         }
 
         assert round(t_fluid_out_c, 4) <= round(t_fluid_in_c, 4), f"Dry Cooler {self.name} t_fluid_out_c > t_fluid_in_c ({t_fluid_out_c} > {t_fluid_in_c}) for timestep {self.time} in prosumer {prosumer.name}"

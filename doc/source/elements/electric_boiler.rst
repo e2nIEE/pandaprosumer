@@ -1,4 +1,4 @@
-﻿.. _electric_boiler_element:
+.. _electric_boiler_element:
 
 ==================
 Electric Boiler
@@ -39,7 +39,13 @@ These are the physical parameters required for the Electric Boiler element to en
 
    "name", "Unique name or identifier for the electric boiler element.", "N/A"
    "max_p_kw", "Maximum electrical power of the boiler.", "kW"
+   "min_p_kw", "Minimum electrical power of the boiler. Only relevant when allow_stop is False.", "kW"
+   "max_ramp_up_kw_per_s", "Maximum allowed increase of electrical power between two time steps.", "kW/s"
+   "max_ramp_down_kw_per_s", "Maximum allowed decrease of electrical power between two time steps.", "kW/s"
    "efficiency_percent", "Boiler efficiency expressed as a percentage.", "%"
+   "allow_stop", "Whether the boiler is allowed to stop completely (reach zero power) when there is zero demand. If False and min_p_kw is set, the boiler will operate at min_p_kw even with zero demand.", "Boolean"
+   "max_t_out_c", "Maximum output temperature constraint. If the calculated output temperature exceeds this value, it will be limited to this temperature.", "Degree Celsius"
+   "overflow_strategy", "How to dispatch surplus mass flow to responders when the boiler runs at ``min_p_kw`` but the demand asks for less. ``'dump_proportional'`` (default) splits the surplus across responders in proportion to their requests; ``'dump_on_last'`` pushes the surplus mass flow onto the last responder at the requested feed temperature; ``'cap'`` drops the surplus and raises ``t_out_c`` to keep energy balance. See :ref:`overflow_strategy`.", "str"
 
 
 Input Time Series
@@ -58,7 +64,7 @@ Output Time Series
    "mdot_kg_per_s", "The water mass flow rate through the boiler.", "kg/s"
    "t_in_c", "The temperature at the inlet of the electric boiler (cold return pipe).", "Degree Celsius"
    "t_out_c", "The temperature at the outlet of the electric boiler (hot feed pipe).", "Degree Celsius"
-   "p_kW", "The boiler consumed electrical power.", "kW"
+   "p_kw", "The boiler consumed electrical power.", "kW"
 
 
 Mapping
@@ -92,4 +98,15 @@ It is a tankless electric water heater that heats water on demand.
 If the power consumption is higher than the maximum power of the boiler P_{\text{el}_\text{max}}, the power
 consumption is set to the maximum power, and the actual output temperature  :math:`T_\text{feed}` that can
 be reached is calculated based on the maximum power.
+
+The model also supports additional constraints:
+
+- **Maximum output temperature constraint**: If :math:`T_\text{feed}` exceeds the ``max_t_out_c`` parameter,
+  the output temperature is limited to this maximum value and the mass flow is adjusted accordingly.
+
+- **Minimum power constraint**: If ``min_p_kw`` is set, the boiler will maintain at least this minimum power
+  level, regardless of the ``allow_stop`` setting. When the calculated power would be below ``min_p_kw``,
+  the boiler operates at ``min_p_kw``. The ``allow_stop`` parameter only affects whether the boiler can
+  shut down completely when there is zero demand - if ``allow_stop=False``, the boiler will operate at
+  ``min_p_kw`` even with zero demand.
 

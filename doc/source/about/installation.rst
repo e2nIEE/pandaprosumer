@@ -3,6 +3,11 @@
 Installation
 =====================
 
+Requirements
+------------
+pandaprosumer supports Python 3.10 to 3.14. It requires pandapower >= 3.3.3 and pandapipes >= 0.14.0, which pip installs
+automatically.
+
 Through pip
 ------------
 The easiest way to install pandapipes is through pip:
@@ -42,7 +47,7 @@ To install the latest development version of pandaprosumer from github, simply f
 
 3. Run the following git command::
 
-     git clone https://github.com/senergyNets/pandaprosumer.git
+     git clone https://github.com/e2nIEE/pandaprosumer.git
 
 
 4. Navigate inside the repository and check out the develop branch::
@@ -69,6 +74,3 @@ Run the pandaprosumer test suite::
        pandrosumer.test.run_tests()
 
 If everything is installed correctly, all tests should pass or xfail (expected to fail).
-
-
-

@@ -1,4 +1,4 @@
-﻿.. _heat_pump_element:
+.. _heat_pump_element:
 
 =============
 Heat Pump
@@ -8,7 +8,7 @@ Heat Pump
     :ref:`Unit Systems and Conventions <conventions>`
 
 .. note::
-    A heat pump consists of an element and a controller. The element defines it's physical parameters,
+    A heat pump consists of an element and a controller. The element defines its physical parameters,
     while the controller governs the operational logic.
 
     The create_controlled function creates both and connects them.
@@ -41,13 +41,18 @@ Input Static Data
     "name", "A custom name for this heat pump", "N/A"
     "delta_t_evap_c", "Constant temperature difference at the evaporator", "Degree Celsius"
     "carnot_efficiency", "Carnot efficiency, usually between 0.4-0.6, used to simplify the calculation of the heat pump COP", "N/A"
-    "pinch_c", "description", "Degree Celsius"
-    "delta_t_hot_default_c", "Default difference between the hot (feed)", "Degree Celsius"
-    "max_p_comp_kw", "Maximum Power of the compressor", "kW"
-    "min_p_cond_out_c", "Minimum working power of the compressor", "Degree Celsius"
+    "pinch_c", "Minimum temperature difference between the heat pump and the heat source/sink (pinch temperature)", "Degree Celsius"
+    "delta_t_hot_default_c", "Default temperature difference between condenser outlet and inlet on the hot side", "Degree Celsius"
+    "max_p_comp_kw", "Maximum power of the compressor", "kW"
+    "min_p_comp_kw", "Minimum working power of the compressor", "kW"
+    "max_ramp_up_kw_per_s", "Maximum ramp-up rate of electrical power", "kW/s"
+    "max_ramp_down_kw_per_s", "Maximum ramp-down rate of electrical power", "kW/s"
+    "max_t_cond_out_c", "Maximum condenser outlet temperature", "Degree Celsius"
     "max_cop", "Maximum COP", "N/A"
     "cond_fluid", "Fluid at the condenser. If None, the prosumer’s fluid will be used", "N/A"
     "evap_fluid", "Fluid at the evaporator. If None, the prosumer’s fluid will be used", "N/A"
+    "mode", "COP calculation mode. Options: 'carnot' (default) or 'lorenz'", "str", "'carnot' or 'lorenz'", "No"
+    "overflow_strategy", "How to dispatch surplus mass flow to responders when the heat pump is clamped to ``min_p_comp_kw`` but the demand requires a smaller condenser mass flow. ``'dump_proportional'`` (default) splits the surplus across responders in proportion to their requests, closing the energy balance; ``'dump_on_last'`` pushes the surplus onto the last responder at ``t_cond_out_c``; ``'cap'`` drops the surplus and leaves a mismatch between ``q_cond_kw`` and the heat delivered to the responder (an ``EnergyLeakWarning`` is emitted). See :ref:`overflow_strategy`.", "str"
     "in_service", "True for in_service or False for out of service", "boolean"
 
 
@@ -57,7 +62,7 @@ Input Time Series
 .. csv-table::
     :header: "Parameter", "Description", "Unit"
 
-    "t_evap_in_c", "temperature of the heat source at the inlet of the evaporator.", "Degree Celsius"
+    "t_evap_in_c", "Temperature of the heat source at the inlet of the evaporator.", "Degree Celsius"
 
 
 Output Time Series
@@ -70,12 +75,12 @@ Output Time Series
     "p_comp_kw", "The compressor consumed electrical power", "kW"
     "q_evap_kw", "The extracted power at the heat pump evaporator", "kW"
     "cop", "The operating Coefficient Of Performance", "N/A"
-    "mdot_cond_kg_per_s", "The mass flow rate at the condenser of the heat pump", "kg_per_s"
-    "t_cond_in_c", "The input temperature at the condenser of the heat pump (return pipe)", "Degree Celsius"
-    "t_cond_out_c", "The output temperature at the condenser of the heat pump (feed pipe)", "Degree Celsius"
-    "mdot_evap_kg_per_s", "The mass flow rate at the evaporator of the heat pump", "kg_per_s"
-    "t_evap_in_c", "The input temperature at the evaporator of the heat pump (feed pipe)", "Degree Celsius"
-    "t_evap_out_c", "The output temperature at the evaporator of the heat pump (return pipe)", "Degree Celsius"
+    "mdot_cond_kg_per_s", "The mass flow rate at the condenser of the heat pump", "kg/s"
+    "t_cond_in_c", "The input temperature at the condenser of the heat pump (return pipe)", "°C"
+    "t_cond_out_c", "The output temperature at the condenser of the heat pump (feed pipe)", "°C"
+    "mdot_evap_kg_per_s", "The mass flow rate at the evaporator of the heat pump", "kg/s"
+    "t_evap_in_c", "The input temperature at the evaporator of the heat pump (feed pipe)", "°C"
+    "t_evap_out_c", "The output temperature at the evaporator of the heat pump (return pipe)", "°C"
 
 
 Mapping
@@ -97,7 +102,7 @@ The Heat Pump Controller can be mapped using :ref:`FluidMixMapping <FluidMixMapp
 Model
 =================
 
-.. autoclass:: pandaprosumer.controller.models.HeatPumpController
+.. autoclass:: pandaprosumer.controller.models.heat_pump.HeatPumpController
     :members:
 
 
@@ -240,10 +245,30 @@ which is usually water
 11.  If the power consumption is lower than the minimum power of the HP, the heat pump is considered off and
      the power consumption is set to zero,
 
-
 .. note::
     **Limitations of the model:**
 
     * Assume a constant :math:`\Delta T_\text{evap}`
 
     * Assume a constant :math:`\eta_\text{C}`
+
+    * The model does not account for dynamic effects such as thermal inertia or transient behavior.
+
+    * The model assumes ideal behavior and does not include efficiency losses due to real-world factors like friction or heat loss.
+
+Edge Cases and Error Handling
+------------------------------
+
+The heat pump model includes several edge case handling mechanisms:
+
+1. **Ramp Up/Down Constraints**: The model has the option to enforce maximum ramp-up and ramp-down rates for the compressor power to simulate realistic operational constraints.
+
+2. **Temperature Limits**: The model checks and enforces maximum condenser outlet temperature limits to stay in realistic ranges.
+
+3. **COP Limits**: The model enforces maximum COP limits to ensure realistic performance characteristics.
+
+4. **Power Limits**: The model enforces both minimum and maximum power limits for the compressor. The option to add a minimum power ensures a simulation operating closer to real systems contraints.
+
+5. **Mass Flow Constraints**: The model handles cases where the evaporator mass flow differs from the required mass flow by implementing bypass logic (to handle any extra mass flow at the evaporator) or recalculating the heat demand (if the available mass flow at the evaporator is not enough for the heat pump to satisfy the demand).
+
+6. **Shutdown Conditions**: The model properly handles shutdown conditions when there is no demand on the condenser or when operational limits are exceeded.

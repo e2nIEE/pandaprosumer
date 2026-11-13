@@ -19,7 +19,11 @@ ValueError
     If any of the expected keys is missing, a Value Error will be raised
 """
 
+import logging
+
 from pvlib.iotools import get_pvgis_hourly
+
+logger = logging.getLogger(__name__)
 
 def rename_df_units(dataframe):
     """Changes the keys including the units in the dataframe output of pvlib / PVGIS
@@ -154,6 +158,6 @@ class PvProduction:
             self.pv_inputs_validation()
             self.output = get_pvgis_hourly(**self.inputs)
             rename_df_units(self.output[0])
-        except Exception as err:
-            print(f"Unexpected {err=}, {type(err)=}")
+        except Exception:
+            logger.exception("PVGIS fetch failed for inputs %r", self.inputs)
             raise

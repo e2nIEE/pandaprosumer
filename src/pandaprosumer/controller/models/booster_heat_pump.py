@@ -8,31 +8,31 @@ logging.basicConfig(level=logging.WARNING)
 
 
 """
-Module containing the HeatPumpController class.
+Module containing the BoosterHeatPumpController class.
 """
 
 
 class BoosterHeatPumpController(BasicProsumerController):
     """
-    Controller for heat pumps.
+    Controller for booster heat pumps.
     """
 
     def name_class(self):
         return "booster_heat_pump_controller"
 
-    def __init__(self, prosumer, heat_pump_object, order, level, in_service=True, index=None, **kwargs):
+    def __init__(self, prosumer, booster_heat_pump_controller_data, order, level, in_service=True, index=None, **kwargs):
         """
-        Initializes the HeatPumpController.
+        Initializes the BoosterHeatPumpController.
 
         :param prosumer: The prosumer object
-        :param heat_pump_object: The heat pump object
+        :param booster_heat_pump_controller_data: The booster heat pump controller data object (e.g. BoosterHeatPumpControllerData)
         :param order: The order of the controller
         :param level: The level of the controller
         :param in_service: The in-service status of the controller
         :param index: The index of the controller
         :param kwargs: Additional keyword arguments
         """
-        super().__init__(prosumer, heat_pump_object, order=order, level=level, in_service=in_service, index=index, **kwargs)
+        super().__init__(prosumer, booster_heat_pump_controller_data, order=order, level=level, in_service=in_service, index=index, **kwargs)
 
     @property
     def _t_amb_k(self):

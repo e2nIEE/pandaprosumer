@@ -90,6 +90,111 @@ The FluidMixMapping operation performs the following steps:
 
 - **FluidMixMapping** sets the argument ``no_chain=False`` by default. The `no_chain` attribute is a key flag that defines whether a mapping participates in controller chaining.
 
+.. _overflow_strategy:
+
+Overflow Strategy: Dispatching Surplus Mass Flow
+=================================================
+
+When a producer (Gas Boiler, Electric Boiler, Heat Pump) is forced onto a
+thermal floor (``min_q_kw`` / ``min_p_kw`` / ``min_p_comp_kw``) but the
+mapped responder(s) request less mass flow than that floor implies, the
+``_merit_order_mass_flow`` helper has to decide what to do with the
+surplus mass flow it cannot place. The ``overflow_strategy`` parameter on
+each producer element selects between three behaviours:
+
+- ``'dump_proportional'`` (default):
+    The surplus is split across all responders in proportion to their
+    original requests. If every request is zero, the surplus is split
+    equally. Responders receive more mass flow than they requested, at
+    the producer's nominal ``t_out_c`` / ``t_cond_out_c``. The downstream
+    heat demand recomputes ``q_received_kw`` from the received mass flow
+    and reports a **negative** ``q_uncovered_kw`` to signal over-delivery.
+    With this default, every producer keeps mass and energy balance at
+    the FluidMix interface - **no energy leak**.
+
+- ``'dump_on_last'``:
+    The surplus mass flow is added to the **last** responder (lowest
+    merit-order priority) only. Use this when one specific load is
+    designated to absorb the over-supply (a buffer tank, a return loop,
+    a flexible heat demand) rather than spreading it evenly.
+
+- ``'cap'`` (legacy backwards-compatible behaviour):
+    The surplus mass flow is silently dropped. Each responder receives at
+    most ``min(its_request, what_is_left)``. To keep the global energy
+    balance, the boiler controllers compensate after the dispatch by
+    raising ``t_out_c`` so the smaller mass flow still carries the
+    producer's full thermal output - the responder ends up over-supplied
+    via temperature (e.g. 123.7 °C instead of the requested 76.85 °C).
+    The Heat Pump cannot raise ``t_cond_out_c`` (it must respect the
+    demand's setpoint), so under ``'cap'`` the surplus is lost: the HP
+    records ``q_cond_kw = min_p_comp_kw * COP`` while the responder
+    receives only what it asked for. **An** :class:`EnergyLeakWarning`
+    **is emitted on every step where this happens** (see below).
+
+In every case, **mass and energy balances are recomputed consistently on
+both sides of the FluidMix interface**: ``producer.t_out == demand.t_in``,
+``producer.t_in == demand.t_out``, ``producer.mdot == demand.mdot``, and
+``producer.q == demand.q_received``.
+
+.. note::
+    A responder may not physically be able to absorb extra mass flow
+    (e.g. a radiator at a fixed setpoint). The ``'dump_on_last'`` /
+    ``'dump_proportional'`` strategies do not model this - they assume
+    the responder accepts whatever is pushed onto it. If you sum
+    ``q_uncovered_kw`` to compute "unmet demand", clamp it at zero or
+    that metric will be polluted by the over-delivery signal.
+
+.. note::
+    When the demand exceeds what the producer can supply
+    (``sum(requested) >= available``), the surplus is zero and the three
+    strategies behave identically (standard FIFO merit order).
+
+Implementation: the strategy is read from the producer element via
+``_get_element_param(prosumer, 'overflow_strategy')`` and forwarded to
+``BasicProsumerController._merit_order_mass_flow``.
+
+EnergyLeakWarning
+=================
+
+Every producer controller (Gas Boiler, Electric Boiler, Heat Pump) calls
+``_check_fluid_mix_balance`` at the end of its ``control_step``,
+comparing the recorded mass flow to the mass flow actually dispatched to
+the FluidMix responders. When they differ - i.e. when energy is silently
+dropped at the interface - an :class:`EnergyLeakWarning` is emitted on
+that timestep with:
+
+- the producer class and controller name,
+- the timestep where the leak occurred,
+- the leak size in kW,
+- the producer's recorded mdot, the dispatched mdot, and the recorded q_kw,
+- the active ``overflow_strategy``,
+- a hint pointing to ``'dump_on_last'`` or ``'dump_proportional'`` as the fix.
+
+In practice this warning currently fires only when an element is
+explicitly configured with the legacy ``overflow_strategy='cap'`` AND
+its thermal-floor constraint is active (Heat Pump pinned at
+``min_p_comp_kw`` with a demand that requires less). Under the default
+``'dump_proportional'`` (or ``'dump_on_last'``) it never fires. The
+boilers also reconcile via ``t_out_c`` under ``'cap'``, so they stay
+silent under every strategy.
+
+Example warning message::
+
+    heat_pump_controller 'hp1' at timestep 2020-01-01 03:00:00+00:00:
+    energy leak of 20.627 kW at the FluidMix interface (producer
+    mdot=0.258348 kg/s, dispatched=0.153090 kg/s, q_kw=50.627 kW,
+    overflow_strategy='cap'). Consider setting
+    overflow_strategy='dump_on_last' (or 'dump_proportional') on this
+    producer to dispatch the surplus to a responder instead.
+
+If you understand and accept the leak (e.g. the surplus models a
+recirculated bypass loop not visible to your accounting), silence the
+warning explicitly::
+
+    import warnings
+    from pandaprosumer.controller.mapped import EnergyLeakWarning
+    warnings.simplefilter("ignore", EnergyLeakWarning)
+
 Generic Energy System Mapping
 ===================================
 Generic Energy System Mapping enables mapping between controllers that belong to different prosumer networks or producers.

@@ -40,7 +40,7 @@ Input Static Data
     :header: "Parameter", "Description", "Unit"
 
     "name", "Name of the Booster Heat Pump", "N/A"
-    "hp_type", "Type of the Booster Heat Pump (air-water, water-water1, water-water2, water-water3)", "N/A"
+    "bhp_type", "Type of the Booster Heat Pump (air-water, water-water1, water-water2, water-water3)", "N/A"
 
 Input Time Series
 -------------------

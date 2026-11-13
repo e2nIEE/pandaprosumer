@@ -109,7 +109,8 @@ class TestGenericToFluidMixController:
 
         expected = []
         assert converter_controller.step_results == pytest.approx(np.array([expected]))
-        assert converter_controller.result_mass_flow_with_temp == pytest.approx([{'mdot_kg_per_s': 0.0, 't_c': t_supply_c}])
+        assert len(converter_controller.result_mass_flow_with_temp) == 1
+        assert converter_controller.result_mass_flow_with_temp[0] == pytest.approx({'mdot_kg_per_s': 0.0, 't_c': t_supply_c})
 
     def test_controller_run_control_demand(self):
         """
@@ -136,4 +137,5 @@ class TestGenericToFluidMixController:
         mdot_received = q_in_kw * 1e3 / (cp * (t_supply_c - t_required_in_c))
         expected = []
         assert converter_controller.step_results == pytest.approx(np.array([expected]))
-        assert converter_controller.result_mass_flow_with_temp == pytest.approx([{'mdot_kg_per_s': mdot_received, 't_c': t_supply_c}])
+        assert len(converter_controller.result_mass_flow_with_temp) == 1
+        assert converter_controller.result_mass_flow_with_temp[0] == pytest.approx({'mdot_kg_per_s': mdot_received, 't_c': t_supply_c})

@@ -1,6 +1,6 @@
 import pytest
-from pandaprosumer import *
 import numpy as np
+from pandaprosumer import create_empty_prosumer_container, create_period, create_chiller, create_controlled_chiller
 
 
 def _default_argument():
@@ -39,8 +39,8 @@ class TestChiller:
         create_period(prosumer, 1)
 
         create_chiller(prosumer, **_default_argument())
-        assert hasattr(prosumer, "sn_chiller")
-        assert len(prosumer.sn_chiller) == 1
+        assert hasattr(prosumer, "chiller")
+        assert len(prosumer.chiller) == 1
 
         # Adjusted expected columns based on the output structure
         expected_columns = ["name", "in_service", "cp_water", "t_sh", "t_sc",
@@ -50,8 +50,8 @@ class TestChiller:
         expected_values = [None, True, 4.186, 5.0, 2.0, 5.0, 5.0, 200.0,
                            200.0, 0.9, 1.0, 'R410A']
 
-        assert sorted(prosumer.sn_chiller.columns) == sorted(expected_columns)
-        assert list(prosumer.sn_chiller.iloc[0]) == expected_values
+        assert sorted(prosumer.chiller.columns) == sorted(expected_columns)
+        assert list(prosumer.chiller.iloc[0]) == expected_values
 
     def test_define_element_with_parameters(self):
         """
@@ -77,11 +77,11 @@ class TestChiller:
                                      n_ref="R410A", index=4, **params)
 
         # Check if the chiller is added under the expected attribute
-        assert hasattr(prosumer, "sn_chiller"), "Chiller was not added to prosumer."
+        assert hasattr(prosumer, "chiller"), "Chiller was not added to prosumer."
 
         # Check the length and index
-        assert len(prosumer.sn_chiller) == 1
-        assert prosumer.sn_chiller.index[0] == chiller_idx
+        assert len(prosumer.chiller) == 1
+        assert prosumer.chiller.index[0] == chiller_idx
 
         expected_columns = [
             "name", "in_service", "cp_water", "t_sh", "t_sc",
@@ -92,10 +92,10 @@ class TestChiller:
         expected_values = ['foo', False, 4.186, 2.0, 5.0, 6.0, 6.0, 220, 220, 0.9, 0.85, "R410A"]
 
         # Check if the columns match expected columns
-        assert sorted(prosumer.sn_chiller.columns) == sorted(expected_columns)
+        assert sorted(prosumer.chiller.columns) == sorted(expected_columns)
 
         # Use pytest.approx for floating point comparisons
-        actual_values = prosumer.sn_chiller.iloc[0].values
+        actual_values = prosumer.chiller.iloc[0].values
         assert actual_values[0] == expected_values[0]
         assert actual_values[1] == expected_values[1]
         assert actual_values[2] == pytest.approx(expected_values[2])
@@ -183,6 +183,29 @@ class TestChiller:
         # Check that the results match expected values
         assert chiller_controller.step_results == pytest.approx(np.array([expected_results]), rel=1e-2)
 
+
+    def test_controller_run_control_with_demand(self):
+        """
+        Test the Chiller controller with a cooling demand, so that the refrigerant cycle is computed.
+        Expect finite results and an evaporator power equal to the demand (below the maximum capacity).
+        Guards the CoolProp calls against multi-dimensional inputs, rejected by CoolProp 8.
+        """
+        prosumer = create_empty_prosumer_container()
+        chiller_controller_idx = create_controlled_chiller(
+            prosumer, order=0, period=_default_period(prosumer), n_ref="R410A"
+        )
+        chiller_controller = prosumer.controller.iloc[chiller_controller_idx].object
+        q_load_kw = 10000.
+        chiller_controller.q_to_deliver_kw = lambda prosumer: q_load_kw
+
+        chiller_controller.inputs = np.array([[280.15, 285.15, 303.15, 5, 0, 0.85, 337320, 1]])
+        chiller_controller.time_step(prosumer, "2020-01-01 00:00:00")
+        chiller_controller.control_step(prosumer)
+
+        assert chiller_controller.step_results.shape == (1, len(chiller_controller.result_columns))
+        assert np.isfinite(chiller_controller.step_results).all()
+        q_evap_kw = chiller_controller.step_results[0, chiller_controller.result_columns.index("q_evap_kw")]
+        assert q_evap_kw == pytest.approx(q_load_kw)
 
     def test_controller_run_control_invalid_source_temperature(self):
         """

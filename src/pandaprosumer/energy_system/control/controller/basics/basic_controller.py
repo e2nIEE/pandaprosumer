@@ -5,7 +5,7 @@ from pandapower.control.basic_controller import Controller
 
 try:
     from pandaplan.core import pplog
-except:
+except ImportError:
     import logging as pplog
 
 logger = pplog.getLogger(__name__)

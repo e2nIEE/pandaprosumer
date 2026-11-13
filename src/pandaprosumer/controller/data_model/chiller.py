@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from dataclasses import field
-from typing import List, Callable
+from typing import List
 
 from pandaprosumer.element.element_toolbox import enforce_types
 
@@ -8,11 +8,11 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @enforce_types
 @dataclass
 class ChillerControllerData:
-    """Define format of I/O of a chiller in SenergyNets"""
+    """Define format of I/O of the chiller controller"""
 
     element_index: List[int]
     period_index: int = None
-    element_name: str = 'sn_chiller'
+    element_name: str = 'chiller'
     input_columns: List[str] = field(default_factory=lambda: ["t_set_pt_c", "t_in_ev_c", "t_in_cond_c", "dt_cond_c", "q_load_kw", "n_is", "q_max_kw", "ctrl"])
 
     result_columns: List[str] = field(

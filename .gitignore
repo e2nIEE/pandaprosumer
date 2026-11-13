@@ -19,3 +19,6 @@ doc/.build/*
 doc/_build/*
 doc/build/*
 tmp/
+
+# build metadata created by editable installs
+*.egg-info/

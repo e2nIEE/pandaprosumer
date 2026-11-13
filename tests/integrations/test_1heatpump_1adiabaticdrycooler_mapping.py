@@ -98,7 +98,8 @@ class Test1HeatPump1DryCoolerMapping:
             't_air_out_c': [76.304987, 72.322820, 61.683360, 31.0035],
             'mdot_fluid_kg_per_s': [.5, 1., 1.72232, 2.4234],
             't_fluid_in_c': [76.85, 76.85, 76.85, 76.85],
-            't_fluid_out_c': [30., 30., 30., 39.318079]
+            't_fluid_out_c': [30., 30., 30., 39.318079],
+            'mdot_water_kg_per_s': [0.006723579332480058, 0.014376989615437229, 0.030373066964489007, 0.4382617463592342]
         }
         dc_expected = pd.DataFrame(dc_data_res, index=data.index)
 

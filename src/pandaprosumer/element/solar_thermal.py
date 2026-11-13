@@ -10,7 +10,7 @@ from pandaprosumer.element.element_toolbox import enforce_types
 @enforce_types
 @dataclass
 class SolarThermalElementData:
-    """Define format of the parameters of a solar thermal component in SenergyNets.
+    """Define format of the parameters of the solar thermal element.
     """
     name: str = "solar_thermal"
     input: List[tuple] = field(default_factory=lambda: [

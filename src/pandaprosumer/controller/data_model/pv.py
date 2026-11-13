@@ -2,19 +2,17 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import List
 
-from numpy import dtype
-
 from pandaprosumer.element.element_toolbox import enforce_types
 
 
 @enforce_types
 @dataclass
-class SenergyNetsPvProductionComponentData:
-    """Define format of the parameters of PV production in SenergyNets.
+class PvProductionComponentData:
+    """Define format of the parameters of the PV production controller.
     """
     element_index: List[int]
     period_index: int = None
-    element_name: str = "sn_pv_production"
+    element_name: str = "pv_production"
 
 
     input_columns: List[str] = field(
