@@ -7,6 +7,7 @@ import numpy as np
 from pandaprosumer.mapping.fluid_mix import FluidMixMapping
 from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESHOLD_C
 from pandaprosumer.controller.base import BasicProsumerController
+from pandaprosumer.controller.min_on_off_time import MinOnOffTimeMixin
 from pandaprosumer.controller.power_cap import _capped, _setpoint
 
 #: Required feed below the return by less than this is floating-point noise, not a real inversion.
@@ -130,7 +131,7 @@ def _calculate_electric_boiler_temp(mdot_kg_per_s, t_out_c, t_in_c, cp_fluid_kj_
     return q_fluid_kw, mdot_kg_per_s, t_in_c, t_out_c, p_el_consumed_kw
 
 
-class ElectricBoilerController(BasicProsumerController):
+class ElectricBoilerController(MinOnOffTimeMixin, BasicProsumerController):
     """
     Controller for electric boilers.
 
@@ -154,14 +155,26 @@ class ElectricBoilerController(BasicProsumerController):
         super().__init__(prosumer, electric_boiler_object, order=order, level=level, in_service=in_service,
                          index=index, name=name, **kwargs)
         self.fluid = prosumer.fluid
+        self._check_min_on_time(prosumer, 'min_p_kw', "Electric Boiler")
+        self._reset_on_off_state()
 
-    def _calculate_electric_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c):
+    def _get_allow_stop(self, prosumer):
+        """
+        The allow_stop element parameter, True if it is not set
+        """
+        allow_stop = self._get_element_param(prosumer, 'allow_stop')
+        if allow_stop is None or np.isnan(allow_stop):
+            allow_stop = True
+        return allow_stop
+
+    def _calculate_electric_boiler(self, prosumer, mdot_kg_per_s, t_out_c, t_in_c, allow_stop=None):
         """
         Main method for Electric Boiler physical calculation during one time step
 
         :param mdot_kg_per_s: Mass flow rate in kg/s
         :param t_out_c: Output provided temperature to the feed pipe in °C
         :param t_in_c: Input temperature from return pipe in °C
+        :param allow_stop: Whether the boiler may stop at this time step (default: the element parameter)
 
         """
         cp_fluid_kj_per_kgk = self.fluid.get_heat_capacity(CELSIUS_TO_K + (t_out_c + t_in_c) / 2) / 1000
@@ -178,9 +191,8 @@ class ElectricBoilerController(BasicProsumerController):
         max_ramp_down_kw_per_s = self._get_element_param(prosumer, 'max_ramp_down_kw_per_s')
         if np.isnan(max_ramp_down_kw_per_s):
             max_ramp_down_kw_per_s = None
-        allow_stop = self._get_element_param(prosumer, 'allow_stop')
-        if allow_stop == None or np.isnan(allow_stop):
-            allow_stop = True
+        if allow_stop is None:
+            allow_stop = self._get_allow_stop(prosumer)
 
         max_t_out_c = self._get_element_param(prosumer, 'max_t_out_c')
         if np.isnan(max_t_out_c):
@@ -226,6 +238,11 @@ class ElectricBoilerController(BasicProsumerController):
             t_out_required_c = t_in_required_c
         assert t_out_required_c >= t_in_required_c, f"Electric Boiler {self.name} t_out_required_c is lower than t_in_required_c for timestep {self.time} in prosumer {prosumer.name}"
 
+        # A boiler that has not run for min_on_time_s yet behaves as if it could not stop
+        allow_stop = self._get_allow_stop(prosumer) and not self._is_stop_locked(prosumer)
+        # A boiler that has not been stopped for min_off_time_s yet stays off, whatever the demand
+        start_locked = self._is_start_locked(prosumer)
+
         rerun = True
         nb_runs = 0
         while rerun:
@@ -235,10 +252,14 @@ class ElectricBoilerController(BasicProsumerController):
                     f"Electric Boiler {self.name}: did not converge after 20 iterations at "
                     f"timestep {self.time} in prosumer {prosumer.name}"
                 )
-            q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
-                                                                                                   mdot_required_kg_per_s,
-                                                                                                   t_out_required_c,
-                                                                                                   t_in_required_c)
+            if start_locked:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = 0., 0., t_in_required_c, t_in_required_c, 0.
+            else:
+                q_kw, mdot_delivered_kg_per_s, t_in_c, t_out_c, p_kw = self._calculate_electric_boiler(prosumer,
+                                                                                                       mdot_required_kg_per_s,
+                                                                                                       t_out_required_c,
+                                                                                                       t_in_required_c,
+                                                                                                       allow_stop)
 
             overflow_strategy = self._get_element_param(prosumer, 'overflow_strategy')
             if overflow_strategy is None or (isinstance(overflow_strategy, float) and np.isnan(overflow_strategy)):

@@ -71,8 +71,8 @@ class TestElectricBoiler:
         create_electric_boiler(prosumer, **_default_argument())
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
-        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
-        expected_values = [None, 100, np.nan, np.nan, np.nan, 100, True, np.nan, True, 'dump_proportional']
+        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "in_service", "overflow_strategy"]
+        expected_values = [None, 100, np.nan, np.nan, np.nan, 100, True, np.nan, np.nan, np.nan, True, 'dump_proportional']
 
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
 
@@ -88,7 +88,10 @@ class TestElectricBoiler:
         params = {'max_p_kw': 250,
                   'max_ramp_up_kw_per_s': 0.02,
                   'max_ramp_down_kw_per_s': 0.03,
-                  'efficiency_percent': 75}
+                  'efficiency_percent': 75,
+                  'min_on_time_s': 6 * 3600,
+                  'min_p_kw': 20,
+                  'min_off_time_s': 3 * 3600}
 
         elb_idx = create_electric_boiler(prosumer, name='foo', in_service=False, custom='test', index=4, **params)
         assert hasattr(prosumer, "electric_boiler")
@@ -96,8 +99,8 @@ class TestElectricBoiler:
         assert elb_idx == 4
         assert prosumer.electric_boiler.index[0] == elb_idx
 
-        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy", "custom"]
-        expected_values = ['foo', 250, np.nan, 0.02, 0.03, 75, True, np.nan, False, 'dump_proportional', 'test']
+        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "in_service", "overflow_strategy", "custom"]
+        expected_values = ['foo', 250, 20, 0.02, 0.03, 75, True, np.nan, 6 * 3600, 3 * 3600, False, 'dump_proportional', 'test']
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
         assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
 
@@ -403,8 +406,8 @@ class TestElectricBoiler:
         create_electric_boiler(prosumer, **params)
         assert hasattr(prosumer, "electric_boiler")
         assert len(prosumer.electric_boiler) == 1
-        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "in_service", "overflow_strategy"]
-        expected_values = [None, 100, 10, np.nan, np.nan, 100, False, 75, True, 'dump_proportional']
+        expected_columns = ["name", "max_p_kw", "min_p_kw", "max_ramp_up_kw_per_s", "max_ramp_down_kw_per_s", "efficiency_percent", "allow_stop", "max_t_out_c", "min_on_time_s", "min_off_time_s", "in_service", "overflow_strategy"]
+        expected_values = [None, 100, 10, np.nan, np.nan, 100, False, 75, np.nan, np.nan, True, 'dump_proportional']
 
         assert sorted(prosumer.electric_boiler.columns) == sorted(expected_columns)
         assert prosumer.electric_boiler.iloc[0].values == pytest.approx(expected_values, nan_ok=True)
@@ -488,6 +491,132 @@ class TestElectricBoiler:
         assert q_fluid_kw > 0, "Heat output should be non-zero when t_in_c < max_t_out_c"
         assert p_el_consumed > 0, "Electric power should be non-zero when t_in_c < max_t_out_c"
 
+    @staticmethod
+    def _run_hourly_steps(prosumer, elb_controller, mdot_demands_kg_per_s, n_control_steps=1):
+        """
+        Drive the controller over consecutive hourly time steps with a demand at 80/20 °C
+        (a null demand is sent as a heat demand does: no mass flow and no temperature difference).
+        finalize_step is called as in run_timeseries, as it records the on/off state of the boiler.
+        n_control_steps > 1 re-runs control_step within a time step, as a reapply does.
+        Return the step results of each time step.
+        """
+        results = []
+        for i, mdot_kg_per_s in enumerate(mdot_demands_kg_per_s):
+            time = f"2020-01-01 {i:02d}:00:00"
+            t_out_c = 80 if mdot_kg_per_s > 0 else 20
+            elb_controller.t_m_to_deliver = lambda x, mdot_kg_per_s=mdot_kg_per_s, t_out_c=t_out_c: (t_out_c, 20, [mdot_kg_per_s])
+            elb_controller.time_step(prosumer, time)
+            for _ in range(n_control_steps):
+                elb_controller.control_step(prosumer)
+            elb_controller.finalize_step(prosumer, time)
+            results.append(elb_controller.step_results[0].copy())
+        return np.array(results)
+
+    @staticmethod
+    def _hourly_controller(**params):
+        prosumer = create_empty_prosumer_container()
+        period = create_period(prosumer, 3600,
+                               name="foo",
+                               start="2020-01-01 00:00:00",
+                               end="2020-01-01 23:59:59",
+                               timezone="utc")
+        elb_params = {'max_p_kw': 500,
+                      'min_p_kw': 20,
+                      'overflow_strategy': 'cap'}
+        elb_params.update(params)
+        elb_controller_index = create_controlled_electric_boiler(prosumer, period=period, **elb_params)
+        return prosumer, prosumer.controller.iloc[elb_controller_index].object
+
+    @pytest.mark.parametrize("n_control_steps", [1, 2])
+    def test_controller_run_control_min_on_time(self, n_control_steps):
+        """
+        Once started, the boiler keeps running at min_p_kw when the demand stops, until it has run for min_on_time_s
+        """
+        prosumer, elb_controller = self._hourly_controller(min_on_time_s=3 * 3600)
+        results = self._run_hourly_steps(prosumer, elb_controller, [0, .2, 0, 0, 0, 0], n_control_steps)
+
+        q_on_kw = .2 * 4.186 * 60
+        # Started at 01:00: still locked on at 02:00 and 03:00, free to stop at 04:00
+        assert results[:, 0] == pytest.approx([0, q_on_kw, 20, 20, 0, 0], rel=.01)
+        # The electrical power follows the delivered heat (100 % efficiency)
+        assert results[:, 4] == pytest.approx(results[:, 0], rel=1e-6)
+        # Without demand, the held power is carried with the temperature difference of the previous time step
+        assert results[2:4, 3] - results[2:4, 2] == pytest.approx([60, 60], rel=1e-3)
+
+    @pytest.mark.parametrize("n_control_steps", [1, 2])
+    def test_controller_run_control_min_off_time(self, n_control_steps):
+        """
+        Once stopped, the boiler does not restart when the demand comes back, until it has been stopped for min_off_time_s
+        """
+        prosumer, elb_controller = self._hourly_controller(min_off_time_s=3 * 3600)
+        results = self._run_hourly_steps(prosumer, elb_controller, [.2, 0, .2, .2, .2, .2], n_control_steps)
+
+        q_on_kw = .2 * 4.186 * 60
+        # Stopped at 01:00: still locked off at 02:00 and 03:00, free to restart at 04:00
+        assert results[:, 0] == pytest.approx([q_on_kw, 0, 0, 0, q_on_kw, q_on_kw], rel=.01)
+        # A locked-off boiler delivers no mass flow, consumes no electricity and does not heat the fluid
+        locked = results[2:4]
+        assert locked[:, 1] == pytest.approx([0, 0])
+        assert locked[:, 3] == pytest.approx(locked[:, 2])
+        assert locked[:, 4] == pytest.approx([0, 0])
+
+    def test_controller_run_control_min_on_and_off_time(self):
+        """
+        With a demand alternating every hour, both durations are respected:
+        every run lasts at least min_on_time_s and every stop at least min_off_time_s
+        """
+        prosumer, elb_controller = self._hourly_controller(min_on_time_s=2 * 3600, min_off_time_s=2 * 3600)
+        results = self._run_hourly_steps(prosumer, elb_controller, [0, .2, 0, .2, 0, .2, 0, .2, 0, .2])
+
+        q_on_kw = .2 * 4.186 * 60
+        # Started at 01:00, stopped at 04:00, restarted at 07:00
+        assert results[:, 0] == pytest.approx([0, q_on_kw, 20, q_on_kw, 0, 0, 0, q_on_kw, 20, q_on_kw], rel=.01)
+
+    def test_controller_run_control_min_times_default(self):
+        """
+        Without min_on_time_s and min_off_time_s, the boiler follows the demand immediately
+        """
+        prosumer, elb_controller = self._hourly_controller()
+        results = self._run_hourly_steps(prosumer, elb_controller, [.2, 0, .2, 0])
+
+        q_on_kw = .2 * 4.186 * 60
+        assert results[:, 0] == pytest.approx([q_on_kw, 0, q_on_kw, 0], rel=.01)
+
+    @pytest.mark.parametrize("mdot_demands_kg_per_s, q_expected_kw", [
+        # Off at the first time step: free to start at the next one
+        ([0, .2, 0], [0, .2 * 4.186 * 60, 20]),
+        # On at the first time step: free to stop at the next one
+        ([.2, 0, .2], [.2 * 4.186 * 60, 0, 0]),
+    ])
+    def test_controller_run_control_min_times_first_step(self, mdot_demands_kg_per_s, q_expected_kw):
+        """
+        The state at the first time step of a run is assumed to have lasted long enough:
+        only a start or a stop during the run locks the boiler
+        """
+        prosumer, elb_controller = self._hourly_controller(min_on_time_s=6 * 3600, min_off_time_s=6 * 3600)
+        results = self._run_hourly_steps(prosumer, elb_controller, mdot_demands_kg_per_s)
+
+        assert results[:, 0] == pytest.approx(q_expected_kw, rel=.01)
+
+    @pytest.mark.parametrize("min_p_kw", [np.nan, 0])
+    def test_define_controller_min_on_time_without_min_p_kw(self, min_p_kw):
+        """
+        min_on_time_s needs a positive min_p_kw: it is the power that holds the boiler on
+        """
+        with pytest.raises(ValueError, match="min_on_time_s"):
+            self._hourly_controller(min_p_kw=min_p_kw, min_on_time_s=3600)
+
+    def test_controller_run_control_allow_stop_false_without_demand(self):
+        """
+        allow_stop=False with a null demand sent as a heat demand does (no mass flow, no temperature difference):
+        the boiler is held at min_p_kw with the temperature difference of the previous time step
+        """
+        prosumer, elb_controller = self._hourly_controller(allow_stop=False)
+        results = self._run_hourly_steps(prosumer, elb_controller, [.2, 0])
+
+        assert results[1, 0] == pytest.approx(20, rel=1e-3)
+        assert results[1, 3] - results[1, 2] == pytest.approx(60, rel=1e-3)
+        assert np.isfinite(results).all()
 
 @pytest.mark.parametrize("setpoint, expected_p_kw", [(np.nan, 500), (-1, 500), (200, 200), (900, 500), (0, 0)])
 def test_controller_max_p_kw_setpoint_caps_the_power(setpoint, expected_p_kw):
