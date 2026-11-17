@@ -34,7 +34,7 @@ class Test1HeatPump2HeatDemandsMapping:
 
         cp_input_columns = ["Tin_evap", "demand_1", "demand_2"]
         cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
@@ -162,7 +162,7 @@ class Test1HeatPump2HeatDemandsMapping:
                             "demand_2_t_in_c", "demand_2_t_out_c"]
         cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
                              "t_feed_demand2_c", "t_return_demand2_c"]
-        hp_params = {'carnot_efficiency': .5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': .5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}
@@ -302,7 +302,7 @@ class Test1HeatPump2HeatDemandsMapping:
                             "demand_2_t_in_c", "demand_2_t_out_c"]
         cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "t_feed_demand1_c", "t_return_demand1_c",
                              "t_feed_demand2_c", "t_return_demand2_c"]
-        hp_params = {'carnot_efficiency': .5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': .5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100,

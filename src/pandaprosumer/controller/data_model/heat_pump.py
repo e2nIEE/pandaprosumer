@@ -44,12 +44,15 @@ class HeatPumpControllerData:
         **t_evap_in_c** - The input temperature at the evaporator of the heat pump (feed pipe) [°C]
         
         **t_evap_out_c** - The output temperature at the evaporator of the heat pump (return pipe) [°C]
+
+    Optional input **max_p_comp_kw_setpoint** caps the compressor power for the time step (kW); a
+    negative or unmapped value leaves the element's ``max_p_comp_kw`` alone.
     """
     element_index: List[int]
     element_name: str = 'heat_pump'
     period_index: int = None
     input_columns: List[str] = field(
-        default_factory=lambda: ["t_evap_in_c"])
+        default_factory=lambda: ["t_evap_in_c", "max_p_comp_kw_setpoint"])
     result_columns: List[str] = field(
         default_factory=lambda: ['q_cond_kw', 'p_comp_kw', 'q_evap_kw', 'cop',
                                  'mdot_cond_kg_per_s', 't_cond_in_c', 't_cond_out_c',

@@ -320,8 +320,12 @@ class TestGasBoiler:
         gsb_controller.time_step(prosumer, "2020-01-01 00:00:00")
         gsb_controller.control_step(prosumer)
 
-        # With allow_stop=False, the boiler should maintain minimum power even when demand is very low
+        # With allow_stop=False, the boiler should maintain minimum power even when demand is very low: the outlet
+        # rises until the requested flow carries it, with the fluid's cp at the mean temperature
         t_high_recalculated_c = t_low_c + min_power_kw / (mdot_dmd * 4.186)
+        for _ in range(5):
+            cp_kj_per_kgk = prosumer.fluid.get_heat_capacity(273.15 + (t_high_recalculated_c + t_low_c) / 2) / 1000
+            t_high_recalculated_c = t_low_c + min_power_kw / (mdot_dmd * cp_kj_per_kgk)
         mdot_fuel_expected_kg_per_s = min_power_kw / (lhv * (params['efficiency_percent'] / 100))
         expected = [min_power_kw, mdot_dmd, t_low_c, t_high_recalculated_c, mdot_fuel_expected_kg_per_s]
         assert gsb_controller.step_results == pytest.approx(np.array([expected]), .01)
@@ -571,3 +575,25 @@ class TestGasBoiler:
         # Mass flow and heat output should be non-zero (since we can still deliver heat at constrained temperature)
         assert mdot_result > 0, "Mass flow should be non-zero when t_in_c < max_t_out_c"
         assert q_fluid_kw > 0, "Heat output should be non-zero when t_in_c < max_t_out_c"
+
+    def test_controller_rounding_noise_below_the_return_is_no_demand(self):
+        """
+        A responder an upstream tank already served asks for its return temperature minus float
+        noise (29.999999999999996 °C vs 30 °C): no heat to make, not an inverted-temperature error.
+        """
+        prosumer = create_empty_prosumer_container()
+        idx = create_controlled_gas_boiler(prosumer, period=_default_period(prosumer), **_default_argument())
+        boiler = prosumer.controller.iloc[idx].object
+        boiler.t_m_to_deliver = lambda x: (29.999999999999996, 30.0, [0.2])
+        boiler.time_step(prosumer, "2020-01-01 00:00:00")
+        boiler.control_step(prosumer)
+        assert boiler.step_results[0][0] == pytest.approx(0.0, abs=1e-6)  # q_kw
+
+    def test_controller_real_inversion_still_raises(self):
+        prosumer = create_empty_prosumer_container()
+        idx = create_controlled_gas_boiler(prosumer, period=_default_period(prosumer), **_default_argument())
+        boiler = prosumer.controller.iloc[idx].object
+        boiler.t_m_to_deliver = lambda x: (25.0, 30.0, [0.2])
+        boiler.time_step(prosumer, "2020-01-01 00:00:00")
+        with pytest.raises(AssertionError, match="lower than t_in_required_c"):
+            boiler.control_step(prosumer)

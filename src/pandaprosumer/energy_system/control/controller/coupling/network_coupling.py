@@ -18,8 +18,15 @@ class NetworkCouplingControl(BasicProsumerController):
     def __init__(self, net, elmt_ctrl_object, in_service=True, order=0, level=0,
                  temp_fluid_map_input_col=None, mdot_fluid_map_input_col=None,
                  temp_fluid_map_output_idx=None, mdot_fluid_map_output_idx=None, **kwargs):
+        # pandapower's control_diagnostic groups controllers by isinstance, so a subclass always falls inside the
+        # plain class's group and the groups overlap. The exact class name and the element make them a
+        # partition, whatever the creation order.
+        kwargs.setdefault("matching_params", {"element_name": elmt_ctrl_object.element_name,
+                                              "element_index": list(elmt_ctrl_object.element_index),
+                                              "coupling_type": type(self).__name__})
         super().__init__(net, elmt_ctrl_object, in_service=in_service, order=order, level=level,
                          temp_fluid_map_idx=None, mdot_fluid_map_idx=None, **kwargs)
+        self.coupling_type = type(self).__name__
         self.mdot_required_kg_per_s = 'mdot_from_kg_per_s'
         self.tfeed_required_k = 't_to_k'
         self.treturn_required_k = 't_from_k'
@@ -68,11 +75,15 @@ class NetworkCouplingControl(BasicProsumerController):
                     net[self.element_name].loc[self.element_index, self.mdot_fluid_map_input_col] = mdot_in_kg_per_s
 
         # EnergySystem FluidMix mapping outputs to prosumers
-        if self.temp_fluid_map_output_idx is not None and self.mdot_fluid_map_output_idx is not None:
-            result_fluid_mix = [
-                {FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
-                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]
-            self.finalize(net, results, result_fluid_mix)
-        else:
-            self.finalize(net, results)
+        self.finalize(net, results, self._fluid_mix_outputs(results))
         self.applied = True
+
+    def _fluid_mix_outputs(self, results):
+        """
+        The fluid outputs (FluidMix mappings) built from this step's results, or None when the coupling
+        declares none. Subclasses override it to hand over something else than the solved (temperature, flow).
+        """
+        if self.temp_fluid_map_output_idx is None or self.mdot_fluid_map_output_idx is None:
+            return None
+        return [{FluidMixMapping.TEMPERATURE_KEY: results[0][self.temp_fluid_map_output_idx] - CELSIUS_TO_K,
+                 FluidMixMapping.MASS_FLOW_KEY: results[0][self.mdot_fluid_map_output_idx]}]

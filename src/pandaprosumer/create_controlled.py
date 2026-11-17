@@ -1,6 +1,7 @@
 import numpy as np
 
 from pandaprosumer.create import (
+    create_battery_storage,
     create_booster_heat_pump,
     create_chiller,
     create_converter,
@@ -19,6 +20,8 @@ from pandaprosumer.create import (
     create_stratified_heat_storage,
 )
 from pandaprosumer.controller import (
+    BatteryStorageController,
+    BatteryStorageControllerData,
     BoosterHeatPumpController,
     BoosterHeatPumpControllerData,
     ChillerController,
@@ -52,6 +55,8 @@ from pandaprosumer.controller import (
 )
 from pandaprosumer.supervisor import Supervisor, SupervisorData
 from pandaprosumer.energy_system.control.controller.coupling.network_coupling import NetworkCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.plant_pump_coupling import PlantPumpCouplingControl
+from pandaprosumer.energy_system.control.controller.coupling.substation_supply_coupling import SubstationSupplyCouplingControl
 from pandaprosumer.energy_system.control.controller.data_model.network_coupling import NetworkCouplingData
 
 
@@ -87,6 +92,52 @@ def create_controlled_network_coupling(net,
                                temp_fluid_map_output_idx=temp_fluid_map_output_idx,
                                mdot_fluid_map_output_idx=mdot_fluid_map_output_idx,
                                level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_plant_pump_coupling(net, circ_pump_index, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN plant to the network's circulation pump (`circ_pump_pressure`) and return
+    its controller index.
+
+    Unlike a plain network coupling, the pump injects exactly the heat the plant produced (see
+    `PlantPumpCouplingControl`): the plant's outlet temperature and mass flow (FluidMix mapping) set the pump's
+    `t_flow_k` so that the network receives `Q_plant`, capped at the plant's temperature.
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(circ_pump_index)],
+                                          element_name='circ_pump_pressure',
+                                          input_columns=[],
+                                          result_columns=[])
+
+    n = PlantPumpCouplingControl(net,
+                                 networkcoupling,
+                                 temp_fluid_map_input_col=['t_flow_k'],
+                                 mdot_fluid_map_input_col=['mdot_flow_kg_per_s'],
+                                 level=level, order=order, name=name)
+
+    return n.index
+
+
+def create_controlled_substation_supply_coupling(net, heat_consumer_index, n_outputs=1, level=0, order=0, name=None):
+    """
+    Create the coupling of a DHN substation to the network's supply at a `heat_consumer` and return its
+    controller index.
+
+    Unlike a plain network coupling, only the supply temperature reaches the substation (see
+    `SubstationSupplyCouplingControl`): its mass flow comes from its own demand chain. `n_outputs` is the number
+    of substation elements fed from this consumer (one FluidMix mapping each, orders 0..n_outputs-1).
+    """
+    networkcoupling = NetworkCouplingData(element_index=[int(heat_consumer_index)],
+                                          element_name='heat_consumer',
+                                          input_columns=[],
+                                          result_columns=['t_from_k', 't_to_k', 'mdot_from_kg_per_s'])
+
+    n = SubstationSupplyCouplingControl(net,
+                                        networkcoupling,
+                                        temp_fluid_map_output_idx=0,
+                                        n_outputs=n_outputs,
+                                        level=level, order=order, name=name)
 
     return n.index
 
@@ -176,7 +227,7 @@ def create_controlled_heat_pump(prosumer,
                                 max_cop=np.nan,
                                 cond_fluid=None,
                                 evap_fluid=None,
-                                mode='carnot',
+                                mode='lorenz',
                                 name=None,
                                 index=None,
                                 in_service=True,
@@ -222,7 +273,8 @@ def create_controlled_heat_pump(prosumer,
             **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
             prosumer's fluid will be used
 
-            **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+            **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+            evaporator temperatures) or 'carnot' (condenser outlet temperature only) (case insensitive)
 
             **level** (int, default 0) - The level of the controller
 
@@ -335,6 +387,7 @@ def create_controlled_stratified_heat_storage(prosumer,
                                               height_charge_out_m=0,
                                               height_discharge_out_m=None,
                                               height_discharge_in_m=0,
+                                              auto_ports="",
                                               name=None,
                                               index=None,
                                               in_service=True,
@@ -389,13 +442,9 @@ def create_controlled_stratified_heat_storage(prosumer,
             **max_dt_s** (float, default None) - The temporal resolution of the storage calculation.\
             Default to the period resolution. May cause divergence of the model if too high. [s]
 
-            **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
-
-            **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
-
-            **height_discharge_out_m** (float, default None) - The height of the outlet discharging point in m.
-
-            **height_discharge_in_m** (float, default None) - The height of the outlet charging point in m.
+            **height_charge_in_m**, **height_charge_out_m**, **height_discharge_out_m**, \
+            **height_discharge_in_m**, **auto_ports** - Where the connections sit, see \
+            ``create_stratified_heat_storage``.
 
             **name** (string, default None) - A custom name for this stratified heat storage
 
@@ -880,7 +929,7 @@ def create_controlled_ice_chp(prosumer,
        EXAMPLE:
            create_controlled_ice_chp(prosumer, 350, "ng", 0, "example_ice_chp")
        """
-    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, name, in_service, index, **kwargs)
+    ice_chp_index = create_ice_chp(prosumer, size, fuel, altitude, in_service=in_service, name=name, index=index, **kwargs)
     ice_chp_controller_data = IceChpControllerData(
         element_name='ice_chp',
         element_index=[ice_chp_index],
@@ -1240,3 +1289,64 @@ def create_controlled_pv_production(
     )
 
     return pv_controller.index
+
+
+def create_controlled_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    init_soc=0.5,
+    name=None,
+    index=None,
+    in_service=True,
+    period=0,
+    level=0,
+    order=0,
+    **kwargs,
+):
+    """
+    Creates a battery storage element and its controller.
+
+    The controller reads a signed ``p_requested_kw`` input (positive = discharge, negative = charge),
+    clips it to the power and state-of-charge limits and reports what it did (``p_storage_kw``, ``soc``, ...).
+
+    Parameters are those of :func:`create_battery_storage`, plus ``init_soc`` (initial state of charge,
+    default 0.5), ``period``, ``level`` and ``order``.
+
+    Returns
+    -------
+    int
+        Index of the created battery storage controller.
+    """
+    battery_index = create_battery_storage(
+        prosumer,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        name=name,
+        index=index,
+        in_service=in_service,
+        **kwargs,
+    )
+    battery_storage_object = BatteryStorageControllerData(element_index=[battery_index], period_index=period)
+    controller = BatteryStorageController(
+        prosumer,
+        battery_storage_object,
+        order=order,
+        level=level,
+        init_soc=init_soc,
+        in_service=in_service,
+        name=name,
+    )
+    return controller.index

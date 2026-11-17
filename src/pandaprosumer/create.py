@@ -5,6 +5,7 @@ from pandapipes import Fluid, create_fluid_from_lib
 from pandapower.create import _get_index_with_check, _set_entries
 
 from pandaprosumer.element import (
+    BatteryStorageElementData,
     BoosterHeatPumpElementData,
     ChillerElementData,
     ConverterElementData,
@@ -24,6 +25,7 @@ from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element
 from pandaprosumer.time_series.time_series import TimeSeries
+from pandaprosumer.controller.models.shs_ports import parse_auto_ports
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +110,7 @@ def create_heat_pump(prosumer,
                      max_cop=np.nan,
                      cond_fluid=None,
                      evap_fluid=None,
-                     mode='carnot',
+                     mode='lorenz',
                      overflow_strategy='dump_proportional',
                      name=None,
                      index=None,
@@ -152,7 +154,9 @@ def create_heat_pump(prosumer,
         **evap_fluid** (str, default None) - Fluid at the evaporator. If None, the \
         prosumer's fluid will be used
 
-        **mode** (str, default 'carnot') - COP calculation mode. Options: 'carnot' or 'lorenz' (case insensitive)
+        **mode** (str, default 'lorenz') - COP calculation mode. Options: 'lorenz' (log-mean condenser and \
+        evaporator temperatures, so a colder return raises the COP) or 'carnot' (condenser outlet temperature \
+        only) (case insensitive)
 
     OUTPUT:
         **index** (int) - The unique ID of the created heat pump
@@ -260,6 +264,7 @@ def create_stratified_heat_storage(prosumer,
                                    height_charge_out_m=0,
                                    height_discharge_out_m=None,
                                    height_discharge_in_m=0,
+                                   auto_ports="",
                                    name=None,
                                    index=None,
                                    in_service=True,
@@ -323,13 +328,22 @@ def create_stratified_heat_storage(prosumer,
         outlet (e.g. an optimiser's constant condenser setpoint) so the tank charges toward its \
         actual design top temperature. [C]
 
-        **height_charge_in_m** (float, default None) - The height of the inlet charging point in m.
+        **height_charge_in_m** (float, default None) - Height (m above the bottom) where the source's feed \
+        enters. None: the top.
 
-        **height_charge_out_m** (float, default None) - The height of the outlet charging in m.
+        **height_charge_out_m** (float, default 0) - Height where the water returned to the source leaves. \
+        None: the bottom.
 
-        **height_discharge_out_m** (float, default None) - The height of the outlet discharging point in m.
+        **height_discharge_out_m** (float, default None) - Height where the water sent to the demand leaves. \
+        None: the top.
 
-        **height_discharge_in_m** (float, default None) - The height of the outlet charging point in m.
+        **height_discharge_in_m** (float, default 0) - Height where the demand's return enters. None: the bottom.
+
+        **auto_ports** (str, default "") - Comma-separated connections placed on the layers at each step \
+        instead of at their height: ``charge_in`` / ``discharge_in`` enter the highest layer not warmer \
+        than their water (an ideal stratification lance), ``discharge_out`` draws the lowest layer still at \
+        the demand's feed temperature, ``charge_out`` draws the coldest layer. See \
+        ``pandaprosumer.controller.models.shs_ports``.
 
         **name** (string, default None) - A custom name for this stratified heat storage
 
@@ -352,16 +366,12 @@ def create_stratified_heat_storage(prosumer,
         raise ValueError(f"tank_external_radius_m ({tank_external_radius_m} m) must be greater "
                          f"than tank_internal_radius_m ({tank_internal_radius_m} m)")
 
-    if (height_charge_out_m and height_charge_out_m < 0 or
-            height_charge_out_m and height_charge_out_m and height_charge_in_m < height_charge_out_m or
-            height_charge_out_m and height_charge_in_m > tank_height_m):
-        raise ValueError(f"height_charge_out_m ({height_charge_out_m} m) or height_charge_in_m ({height_charge_in_m} m)"
-                         f"is invalid.")
-    if (height_discharge_in_m and height_discharge_in_m < 0 or
-            height_discharge_in_m and height_discharge_in_m and height_discharge_out_m < height_discharge_in_m or
-            height_discharge_in_m and height_discharge_out_m > tank_height_m):
-        raise ValueError(f"height_discharge_in_m ({height_discharge_in_m} m) or "
-                         f"height_discharge_out_m ({tank_height_m} m) is invalid.")
+    for port_name, height_m in (("height_charge_in_m", height_charge_in_m), ("height_charge_out_m", height_charge_out_m),
+                                ("height_discharge_out_m", height_discharge_out_m),
+                                ("height_discharge_in_m", height_discharge_in_m)):
+        if height_m is not None and not np.isnan(height_m) and not 0 <= height_m <= tank_height_m:
+            raise ValueError(f"{port_name} ({height_m} m) must lie between 0 and tank_height_m ({tank_height_m} m)")
+    parse_auto_ports(auto_ports)
 
     index = _get_index_with_check(prosumer, "stratified_heat_storage", index)
 
@@ -370,13 +380,15 @@ def create_stratified_heat_storage(prosumer,
                         'k_wall_w_per_mk', 'h_ext_w_per_m2k', 't_ext_c', 'max_remaining_capacity_kwh',
                         't_discharge_out_tol_c', 'max_dt_s', 'max_charge_mdot_kg_per_s', 't_charge_target_c',
                         'height_charge_in_m',
-                        'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'in_service'],
+                        'height_charge_out_m', 'height_discharge_out_m', 'height_discharge_in_m', 'auto_ports',
+                        'in_service'],
                        [name, tank_height_m, tank_internal_radius_m, tank_external_radius_m, n_layers,
                         min_useful_temp_c, insulation_thickness_m, k_fluid_w_per_mk, k_insu_w_per_mk,
                         k_wall_w_per_mk, h_ext_w_per_m2k, t_ext_c, max_remaining_capacity_kwh,
                         t_discharge_out_tol_c, max_dt_s, max_charge_mdot_kg_per_s, t_charge_target_c,
                         height_charge_in_m,
-                        height_charge_out_m, height_discharge_out_m, height_discharge_in_m, in_service]))
+                        height_charge_out_m, height_discharge_out_m, height_discharge_in_m, auto_ports,
+                        in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
     return int(index)
@@ -1183,4 +1195,68 @@ def create_pv_production(
     )
 
     _set_entries(prosumer, "pv_production", index, **entries, **kwargs)
+    return int(index)
+
+
+def create_battery_storage(
+    prosumer,
+    e_capacity_kwh,
+    p_charge_max_kw,
+    p_discharge_max_kw,
+    eta_charge=0.95,
+    eta_discharge=0.95,
+    soc_min=0.1,
+    soc_max=0.9,
+    self_discharge_per_hour=0.0,
+    in_service=True,
+    index=None,
+    name=None,
+    **kwargs
+):
+    """
+    Adds a battery storage element (electrical, no fluid) to the prosumer.
+
+    Parameters
+    ----------
+    prosumer : object
+        Prosumer container.
+    e_capacity_kwh : float
+        Energy capacity [kWh].
+    p_charge_max_kw, p_discharge_max_kw : float
+        Maximum charging / discharging power [kW].
+    eta_charge, eta_discharge : float, optional
+        Charging / discharging efficiencies in (0, 1], default 0.95.
+    soc_min, soc_max : float, optional
+        State-of-charge limits, default 0.1 / 0.9.
+    self_discharge_per_hour : float, optional
+        Fraction of the stored energy lost per hour, default 0.
+    in_service : bool, optional
+        Whether the element is in service, default True.
+    index : int, optional
+        Force a specified element index.
+    name : str, optional
+        Name of the element.
+
+    Returns
+    -------
+    int
+        Index of the created element in the ``battery_storage`` table.
+    """
+    add_new_element(prosumer, BatteryStorageElementData)
+    index = _get_index_with_check(prosumer, "battery_storage", index)
+    if name is None:
+        name = f"battery_storage_{index}"
+    entries = dict(
+        name=name,
+        e_capacity_kwh=e_capacity_kwh,
+        p_charge_max_kw=p_charge_max_kw,
+        p_discharge_max_kw=p_discharge_max_kw,
+        eta_charge=eta_charge,
+        eta_discharge=eta_discharge,
+        soc_min=soc_min,
+        soc_max=soc_max,
+        self_discharge_per_hour=self_discharge_per_hour,
+        in_service=in_service,
+    )
+    _set_entries(prosumer, "battery_storage", index, **entries, **kwargs)
     return int(index)

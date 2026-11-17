@@ -30,7 +30,7 @@ def _define_and_get_period_and_data_source(prosumer):
 
 
 def create_controllers(prosumer, period):
-    hp_params = {'carnot_efficiency': 0.5,
+    hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                  'pinch_c': 0,
                  'delta_t_evap_c': 5,
                  'max_p_comp_kw': 100}
@@ -217,7 +217,7 @@ class TestSupervisor:
         supervisor_index = create_controlled_supervisor(prosumer, input_columns=['p_comp_kw'], period=period, level=2, order=0)
         supervisor = prosumer.controller.iloc[supervisor_index].object
 
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 400}
@@ -291,7 +291,7 @@ class TestSupervisor:
                                                         period=period, level=2, order=0)
         supervisor = prosumer.controller.iloc[supervisor_index].object
 
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 400}
@@ -338,7 +338,7 @@ class TestSupervisor:
                                                         period=period, level=2, order=0)
         supervisor = prosumer.controller.iloc[supervisor_index].object
 
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 400}
@@ -424,7 +424,7 @@ class TestSupervisor:
 
         cp_input_columns = ["Tin_evap", "demand_1", "demand_2", "dummy_rule"]
         cp_result_columns = ["t_evap_in_c", "qdemand1_kw", "qdemand2_kw", "dummy_rule"]
-        hp_params = {'carnot_efficiency': 0.5,
+        hp_params = {'mode': 'carnot', 'carnot_efficiency': 0.5,
                      'pinch_c': 0,
                      'delta_t_evap_c': 5,
                      'max_p_comp_kw': 100}

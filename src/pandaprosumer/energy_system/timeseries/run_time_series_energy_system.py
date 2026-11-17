@@ -12,6 +12,7 @@ from pandapower.timeseries.run_time_series import get_recycle_settings, init_out
 from pandaprosumer.energy_system.control.run_control_energy_system import prepare_run_ctrl, print_progress, \
     run_time_step, run_control
 from pandaprosumer.run_time_series import time_series_initialization, time_series_finalization
+from pandaprosumer.energy_system.timeseries.step_pipeflow import StepPipeflow
 
 try:
     import pandaplan.core.pplog as logging
@@ -39,7 +40,18 @@ def run_loop(energy_system, ts_variables, run_control_fct=run_control, output_wr
         run_time_step(energy_system, time_step, ts_variables, run_control_fct, output_writer_fct, **kwargs)
 
 
-def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True, **kwargs):
+def run_timeseries(energy_system, period_index, continue_on_divergence=False, verbose=True, step_pipeflow=True,
+                   **kwargs):
+    """
+    Run the energy system over its period `period_index`.
+
+    :param step_pipeflow: solve every pandapipes net with a `StepPipeflow` (one transient state per time step
+        whatever the number of solves, unchanged inputs skip the solve). A net that was already solved when the
+        run starts also skips the initial pipeflow of each step: the controllers read the state at the end of the
+        previous step and the levels solve the step. False restores pandapipes' plain `pipeflow` and the initial run.
+    :type step_pipeflow: bool, default: True
+    :param kwargs: additional keyword arguments handed to each run function (e.g. ``transient=True, dt=...``)
+    """
     start = energy_system.period.at[period_index, 'start']
     end = energy_system.period.at[period_index, 'end']
     resol = int(energy_system.period.at[period_index, 'resolution_s'])
@@ -48,8 +60,12 @@ def run_timeseries(energy_system, period_index, continue_on_divergence=False, ve
 
     ts_variables = init_time_series(energy_system, dur, continue_on_divergence, verbose)
 
-    for net_name in energy_system['nets'].keys():
-        control_diagnostic(energy_system['nets'][net_name])
+    for net_name, net in energy_system['nets'].items():
+        if step_pipeflow and isinstance(net, pandapipesNet):
+            ts_variables['nets'][net_name]['run'] = StepPipeflow()
+            if net.get('converged', False):
+                ts_variables['nets'][net_name]['initial_run'] = False
+        control_diagnostic(net)
     # for pros_name in energy_system['prosumer'].keys():
     #    control_diagnostic_pandaprosumer(energy_system['prosumer'][pros_name], start, end, resol)
     time_series_initialization(ts_variables['controller_order'])

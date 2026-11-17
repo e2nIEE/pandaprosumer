@@ -257,10 +257,12 @@ class HeatExchangerController(BasicProsumerController):
                                                           delta_t_hot_nom_c, delta_t_cold_nom_c, cp_1_j_per_kgk,
                                                           heat_consumer=False)
 
-        # If the primary mass flow is too low, no heat is exchanged to the secondary side
-        # if mdot_1_kg_per_s < 1e-6:
-        #     mdot_2_kg_per_s = 0
-        #     t_2_out_c = t_2_in_c
+        # Energy conservation at the exchanger boundary: if the primary side ended up with no
+        # flow, no heat can reach the secondary side either. Without this the responder (heat
+        # demand / storage) booked mdot_2 * cp * (t_2_out - t_2_in) while the exchanger booked 0.
+        if mdot_1_kg_per_s < 1e-6:
+            mdot_2_kg_per_s = 0.
+            t_2_out_c = t_2_in_c
         return mdot_1_kg_per_s, t_1_in_c, t_1_out_c, mdot_2_kg_per_s, t_2_in_c, t_2_out_c
 
     def calculate_heat_exchanger_reverse(self, prosumer, t_1_in_c, t_1_out_c, mdot_1_kg_per_s, t_2_in_c):
@@ -361,12 +363,17 @@ class HeatExchangerController(BasicProsumerController):
         assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
         if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
-            # If the secondary mass flow is too low, no heat is exchanged
+            # If the secondary mass flow is too low, no heat is exchanged.
+            # The secondary must then leave at its INLET temperature, not at the
+            # requested outlet: with the primary idle (mdot_1 = 0, q_exchanged = 0)
+            # a warm secondary would let the downstream demand book heat this
+            # exchanger never delivered (Paris CPCU<->BET boundary, 0.0006 K at
+            # 18.78 kg/s -> 0.049 kW created on the first step of an ON ramp).
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
             mdot_2_kg_per_s = mdot_2_required_kg_per_s
             t_2_in_c = t_in_2_required_c
-            t_2_out_c = t_out_2_required_c
+            t_2_out_c = t_in_2_required_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
             
@@ -460,7 +467,7 @@ class HeatExchangerController(BasicProsumerController):
                         t_2_in_new_c = np.sum(result_mdot_tab_kg_per_s * t_return_tab_c) / mdot_2_kg_per_s
                     else:
                         t_2_in_new_c = t_in_2_required_c
-                    if abs(t_2_in_new_c - t_in_2_required_c) > 1:
+                    if abs(t_2_in_new_c - t_in_2_required_c) > TEMPERATURE_CONVERGENCE_THRESHOLD_C:
                         # If this recalculation changes the condenser input temperature, rerun the calculation
                         # with the new temperature
                         t_in_2_required_c = t_2_in_new_c
