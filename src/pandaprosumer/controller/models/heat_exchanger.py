@@ -11,6 +11,9 @@ from pandaprosumer.constants import CELSIUS_TO_K, TEMPERATURE_CONVERGENCE_THRESH
 from pandaprosumer.mapping import FluidMixMapping
 from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
+#: Lowest secondary return the exchanger guesses when its feed is too cold for the requested outlet [°C]
+WATER_FREEZING_POINT_C = 0.
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,6 +156,20 @@ class HeatExchangerController(BasicProsumerController):
                 f"({t_1_out_c}) at timestep {self.time}"
             )
         return t_1_in_c, t_1_out_c, mdot_1_kg_per_s
+
+    def _starved_primary_flow_kg_per_s(self, prosumer, mdot_2_kg_per_s, t_2_out_c, t_2_in_c):
+        """
+        The primary flow the exchanger draws when its feed is too cold to heat with: the flow its secondary demand
+        would need at the nominal primary temperatures.
+        """
+        delta_t_1_nom_c = (self._get_element_param(prosumer, 't_1_in_nom_c')
+                           - self._get_element_param(prosumer, 't_1_out_nom_c'))
+        if delta_t_1_nom_c <= 0 or t_2_out_c <= t_2_in_c:
+            return 0.
+        cp_2_j_per_kgk = self.secondary_fluid.get_heat_capacity(CELSIUS_TO_K + (t_2_out_c + t_2_in_c) / 2)
+        cp_1_j_per_kgk = self.primary_fluid.get_heat_capacity(CELSIUS_TO_K + self._get_element_param(prosumer, 't_1_in_nom_c'))
+        q_asked_w = mdot_2_kg_per_s * cp_2_j_per_kgk * (t_2_out_c - t_2_in_c)
+        return q_asked_w / (cp_1_j_per_kgk * delta_t_1_nom_c)
 
     def calculate_heat_exchanger(self, prosumer, t_2_out_c, t_2_in_c, mdot_2_kg_per_s, t_1_in_c):
         """
@@ -353,6 +370,12 @@ class HeatExchangerController(BasicProsumerController):
 
         t_out_2_required_c, t_in_2_required_c, mdot_tab_required_kg_per_s = self.t_m_to_deliver(prosumer)
         mdot_2_required_kg_per_s = sum(mdot_tab_required_kg_per_s)
+        if getattr(self, "_first_ask_time", None) != self.time:
+            # What the secondary asks on the step's first pass: on the next passes a demand fed too cold answers
+            # with its pass-through (no flow, return = feed), and the starved exchanger must still know what it was
+            # asked.
+            self._first_ask_time = self.time
+            self._first_ask = (t_out_2_required_c, t_in_2_required_c, mdot_2_required_kg_per_s)
 
         t_1_in_c = self._t_feed_in_c
         
@@ -362,7 +385,28 @@ class HeatExchangerController(BasicProsumerController):
         assert not np.isnan(t_in_2_required_c), f"Heat Exchanger {self.name} t_in_2_required_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
         assert not np.isnan(mdot_2_required_kg_per_s), f"Heat Exchanger {self.name} mdot_2_required_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
 
-        if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3:
+        t_in_2_promised_c = t_in_2_required_c
+        too_cold_to_heat = False
+        min_approach_c = min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
+        if t_1_in_c < t_out_2_required_c + min_approach_c:
+            # A feed too close to (or colder than) the requested outlet: the outlet slides down with the feed,
+            # keeping a hot-end approach of `min_approach_c`. Sliding only below the outlet left a feed a fraction
+            # of a degree above it with no approach at all: the LMTD then wants a barely cooled primary, i.e. a
+            # primary flow ten times its nominal one (game sandbox: 9.7 kg/s at 70.2 degC for a 70 degC outlet),
+            # which drained the network's heat in one hour and starved every substation the next.
+            # Once the outlet reaches the return, the return is only a guess keeping the secondary temperature
+            # difference -- a responder whose return is an outcome (a dry cooler) answers with the real one and
+            # reruns this exchanger -- bounded by the freezing point of water: unbounded, a cooled network drove
+            # it to -24 degC. An outlet landing on the return, or a feed too cold to heat water above the freezing
+            # point, exchanges nothing.
+            t_out_2_lowered_c = t_1_in_c - min_approach_c
+            if t_out_2_lowered_c < t_in_2_required_c:
+                t_in_2_required_c = max(t_in_2_required_c + t_out_2_lowered_c - t_out_2_required_c,
+                                        WATER_FREEZING_POINT_C)
+            t_out_2_required_c = t_out_2_lowered_c
+            too_cold_to_heat = t_out_2_required_c - t_in_2_required_c < 1e-3
+
+        if mdot_2_required_kg_per_s < 1e-6 or abs(t_out_2_required_c - t_in_2_required_c) < 1e-3 or too_cold_to_heat:
             # If the secondary mass flow is too low, no heat is exchanged.
             # The secondary must then leave at its INLET temperature, not at the
             # requested outlet: with the primary idle (mdot_1 = 0, q_exchanged = 0)
@@ -371,13 +415,22 @@ class HeatExchangerController(BasicProsumerController):
             # 18.78 kg/s -> 0.049 kW created on the first step of an ON ramp).
             t_1_out_c = t_1_in_c
             mdot_1_kg_per_s = 0
+            t_out_2_asked_c, t_in_2_asked_c, mdot_2_asked_kg_per_s = getattr(
+                self, "_first_ask", (t_out_2_required_c, t_in_2_promised_c, mdot_2_required_kg_per_s))
+            if mdot_2_asked_kg_per_s >= 1e-6 and t_1_in_c < t_out_2_asked_c:
+                # Starved by a feed too cold to heat with: a substation's valve opens instead of closing, so
+                # the network still circulates (through the exchanger, unheated) and the plant sees the load.
+                # Closed, a cooled network drew no flow, a heat-led plant (a CHP) saw no demand and the network
+                # never warmed up again (game sandbox: a CHP off overnight stayed off all day).
+                mdot_1_kg_per_s = self._starved_primary_flow_kg_per_s(
+                    prosumer, mdot_2_asked_kg_per_s, t_out_2_asked_c, t_in_2_asked_c)
             mdot_2_kg_per_s = mdot_2_required_kg_per_s
-            t_2_in_c = t_in_2_required_c
-            t_2_out_c = t_in_2_required_c
+            t_2_in_c = t_in_2_promised_c
+            t_2_out_c = t_in_2_promised_c
             result_mdot_tab_kg_per_s = self._merit_order_mass_flow(prosumer, mdot_2_kg_per_s,
                                                                    mdot_tab_required_kg_per_s)
-            
-        
+
+
             # Handle case where primary mass flow is provided but no heat exchange occurs (full bypass)
             if not np.isnan(self._mdot_1_provided_kg_per_s):
                 mdot_1_kg_per_s = self._mdot_1_provided_kg_per_s
@@ -385,13 +438,6 @@ class HeatExchangerController(BasicProsumerController):
                 t_1_out_c = t_1_in_c
 
         else:
-            # FixMe: case where t_out_2_required_c == t_in_2_required_c
-            t_out_2_required_c_init = t_out_2_required_c
-            if t_1_in_c < t_out_2_required_c:
-                t_out_2_required_c = t_1_in_c - min(self._get_element_param(prosumer, 'delta_t_hot_default_c'), 5)
-            if t_out_2_required_c < t_in_2_required_c:
-                t_in_2_required_c += t_out_2_required_c - t_out_2_required_c_init
-
             assert t_1_in_c >= t_out_2_required_c, f"Heat Exchanger {self.name} t_1_in_c < t_out_2_required_c ({t_1_in_c} < {t_out_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
             assert t_out_2_required_c >= t_in_2_required_c, f"Heat Exchanger {self.name} t_out_2_required_c < t_in_2_required_c ({t_out_2_required_c} < {t_in_2_required_c}) for timestep {self.time} in prosumer {prosumer.name}"
 

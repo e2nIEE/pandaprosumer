@@ -19,6 +19,7 @@ call); this is the practical place to do it until then.
 
 import copy
 import hashlib
+import math
 
 import numpy as np
 import pandapipes
@@ -56,16 +57,34 @@ def pipe_heat_loss_w(net):
     return float((pipes[:, ALPHA] * np.pi * pipes[:, D] * pipes[:, LENGTH] * (pipes[:, TOUTINIT] - pipes[:, TEXT])).sum())
 
 
+def _array_bytes(values):
+    """Bytes standing for one column (or index) of a component table: raw numbers, floats rounded."""
+    if values.dtype.kind == "f":  # + 0.0 turns -0.0 into 0.0
+        return (np.round(values, FINGERPRINT_DECIMALS) + 0.0).tobytes()
+    if values.dtype.kind in "biumM":
+        return values.tobytes()
+    # names, fluids...: the digest only lives for the run, so the per-process string hash is enough
+    return hash(tuple(values.tolist())).to_bytes(8, "little", signed=True)
+
+
 def _input_fingerprint(net):
-    """Digest of every pipeflow input of the net (the declared input columns of each component table)."""
+    """
+    Digest of every pipeflow input of the net (the declared input columns of each component table).
+
+    Called before every pipeflow, so it hashes the columns' numpy buffers directly: hashing the tables with
+    `pd.util.hash_pandas_object` cost about a sixth of a whole game run.
+    """
     digest = hashlib.sha1()
     try:
         for component in net.component_list:
             table = net[component.table_name()]
-            columns = [name for name, _ in component.get_component_input() if name in table.columns]
-            inputs = table[columns].round(FINGERPRINT_DECIMALS)
             digest.update(component.table_name().encode())
-            digest.update(pd.util.hash_pandas_object(inputs, index=True).to_numpy().tobytes())
+            digest.update(_array_bytes(table.index.to_numpy()))
+            for name, _ in component.get_component_input():
+                if name in table.columns:
+                    values = table[name].to_numpy()
+                    digest.update(f"{name}:{values.dtype.str}".encode())
+                    digest.update(_array_bytes(values))
     except TypeError:  # an unhashable cell: never skip a solve
         return None
     return digest.digest()
@@ -81,7 +100,14 @@ class StepPipeflow:
     the step's last solve returns at once: its results are already in the result tables.
     """
 
-    def __init__(self):
+    def __init__(self, step_s=None):
+        """
+        :param step_s: length of a time step of the run (s). Given, a net whose own `dt` (its user pipeflow option)
+            is shorter is solved `step_s / dt` times per time step (sub-steps), so the water moves through its pipes
+            in finer steps; its results are the state at the end of the step and its pipe losses the mean over the
+            step. Left out, every solve advances the net by the `dt` it is called with, once per step.
+        """
+        self.step_s = step_s
         self.step = None
         self.step_start_pit = None
         self.solved_fingerprint = None
@@ -102,8 +128,31 @@ class StepPipeflow:
             return
         elif self.step_start_pit is not None:
             net["_pit"] = copy.deepcopy(self.step_start_pit)
-        pandapipes.pipeflow(net, **kwargs)
+        substeps, dt_s = self._substeps(net, kwargs) if transient else (1, None)
+        loss_w = 0.0
+        for substep in range(substeps):
+            if transient and dt_s is not None:
+                # pandapipes advances the net by dt from its current state on every transient call
+                kwargs = {**kwargs, "dt": dt_s, "simulation_time_step": step * substeps + substep + 1}
+            pandapipes.pipeflow(net, **kwargs)
+            if HEAT_BALANCE_TABLE in net:
+                loss_w += pipe_heat_loss_w(net)
         self.solves += 1
         self.solved_fingerprint = fingerprint
         if HEAT_BALANCE_TABLE in net:
-            net[HEAT_BALANCE_TABLE].loc[0, HEAT_LOSS_COLUMN] = pipe_heat_loss_w(net)
+            net[HEAT_BALANCE_TABLE].loc[0, HEAT_LOSS_COLUMN] = loss_w / substeps
+
+    def _substeps(self, net, kwargs):
+        """
+        (sub-steps per time step, their length in s) for the net, or (1, None) to keep the caller's `dt`.
+
+        The net's own `dt` (``set_user_pf_options(net, dt=...)``) sets the sub-step; the time step is cut into a
+        whole number of equal sub-steps no longer than it.
+        """
+        if not self.step_s:
+            return 1, None
+        own_dt = (net.get("user_pf_options") or {}).get("dt") or kwargs.get("dt")
+        if not own_dt or own_dt >= self.step_s:
+            return 1, float(self.step_s)
+        substeps = math.ceil(self.step_s / own_dt - 1e-9)
+        return substeps, self.step_s / substeps

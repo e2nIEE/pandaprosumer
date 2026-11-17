@@ -2,9 +2,33 @@ import pandas as pd
 import logging
 import numpy as np
 
+from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.controller.base import BasicProsumerController
 
 logging.basicConfig(level=logging.WARNING)
+
+#: Smallest temperature lift [K] the COP correlations are evaluated at. They are quadratic fits that run away
+#: for small (or negative) lifts: a 3 K lift gave a COP of 20.7 on ``water-water2``. Below this lift the
+#: heat pump still has to drive its own refrigerant cycle, so it gets the COP of this lift.
+MIN_LIFT_K = 15.0
+
+
+def booster_cop(t_sink_c, t_source_c, cop_coeff):
+    """
+    COP of a booster heat pump for a sink and a source temperature [°C]: ``a0 + a1·ΔT + a2·ΔT²``, with the lift
+    ``ΔT = t_sink − t_source`` held between ``MIN_LIFT_K`` and the lift where the fit is lowest (beyond it the
+    ``water-water`` fits rise again, a COP growing with the lift).
+
+    :param t_sink_c: Sink temperature in °C
+    :param t_source_c: Source temperature in °C
+    :param cop_coeff: The fit's coefficients ``[a0, a1, a2]``
+    :return: The COP
+    """
+    a0, a1, a2 = cop_coeff
+    lift_k = max(t_sink_c - t_source_c, MIN_LIFT_K)
+    if a2 > 0:
+        lift_k = min(lift_k, max(-a1 / (2 * a2), MIN_LIFT_K))
+    return a0 + a1 * lift_k + a2 * lift_k ** 2
 
 
 """
@@ -117,8 +141,8 @@ class BoosterHeatPumpController(BasicProsumerController):
         mode = self._mode
         q_max_kw = self._get_element_param(prosumer, "q_max_kw")
 
-        t_source_k = t_source_k - 273.0  # in celsius
-        t_amb_k = t_amb_k - 273.0  # in celsius
+        t_source_k = t_source_k - CELSIUS_TO_K  # in celsius
+        t_amb_k = t_amb_k - CELSIUS_TO_K  # in celsius
 
         if bhp_type == "air-water":
             t_min_source_k = -25.0
@@ -128,8 +152,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k = 30.0 - 0.5 * t_amb_k
                 t_sink_radiator_heating_k = 40.0 - 1.0 * t_amb_k
             else:
-                t_sink_floor_heating_k = t_sink_k - 273.0
-                t_sink_radiator_heating_k = t_sink_k - 273.0
+                t_sink_floor_heating_k = t_sink_k - CELSIUS_TO_K
+                t_sink_radiator_heating_k = t_sink_k - CELSIUS_TO_K
             if pd.isna(q_max_kw):
                 q_max_kw = 5.8 + 0.21 * t_source_k
         elif bhp_type == "water-water1":
@@ -140,8 +164,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k = 30.0 - 0.5 * t_amb_k
                 t_sink_radiator_heating_k = 40.0 - 1.0 * t_amb_k
             else:
-                t_sink_floor_heating_k = t_sink_k - 273.0
-                t_sink_radiator_heating_k = t_sink_k - 273.0
+                t_sink_floor_heating_k = t_sink_k - CELSIUS_TO_K
+                t_sink_radiator_heating_k = t_sink_k - CELSIUS_TO_K
             if pd.isna(q_max_kw):
                 q_max_kw = 5.8 + 0.21 * t_source_k
         elif bhp_type == "water-water2":
@@ -152,8 +176,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k = 30.0 - 0.5 * t_amb_k
                 t_sink_radiator_heating_k = 40.0 - 1.0 * t_amb_k
             else:
-                t_sink_floor_heating_k = t_sink_k - 273.0
-                t_sink_radiator_heating_k = t_sink_k - 273.0
+                t_sink_floor_heating_k = t_sink_k - CELSIUS_TO_K
+                t_sink_radiator_heating_k = t_sink_k - CELSIUS_TO_K
             if pd.isna(q_max_kw):
                 q_max_kw = 25.308 + 0.963 * t_source_k
         elif bhp_type == "water-water3":
@@ -164,8 +188,8 @@ class BoosterHeatPumpController(BasicProsumerController):
                 t_sink_floor_heating_k = 30.0 - 0.5 * t_amb_k
                 t_sink_radiator_heating_k = 40.0 - 1.0 * t_amb_k
             else:
-                t_sink_floor_heating_k = t_sink_k - 273.0
-                t_sink_radiator_heating_k = t_sink_k - 273.0
+                t_sink_floor_heating_k = t_sink_k - CELSIUS_TO_K
+                t_sink_radiator_heating_k = t_sink_k - CELSIUS_TO_K
             if pd.isna(q_max_kw):
                 q_max_kw = 29.005 + 1.035 * t_source_k
 
@@ -378,10 +402,8 @@ class BoosterHeatPumpController(BasicProsumerController):
             q_remain_kw = demand_kw - q_max_kw
         else:
             q_remain_kw = 0
-        cop_floor = cop_coeff[0] + cop_coeff[1] * (t_sink_floor_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
-        cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_radiator_heating_k - t_source_k) ** 2
+        cop_floor = booster_cop(t_sink_floor_heating_k, t_source_k, cop_coeff)
+        cop_radiator = booster_cop(t_sink_radiator_heating_k, t_source_k, cop_coeff)
 
         q_generated_floor = p_el_kw * cop_floor + q_kw
         q_generated_radiator = p_el_kw * cop_radiator + q_kw
@@ -425,10 +447,8 @@ class BoosterHeatPumpController(BasicProsumerController):
             q_remain_kw = demand_kw - q_max_kw
         else:
             q_remain_kw = 0
-        cop_floor = cop_coeff[0] + cop_coeff[1] * (t_sink_floor_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
-        cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_radiator_heating_k - t_source_k) ** 2
+        cop_floor = booster_cop(t_sink_floor_heating_k, t_source_k, cop_coeff)
+        cop_radiator = booster_cop(t_sink_radiator_heating_k, t_source_k, cop_coeff)
 
         q_generated_floor = p_el_kw * cop_floor
         q_generated_radiator = p_el_kw * cop_radiator
@@ -470,10 +490,8 @@ class BoosterHeatPumpController(BasicProsumerController):
         """
 
 
-        cop_floor = cop_coeff[0] + cop_coeff[1] * (t_sink_floor_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
-        cop_radiator = cop_coeff[0] + cop_coeff[1] * (t_sink_radiator_heating_k - t_source_k) + cop_coeff[2] * (
-                t_sink_floor_heating_k - t_source_k) ** 2
+        cop_floor = booster_cop(t_sink_floor_heating_k, t_source_k, cop_coeff)
+        cop_radiator = booster_cop(t_sink_radiator_heating_k, t_source_k, cop_coeff)
 
         if demand_kw > q_max_kw:
             q_remain_kw = demand_kw - q_max_kw
