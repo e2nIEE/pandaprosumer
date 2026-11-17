@@ -294,7 +294,7 @@ class TestStratifiedHeatStorage:
                                                             **_default_argument())
         shs = prosumer.controller.iloc[shs_idx].object
 
-        t_recv_c, mdot_recv = 65.0, 1.0          # producer (e.g. HP at TcstCondOut)
+        t_recv_c, mdot_recv = 65.0, 1.0          # producer (e.g. HP at its condenser setpoint)
         t_feed_c, t_return_c, mdot_demand = 58.0, 51.0, 0.5
 
         shs.input_mass_flow_with_temp[FluidMixMapping.TEMPERATURE_KEY] = t_recv_c

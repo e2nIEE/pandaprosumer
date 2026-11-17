@@ -1,13 +1,13 @@
 """
 Regression tests for a heat exchanger operated far below its nominal duty.
 
-Paris CPCU<->BET exchanger: 4 MW nominal (80/40 primary, 17/57 secondary, 87 m3/h)
+A district-heating exchanger: 4 MW nominal (80/40 primary, 17/57 secondary, 87 m3/h)
 asked for ~230 kW in winter (7.9 kg/s from 17 to 24 degC). The LMTD shape
 parameter ``a = delta_t_hot / (q_ratio * lmtd_nom)`` exceeds
 ``HeatExchangerControl.OUT_OF_RANGE_THRESHOLD`` and ``compute_temp`` used to
 give up: primary side zeroed (t_1_out = t_1_in, mdot_1 = 0) while the
 secondary result (mdot_2, t_2_out) was kept -> energy created at the HX/demand
-boundary (hd_dhn booked 35 MWh/week, hx_dhn 14 MWh/week in Dec 2025).
+boundary (the demand booked 35 MWh/week, the exchanger 14 MWh/week in a winter week).
 
 Physically an oversized exchanger at low duty simply pinches the primary
 outlet on the secondary inlet (the a -> inf limit of the LMTD solution).
@@ -21,7 +21,7 @@ from pandaprosumer.library.heat_exchanger_utils import compute_temp
 
 CP_W = 4186.0
 
-PARIS_CPCU_HX = {
+DHN_HX_4MW = {
     't_1_in_nom_c': 80,
     't_1_out_nom_c': 40,
     't_2_in_nom_c': 17,
@@ -40,7 +40,7 @@ def _period(prosumer):
 
 def _run_hx(t_2_out_c, mdot_2_kg_per_s=7.9, t_2_in_c=17., t_1_in_c=80.):
     prosumer = create_empty_prosumer_container()
-    idx = create_controlled_heat_exchanger(prosumer, order=0, period=_period(prosumer), **PARIS_CPCU_HX)
+    idx = create_controlled_heat_exchanger(prosumer, order=0, period=_period(prosumer), **DHN_HX_4MW)
     hx = prosumer.controller.iloc[idx].object
     hx.inputs = np.array([[t_1_in_c]])
     hx.t_m_to_deliver = lambda x: (t_2_out_c, t_2_in_c, [mdot_2_kg_per_s])
@@ -56,7 +56,7 @@ class TestOversizedHeatExchanger:
     def test_compute_temp_beyond_threshold_pinches_instead_of_zeroing(self):
         """a > OUT_OF_RANGE_THRESHOLD: primary outlet pinches on the secondary inlet, flow stays finite."""
         q_w = 7.9 * CP_W * (24 - 17)
-        q_nom_w = PARIS_CPCU_HX['mdot_2_nom_kg_per_s'] * CP_W * 40
+        q_nom_w = DHN_HX_4MW['mdot_2_nom_kg_per_s'] * CP_W * 40
         t_1_out, mdot_1 = compute_temp(q_w / q_nom_w, q_w, 80., 17., 24., 80 - 57, 40 - 17, CP_W,
                                        heat_consumer=False)
         a = (80 - 24) / ((q_w / q_nom_w) * ((23 - 23) if False else 23.))
@@ -66,7 +66,7 @@ class TestOversizedHeatExchanger:
         assert mdot_1 * CP_W * (80 - t_1_out) == pytest.approx(q_w, rel=1e-6)
 
     def test_low_duty_primary_side_carries_the_secondary_duty(self):
-        """Paris winter case: 7.9 kg/s 17 -> 24 degC on a 4 MW HX. Primary must book the same power."""
+        """Winter case: 7.9 kg/s 17 -> 24 degC on a 4 MW HX. Primary must book the same power."""
         r = _run_hx(t_2_out_c=24.)
         assert r['mdot_2'] == pytest.approx(7.9, rel=1e-3)
         assert r['t_2_out'] == pytest.approx(24.)

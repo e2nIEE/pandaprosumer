@@ -292,7 +292,7 @@ class TestForcedDischarge:
     def test_discharge_of_a_drained_tank_gives_what_it_holds_and_the_source_the_rest(self):
         """
         A schedule planned outside the simulation keeps asking for a discharge after the tank is drained
-        (SenergyNets game: a peak-price discharge longer than the tank's charge). The tank gives at most the
+        (a peak-price discharge longer than the tank's charge). The tank gives at most the
         scheduled mass of its real layers, never water under min_useful_temp_c, and the source covers the
         rest: sized on the top layer, the HP was asked for almost nothing and the plug flow pushed out several
         times the setpoint of lukewarm water, so the demand got its energy far under its feed temperature.

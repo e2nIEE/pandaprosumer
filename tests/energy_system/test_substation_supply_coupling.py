@@ -87,8 +87,8 @@ def _three_consumer_net():
 
 def test_the_controller_diagnostic_tells_the_coupling_kinds_apart():
     """
-    pandapower's diagnostic groups by isinstance: the coupling kinds must not overlap. Same creation order as
-    run.py (per substation the supply read then the plain write, the plant pump last).
+    pandapower's diagnostic groups by isinstance: the coupling kinds must not overlap. Created per substation
+    the supply read then the plain write, the plant pump last.
     """
     from pandapower.control import control_diagnostic
 

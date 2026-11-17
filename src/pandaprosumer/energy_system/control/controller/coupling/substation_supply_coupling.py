@@ -3,9 +3,9 @@ Coupling of a DHN substation to the network's supply: the temperature only.
 
 `NetworkCouplingControl` hands the substation the mass flow of the latest network solve together with the
 supply temperature. The heat exchanger takes a supplied flow as given: what it does not need bypasses the
-exchanger and returns hot, and the same total flow is written back into the heat consumer, so the initial flow
-of the JSON (`initialMassFlowkgpers`) reproduces itself step after step whatever the demand (10 kg/s and
-returns at 78-84 °C in the game, for 30-500 kW demands).
+exchanger and returns hot, and the same total flow is written back into the heat consumer, so the heat
+consumer's initial mass flow reproduces itself step after step whatever the demand (10 kg/s and returns at
+78-84 °C for 30-500 kW demands).
 
 Here the substation only learns at what temperature the network arrives. Its mass flow comes from its own
 demand chain (heat demand -> exchanger, `t_m_to_deliver`), exactly as for an exchanger fed by a constant

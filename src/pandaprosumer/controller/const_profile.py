@@ -48,6 +48,12 @@ class ConstProfileController(MappedController):
                          drop_same_existing_ctrl, overwrite, name, matching_params, **kwargs)
 
         self.has_elements = False
+        df = getattr(df_data, "df", None)
+        if df is not None:
+            missing = [column for column in self.input_columns if column not in df.columns]
+            if missing:
+                raise ValueError(f"ConstProfileController '{self.name}': column(s) {missing} not found in the data "
+                                 f"source (its columns: {list(df.columns)})")
         self.temp_fluid_map_idx = temp_fluid_map_idx
         self.mdot_fluid_map_idx = mdot_fluid_map_idx
 
@@ -58,7 +64,6 @@ class ConstProfileController(MappedController):
         :param prosumer: The prosumer object
         """
         super().control_step(prosumer)
-        # ToDo: error message if column not found in data_source
         results = self.df_data.get_time_step_value(time_step=self.time, profile_name=self.input_columns).reshape(1, -1)
         results = results.astype('float64')
 

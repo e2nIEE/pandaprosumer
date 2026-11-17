@@ -66,9 +66,8 @@ class BasicProsumerController(MappedController):
         :param prosumer: The prosumer object
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float])
         """
-        # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
-        # m = pd.Series(0, index=self.element_index)
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+        # This is the request. A producer that cannot deliver all of it solves its actual return itself
+        # (ReturnTemperatureSolver).
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:
             return np.array([])
@@ -82,6 +81,26 @@ class BasicProsumerController(MappedController):
             mdot_tab_kg_per_s = np.append(mdot_tab_kg_per_s, mdot_i)
 
         return treturn_tab_c
+
+    def _mixed_return_temperature_c(self, prosumer, result_mdot_tab_kg_per_s, default_c):
+        """
+        Return temperature the responders give back for the mass flows dispatched to them.
+
+        The responders' expected returns (:meth:`get_treturn_tab_c`) weighted by the flows the
+        producer actually sends them, assuming each one returns the same temperature whatever flow
+        it gets.
+
+        :param prosumer: The prosumer object
+        :param result_mdot_tab_kg_per_s: Mass flow dispatched to each responder (kg/s)
+        :param default_c: Mix returned when no flow is dispatched (°C)
+        :return: A Tuple (mixed return (float), the responders' returns (np.array[float]))
+        """
+        t_return_tab_c = self.get_treturn_tab_c(prosumer)
+        mdot_total_kg_per_s = np.sum(result_mdot_tab_kg_per_s)
+        if abs(mdot_total_kg_per_s) <= 1e-8:
+            return default_c, t_return_tab_c
+        t_mixed_c = np.sum(np.asarray(result_mdot_tab_kg_per_s) * t_return_tab_c) / mdot_total_kg_per_s
+        return t_mixed_c, t_return_tab_c
 
     def t_m_to_deliver(self, prosumer):
         """
@@ -98,9 +117,8 @@ class BasicProsumerController(MappedController):
         :param prosumer: The prosumer object.
         :return: A Tuple (Feed temperature (float), Return Temperature (float), Mass Flow to deliver (np.array[float]).
         """
-        # tfeed, treturn = pd.Series(0, index=self.element_index), pd.Series(0, index=self.element_index)
-        # m = pd.Series(0, index=self.element_index)
-        # ToDo: the actual return temperature could be different if the mass flow provided is less than the requested
+        # This is the request. A producer that cannot deliver all of it solves its actual return itself
+        # (ReturnTemperatureSolver).
 
         responders = self._get_mapped_responders(prosumer)
         if len(responders) == 0:

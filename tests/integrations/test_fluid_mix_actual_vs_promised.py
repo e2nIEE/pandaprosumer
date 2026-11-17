@@ -13,7 +13,7 @@ promised value, and asserts that both sides of the boundary book the same energy
 * electric boiler held at min_p_kw with no usable lift, or with allow_stop=False and no flow: it booked heat
   the water did not carry; it now raises its outlet temperature / runs at its previous lift.
 
-See also test_shs_hp_ecs_energy_balance.py (heat pump that cannot run).
+See also test_shs_hp_dhw_energy_balance.py (heat pump that cannot run).
 """
 
 import numpy as np

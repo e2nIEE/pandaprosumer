@@ -299,7 +299,7 @@ class StratifiedHeatStorageController(FluidMixHeatStorageController):
         # straight to the demand, the demand's return straight back to the source; only the net flow crosses
         # the layers. Booking each outlet as if the other stream did not exist (the discharge drawn from the
         # start-of-step layers, colder than the charge entering the same layer) handed the demand lukewarm
-        # water while the layers were heated by the full charge: a game tank charged with 440 kW gave 140 kW
+        # water while the layers were heated by the full charge: a tank charged with 440 kW gave 140 kW
         # at 51 degC to the network, its stored energy flat, ~300 kW lost every hour. Only a charge at least as
         # warm as the outlet layer reaches the outlet straight: a colder one sinks into the tank.
         mdot_short_kg_per_s = 0.0

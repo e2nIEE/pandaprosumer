@@ -62,7 +62,7 @@ class NetworkCouplingControl(BasicProsumerController):
 
         A prosumer controller may run again after this coupling wrote its outputs, within the same level: a heat
         exchanger first answers with a guessed secondary return, writes that heat, then reruns once its demand
-        answers with the real return. Without this check the network kept the first answer (game sandbox: 220 kW
+        answers with the real return. Without this check the network kept the first answer (a coupled network: 220 kW
         extracted from a 42 degC network the exchanger finally drew nothing from, cooling the water to -17 degC
         and losing the heat). Unconverged, the coupling writes the final outputs and the network is solved again.
         """
@@ -76,8 +76,9 @@ class NetworkCouplingControl(BasicProsumerController):
     def control_step(self, net):
         super().control_step(net)
         # EnergySystem Generic mappings inputs and outputs
-        # Replace NaNs with 0
-        clean_inputs = np.nan_to_num(self.inputs, nan=0.)  # FixMe: should avoid nan case
+        # The inputs are reset to NaN at each time step and the Generic mappings add to them: an input still NaN
+        # received no mapped value this step (e.g. its prosumer controller is out of service), so nothing to write
+        clean_inputs = np.nan_to_num(self.inputs, nan=0.)
         net[self.element_name].loc[self.element_index, self.input_columns] = clean_inputs
         self._written_inputs = np.array(clean_inputs, dtype=float, copy=True)
 

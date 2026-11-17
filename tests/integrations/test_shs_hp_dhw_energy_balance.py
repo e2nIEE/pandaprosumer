@@ -1,6 +1,6 @@
 """Energy balance of a heat pump -> stratified storage -> heat demand chain (a DHW buffer).
 
-Two defects found by replaying a district-loop DHW plant (HP condenser and a CPCU exchanger
+Two defects found by replaying a district-loop DHW plant (HP condenser and a district-heating exchanger
 charging a 70 m3 tank that serves a 58/51 degC demand), both visible as a demand served with
 MORE heat than it asked for (``q_uncovered_kw < 0``):
 

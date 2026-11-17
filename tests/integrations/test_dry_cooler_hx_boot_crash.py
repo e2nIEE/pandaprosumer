@@ -18,6 +18,7 @@ behavior with a positive steady-state assertion (energy balance, sensible
 temperatures, non-zero exchanged heat).
 """
 
+import pytest
 import numpy as np
 import pandas as pd
 
@@ -220,3 +221,28 @@ def test_hx_stalls_when_secondary_cold_side_too_warm_for_primary():
         f"Stalled HX should preserve secondary energy balance (t_2_out >= t_2_in); "
         f"got t_2_in_c={t_2_in_out}, t_2_out_c={t_2_out}"
     )
+
+
+def test_hx_pins_primary_outlet_at_cold_approach_when_secondary_inlet_too_warm():
+    """When the secondary inlet is warmer than ``t_1_in_c - min_delta_t_1_c`` but the primary can still be
+    cooled, calculate_heat_exchanger ignores ``min_delta_t_1_c`` and sets the primary outlet
+    ``HeatExchangerControl.MIN_DELTA_T_COLD_C`` above the secondary inlet, with a consistent energy balance.
+
+    Primary at 40 °C, secondary 36 -> 36.8 °C: ``t_1_in_c - min_delta_t_1_c = 35 °C`` is below the secondary inlet,
+    the hot approach (3.2 K) is above the 3 K cold approach, so the primary leaves at 39 °C.
+    """
+    from pandaprosumer.constants import HeatExchangerControl
+    prosumer, period = _build_prosumer()
+    hx_controller = prosumer.controller.loc[2].object  # cp_bet=0, cp_air=1, hx=2
+
+    t_1_in_c, t_2_in_c, t_2_out_c = 40.0, 36.0, 36.8
+    mdot_1, t_1_in_out, t_1_out, mdot_2, t_2_in_out, t_2_out = hx_controller.calculate_heat_exchanger(
+        prosumer, t_2_out_c=t_2_out_c, t_2_in_c=t_2_in_c, mdot_2_kg_per_s=10.0, t_1_in_c=t_1_in_c)
+
+    assert t_1_out == pytest.approx(t_2_in_c + HeatExchangerControl.MIN_DELTA_T_COLD_C)
+    assert t_1_in_out == pytest.approx(t_1_in_c)
+    assert (t_2_in_out, t_2_out) == pytest.approx((t_2_in_c, t_2_out_c))
+    assert mdot_1 > 0 and mdot_2 > 0
+    cp_1 = hx_controller.primary_fluid.get_heat_capacity(273.15 + (t_1_in_c + t_1_out) / 2)
+    cp_2 = hx_controller.secondary_fluid.get_heat_capacity(273.15 + (t_2_in_c + t_2_out_c) / 2)
+    assert mdot_1 * cp_1 * (t_1_in_c - t_1_out) == pytest.approx(mdot_2 * cp_2 * (t_2_out_c - t_2_in_c), rel=1e-6)
