@@ -20,7 +20,9 @@ from pandaprosumer.element import (
     PvProductionComponentData,
     SolarThermalElementData,
     StratifiedHeatStorageElementData,
+    UniformHeatStorageElementData,
 )
+from pandaprosumer.constants import CELSIUS_TO_K
 from pandaprosumer.location_period import Period
 from pandaprosumer.pandaprosumer_container import pandaprosumerContainer, get_default_prosumer_container_structure
 from pandaprosumer.prosumer_toolbox import add_new_element
@@ -391,6 +393,134 @@ def create_stratified_heat_storage(prosumer,
                         in_service]))
 
     _set_entries(prosumer, "stratified_heat_storage", index, **entries, **kwargs)
+    return int(index)
+
+
+def _is_unset(value):
+    return value is None or (np.isscalar(value) and np.isnan(value))
+
+
+def create_uniform_heat_storage(prosumer,
+                                mass_kg=None,
+                                e_capacity_kwh=None,
+                                min_useful_temp_c=65.,
+                                t_full_c=np.nan,
+                                u_w_per_m2k=0.,
+                                area_wall_m2=0.,
+                                t_ext_c=22.5,
+                                max_remaining_capacity_kwh=1,
+                                t_discharge_out_tol_c=1e-3,
+                                max_charge_mdot_kg_per_s=np.nan,
+                                t_charge_target_c=np.nan,
+                                name=None,
+                                index=None,
+                                in_service=True,
+                                **kwargs):
+    """
+    Creates a uniform (fully mixed) heat storage element in prosumer["uniform_heat_storage"]
+
+    The whole tank is at one temperature. Give its size either as a mass of water (``mass_kg``) or as an
+    energy capacity (``e_capacity_kwh``, which then needs ``t_full_c``), not both.
+
+    INPUT:
+        **prosumer** - The prosumer within which this uniform heat storage should be created.
+
+    OPTIONAL:
+        **mass_kg** (float, default None) - Mass of water in the tank [kg]. Must be positive. Mandatory if \
+        ``e_capacity_kwh`` is not given.
+
+        **e_capacity_kwh** (float, default None) - Heat the tank holds between ``min_useful_temp_c`` and \
+        ``t_full_c`` [kWh]. Must be positive; converted to a mass with the heat capacity of the prosumer's \
+        fluid at the mean of the two temperatures. Mandatory if ``mass_kg`` is not given.
+
+        **min_useful_temp_c** (float, default 65) - Minimum tank temperature to serve a demand: a colder \
+        tank (by more than 0.5 K) does not discharge. Also the charge temperature asked to the sources when \
+        no demand is mapped [°C]
+
+        **t_full_c** (float, default NaN) - Tank temperature at which the tank counts as full: \
+        ``e_capacity_kwh`` is the heat between ``min_useful_temp_c`` and ``t_full_c``. Must be above \
+        ``min_useful_temp_c``. Needed with ``e_capacity_kwh``; optional with ``mass_kg`` (``e_capacity_kwh`` \
+        is then computed, NaN without it). It does not limit the charge [°C]
+
+        **u_w_per_m2k** (float, default 0) - Heat transfer coefficient of the tank wall to the ambient \
+        air [W/(m²K)]. Must be non-negative; 0 means no heat loss.
+
+        **area_wall_m2** (float, default 0) - Area of the tank wall exchanging with the ambient air [m²]. \
+        Must be non-negative.
+
+        **t_ext_c** (float, default 22.5) - Ambient temperature for the heat losses; also the default \
+        initial tank temperature [°C]
+
+        **max_remaining_capacity_kwh** (float, default 1) - Heat the tank can still take below which it is \
+        full and asks its sources for no charge [kWh]
+
+        **t_discharge_out_tol_c** (float, default 0.001) - The maximum allowed difference between the demand \
+        feed temperature and the tank temperature to serve the demand with the tank water only [°C]
+
+        **max_charge_mdot_kg_per_s** (float, default NaN) - Optional cap on the charge mass flow the tank \
+        asks its sources for. When unset the tank asks for the flow that fills it within one time step \
+        [kg/s]
+
+        **t_charge_target_c** (float, default NaN) - Optional temperature the tank asks its sources to \
+        charge it at. When unset the charge request follows the demand's feed temperature [°C]
+
+        **name** (string, default None) - A custom name for this uniform heat storage
+
+        **index** (int, default None) - Force a specified ID if it is available. If None, the index one \
+            higher than the highest already existing index is selected.
+
+        **in_service** (boolean, default True) - True for in_service or False for out of service
+
+    OUTPUT:
+        **index** (int) - The unique ID of the created uniform heat storage
+
+    EXAMPLE:
+        create_uniform_heat_storage(prosumer, mass_kg=5000, min_useful_temp_c=60, t_full_c=85)
+    """
+    if _is_unset(mass_kg) == _is_unset(e_capacity_kwh):
+        raise ValueError("Uniform heat storage: give exactly one of mass_kg and e_capacity_kwh "
+                         f"(got mass_kg={mass_kg}, e_capacity_kwh={e_capacity_kwh})")
+    if not _is_unset(t_full_c) and not t_full_c > min_useful_temp_c:
+        raise ValueError(f"Uniform heat storage: t_full_c ({t_full_c} °C) must be above "
+                         f"min_useful_temp_c ({min_useful_temp_c} °C)")
+    if not (u_w_per_m2k >= 0 and area_wall_m2 >= 0):
+        raise ValueError(f"Uniform heat storage: u_w_per_m2k ({u_w_per_m2k}) and area_wall_m2 ({area_wall_m2}) "
+                         f"must be non-negative")
+
+    t_full_c = np.nan if _is_unset(t_full_c) else float(t_full_c)
+    if not _is_unset(e_capacity_kwh):
+        if not e_capacity_kwh > 0:
+            raise ValueError(f"Uniform heat storage: e_capacity_kwh ({e_capacity_kwh} kWh) must be positive")
+        if np.isnan(t_full_c):
+            raise ValueError("Uniform heat storage: e_capacity_kwh needs t_full_c, the temperature of the full tank")
+    elif not mass_kg > 0:
+        raise ValueError(f"Uniform heat storage: mass_kg ({mass_kg} kg) must be positive")
+
+    if not np.isnan(t_full_c):
+        if prosumer.get("fluid") is None:
+            raise ValueError("Uniform heat storage: the prosumer has no fluid to convert between mass_kg and "
+                             "e_capacity_kwh")
+        cp_j_per_kgk = float(prosumer.fluid.get_heat_capacity(CELSIUS_TO_K + (t_full_c + min_useful_temp_c) / 2))
+        delta_t_c = t_full_c - min_useful_temp_c
+        if _is_unset(mass_kg):
+            mass_kg = e_capacity_kwh * 3.6e6 / (cp_j_per_kgk * delta_t_c)
+        else:
+            e_capacity_kwh = mass_kg * cp_j_per_kgk * delta_t_c / 3.6e6
+    else:
+        e_capacity_kwh = np.nan
+
+    add_new_element(prosumer, UniformHeatStorageElementData)
+
+    index = _get_index_with_check(prosumer, "uniform_heat_storage", index)
+
+    entries = dict(zip(['name', 'mass_kg', 'e_capacity_kwh', 'min_useful_temp_c', 't_full_c', 'u_w_per_m2k',
+                        'area_wall_m2', 't_ext_c', 'max_remaining_capacity_kwh', 't_discharge_out_tol_c',
+                        'max_charge_mdot_kg_per_s', 't_charge_target_c', 'in_service'],
+                       [name, float(mass_kg), float(e_capacity_kwh), min_useful_temp_c, t_full_c, u_w_per_m2k,
+                        area_wall_m2, t_ext_c, max_remaining_capacity_kwh, t_discharge_out_tol_c,
+                        max_charge_mdot_kg_per_s, t_charge_target_c, in_service]))
+
+    _set_entries(prosumer, "uniform_heat_storage", index, **entries, **kwargs)
     return int(index)
 
 
