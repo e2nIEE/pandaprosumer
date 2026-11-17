@@ -214,8 +214,8 @@ class TestHeatExchanger:
 
         A fixed-ΔT virtual demand may request t_2_out above the primary feed; the HX
         must clamp t_2_out to t_1_in and derate q rather than report an above-source
-        outlet. Regression for the Paris-demo CPCU→BET overshoot (the DHN HX reported a
-        BET-side feed driving junction 10 to ~92 °C, above the 80 °C CPCU primary).
+        outlet. Regression for a DHN HX overshoot (the HX reported a secondary-side
+        feed driving a downstream junction to ~92 °C, above the 80 °C primary).
         """
         prosumer = create_empty_prosumer_container()
         hx_params = {

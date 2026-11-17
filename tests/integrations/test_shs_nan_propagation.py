@@ -3,10 +3,10 @@ NaN-propagation safety net for the StratifiedHeatStorage controller.
 
 When an SHS sits between a heat-pump charge path and a heat-demand discharge
 path, both flows can drop to zero in normal operation: the HP is OFF (e.g.
-optimiser sends ``ON_HP=0``) and demand is satisfied from storage alone, or
+an upstream optimiser switches it off) and demand is satisfied from storage alone, or
 the demand has gone to zero and the HP can't push warm water until the
-upper layer cools enough. In the Paris demo's ECS chain this is the regime
-where the SHS sits idle while the rest of the system runs.
+upper layer cools enough. In a DHW chain this is the regime where the SHS
+sits idle while the rest of the system runs.
 
 In this regime, ``_t_received_in_c`` is NaN because no upstream FluidMix
 initiator wrote a temperature. The TVD solver's convective terms then
@@ -18,8 +18,8 @@ the assertion ``(self._layer_temps_c > 0).all()`` fires with
 "The SHS model has diverged - Negative temperature in the storage
 layers=[nan nan ... nan]".
 
-In the Paris demo's June scenario this surfaces around iter 9, after 8
-iterations of all-zero-flow SHS I/O finally bleed enough NaN into the
+In practice this surfaces after several iterations of all-zero-flow SHS
+I/O finally bleed enough NaN into the
 ``_layer_temps_c`` array via heat-loss + diffusion compounded over the
 zero-mdot convection. The result CSV shows ``mdot_charge`` /
 ``mdot_discharge`` / ``q_*`` all zero throughout, but layer temps go NaN.
@@ -49,7 +49,7 @@ from pandaprosumer.run_time_series import run_timeseries
 
 
 RESOL_S = 300
-N_STEPS = 30   # > 8 to exceed the Paris demo's observed divergence point
+N_STEPS = 30   # long enough to exceed the observed divergence point
 
 SHS_PARAMS = dict(
     tank_height_m=10.0,

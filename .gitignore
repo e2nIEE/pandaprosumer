@@ -19,3 +19,6 @@ doc/.build/*
 doc/_build/*
 doc/build/*
 tmp/
+*.egg-info/
+test.ipynb
+test.py
