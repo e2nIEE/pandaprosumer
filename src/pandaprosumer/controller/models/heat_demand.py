@@ -274,11 +274,11 @@ class HeatDemandController(BasicProsumerController):
             self.mdot_previous_in_kg_per_s = np.nan
             return
 
-        assert not np.isnan(self._t_in_c), f"Heat Demand {self.name} t_in_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_feed_demand_c), f"Heat Demand {self.name} t_feed_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(t_return_demand_c), f"Heat Demand {self.name} t_return_demand_c is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(q_demand_kw), f"Heat Demand {self.name} q_demand_kw is NaN for timestep {self.time} in prosumer {prosumer.name}"
-        assert not np.isnan(mdot_demand_kg_per_s), f"Heat Demand {self.name} mdot_demand_kg_per_s is NaN for timestep {self.time} in prosumer {prosumer.name}"
+        self._check(not np.isnan(self._t_in_c), "t_in_c is NaN", prosumer)
+        self._check(not np.isnan(t_feed_demand_c), "t_feed_demand_c is NaN", prosumer)
+        self._check(not np.isnan(t_return_demand_c), "t_return_demand_c is NaN", prosumer)
+        self._check(not np.isnan(q_demand_kw), "q_demand_kw is NaN", prosumer)
+        self._check(not np.isnan(mdot_demand_kg_per_s), "mdot_demand_kg_per_s is NaN", prosumer)
 
         if self._t_in_c < t_return_demand_c:
             # A feed colder than the return cannot heat anything: the water passes through and leaves at the

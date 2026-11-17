@@ -114,8 +114,7 @@ class HeatStorageController(BasicProsumerController):
 
         self._soc = fill_level_kwh / _q_capacity_kwh
         demand_kw = demand_kwh / (self.resol / 3600)
-        assert 0 <= self._soc <= 1, (f"SOC = {self._soc} invalid for controller {self.name} in prosumer {prosumer.name}"
-                                     f"at timestep {self.time}")
+        self._check(0 <= self._soc <= 1, f"SOC = {self._soc} is outside [0, 1]", prosumer)
         # The charge is recorded too: with only the discharge, a balance cannot tell the heat a producer put
         # into the tank from the heat it sent straight to a consumer.
         result = np.array([pd.Series(self._soc), pd.Series(demand_kw), pd.Series(q_received_kw)])
