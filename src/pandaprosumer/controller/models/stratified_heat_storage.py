@@ -358,6 +358,18 @@ class StratifiedHeatStorageController(BasicProsumerController):
         else:
             t_required_in_c = t_demand_out_c
 
+        # Optional explicit charging target. Without it the charge request
+        # follows the downstream demand's feed temperature: when that demand
+        # asks for the minimum usable feed (e.g. TminECS), the tank is charged
+        # AT the usability threshold and stores zero margin — it drains on the
+        # first source-off hour and the demand goes uncovered while the
+        # upstream producer idles. Setting t_charge_target_c to the producer's
+        # design outlet (e.g. an optimiser's constant condenser setpoint,
+        # TcstCondOut) makes the tank charge toward its design top temperature.
+        t_charge_target_c = self._get_element_param(prosumer, 't_charge_target_c')
+        if t_charge_target_c is not None and not np.isnan(t_charge_target_c):
+            t_required_in_c = max(t_required_in_c, float(t_charge_target_c))
+
         # TODO: Is the return temp the bottom layer temp or the responders' t_return ?
         t_charge_out_c = self._t_charge_out
 
@@ -383,11 +395,26 @@ class StratifiedHeatStorageController(BasicProsumerController):
         if max_charge_mdot is not None and not np.isnan(max_charge_mdot):
             mdot_charge_kg_per_s = min(mdot_charge_kg_per_s, float(max_charge_mdot))
 
-        mdot_required_kg_per_s = mdot_demand_kg_per_s + mdot_charge_kg_per_s
+        # Iso-energy bypass flow to REQUEST from the producer — must match the
+        # split applied in _calculate_heat_storage. The producer will deliver at
+        # t_required_in_c; the bypass serving the demand carries the demand
+        # energy with mdot_demand·(t_demand_out−t_demand_in)/(t_required_in−t_demand_in).
+        # Requesting the full mdot_demand instead (the old behaviour) over-sizes
+        # the producer when t_required_in > t_demand_out: the producer's q_cond
+        # is then computed against a promised return that the storage never
+        # actually delivers, so HP.q_cond and SHS.q_received disagree by the
+        # bypass surplus (~95 kW per near-full-tank step in the Paris ECS loop).
+        delta_t_demand_c = t_demand_out_c - t_demand_in_c
+        if t_required_in_c - t_demand_in_c > 1e-9 and t_required_in_c > t_demand_out_c:
+            mdot_bypass_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_required_in_c - t_demand_in_c)
+        else:
+            mdot_bypass_kg_per_s = mdot_demand_kg_per_s
+
+        mdot_required_kg_per_s = mdot_bypass_kg_per_s + mdot_charge_kg_per_s
         if mdot_required_kg_per_s == 0:
             t_required_out_c = t_required_in_c
         else:
-            t_required_out_c = (mdot_demand_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
+            t_required_out_c = (mdot_bypass_kg_per_s * t_demand_in_c + mdot_charge_kg_per_s * t_charge_out_c) / mdot_required_kg_per_s
 
         if not np.isnan(self.t_previous_out_charge_c):
             mdot_charge_kg_per_s = mdot_demand_kg_per_s * (t_demand_in_c - t_required_out_c) / (t_required_out_c - t_charge_out_c)
@@ -437,16 +464,61 @@ class StratifiedHeatStorageController(BasicProsumerController):
     def _calculate_heat_storage(self, prosumer, mdot_demand_kg_per_s, t_received_in_c, t_demand_out_c, t_demand_in_c,
                                 t_discharge_out_c, mdot_received_kg_per_s, t_charge_out_c):
 
+        # NaN-to-zero guard at the contract boundary. ``_t_received_in_c`` and
+        # ``_mdot_received_kg_per_s`` are NaN whenever the upstream FluidMix
+        # initiator is off (e.g. HP_ON=0 from the optimiser). A NaN here
+        # signals "no flow contract", not "unknown value": physically the
+        # side carries no enthalpy and the temperature is irrelevant. Treat
+        # as zero so the bypass branch and the TVD solver downstream see
+        # clean values. The ``0 * NaN == NaN`` propagation in IEEE 754 would
+        # otherwise corrupt every layer of ``_layer_temps_c`` within a single
+        # sub-step. See ``tests/integrations/test_shs_nan_propagation.py``.
+        if np.isnan(mdot_received_kg_per_s):
+            mdot_received_kg_per_s = 0.0
+        if np.isnan(t_received_in_c):
+            assert mdot_received_kg_per_s == 0, (
+                f"SHS {self.name}: t_received_in_c is NaN but "
+                f"mdot_received_kg_per_s is non-zero ({mdot_received_kg_per_s}) "
+                f"-- upstream initiator contract violation at timestep {self.time}."
+            )
+            t_received_in_c = float(self._layer_temps_c[-1])
+        if np.isnan(t_demand_in_c):
+            assert mdot_demand_kg_per_s == 0, (
+                f"SHS {self.name}: t_demand_in_c is NaN but "
+                f"mdot_demand_kg_per_s is non-zero ({mdot_demand_kg_per_s}) "
+                f"-- downstream demand contract violation at timestep {self.time}."
+            )
+            t_demand_in_c = float(self._layer_temps_c[0])
+
         if not self.bypass:
             mdot_charge_kg_per_s = mdot_received_kg_per_s
             mdot_discharge_kg_per_s = mdot_demand_kg_per_s
             mdot_bypass_kg_per_s = 0
             t_bypass_in_c = t_received_in_c
         else:
-            # mass flow to provide at self._t_charge_c to provide the same energy to the demand
-            if t_received_in_c - t_demand_out_c > 0:
-                delta_t_demand_c = t_demand_out_c - t_demand_in_c
-                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_out_c)
+            # Bypass mass flow that carries the demand energy when the received
+            # stream is delivered straight to the demand at t_received_in_c.
+            #
+            # ISO-ENERGY: the bypass enters the demand at t_received_in_c and
+            # returns at t_demand_in_c, so the energy it carries per unit mass is
+            # cp·(t_received_in_c − t_demand_in_c). To deliver exactly the demand
+            # energy mdot_demand·cp·(t_demand_out_c − t_demand_in_c), the bypass
+            # flow must be
+            #     mdot = mdot_demand · (t_demand_out − t_demand_in)
+            #                        / (t_received_in − t_demand_in).
+            # The denominator MUST be the actual bypass ΔT (t_received_in −
+            # t_demand_in), NOT (t_received_in − t_demand_out): the latter sizes
+            # the flow as if the bypass were delivered at t_demand_out, so when
+            # the received water is hotter (e.g. HP at TcstCondOut=65 serving a
+            # 58/51 °C demand) the bypass carries ~2× the demand energy and the
+            # HeatDemand books q_received ≈ 2·q_demand — i.e. negative
+            # q_uncovered / over-serve (~−30 kW avg in the Paris ECS loop, with
+            # ~20 % wasted HP electricity). Equivalent to a mixing-valve model
+            # (hot bypass blended with return to hit t_demand_out at mdot_demand)
+            # — both give the same mdot.
+            delta_t_demand_c = t_demand_out_c - t_demand_in_c
+            if t_received_in_c - t_demand_in_c > 1e-9:
+                mdot_toprovide_kg_per_s = mdot_demand_kg_per_s * delta_t_demand_c / (t_received_in_c - t_demand_in_c)
             else:
                 mdot_toprovide_kg_per_s = mdot_demand_kg_per_s
             if mdot_toprovide_kg_per_s > mdot_received_kg_per_s:
@@ -462,12 +534,37 @@ class StratifiedHeatStorageController(BasicProsumerController):
                             t_demand_out_c - t_discharge_out_c)
                 else:
                     mdot_discharge_kg_per_s = mdot_demand_kg_per_s - mdot_bypass_kg_per_s
-                if mdot_discharge_kg_per_s < 0:
-                    # else, calculate the discharge mass flow to get the same energy
-                    # (considering that the return temperature would be the same)
-                    e_demand = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
-                    e_bypass = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c)
-                    mdot_discharge_kg_per_s = (e_demand - e_bypass) / (t_discharge_out_c - t_demand_in_c)
+                if mdot_discharge_kg_per_s <= 0 and mdot_demand_kg_per_s > 0:
+                    # The mixing formula above is degenerate when there is no
+                    # incoming (bypass) flow at all — e.g. the upstream producer
+                    # is OFF and the storage alone serves the demand: it yields
+                    # mdot_discharge = 0 × (...) = 0 and the tank never
+                    # discharges, even with the top layers hot and usable
+                    # (observed: 83 % of a day's DHW demand unmet while
+                    # ~270 kWh sat in the tank above the demanded feed temp).
+                    # Fall through to the energy-based calculation: discharge at
+                    # the top-layer temperature with the mass flow that carries
+                    # the demanded energy (considering that the return
+                    # temperature would be the same).
+                    #
+                    # Gate on min_useful_temp_c: once the top layer has fallen
+                    # below the minimum usable temperature the tank is SPENT —
+                    # the demand goes (honestly) uncovered. Without this gate
+                    # the divisor (t_discharge_out − t_demand_in) → 0 as the
+                    # tank drains toward the return temperature and the mass
+                    # flow explodes, blowing up the TVD layer solver ("SHS
+                    # model has diverged" with a negative layer).
+                    t_min_useful_c = self._get_element_param(prosumer, 'min_useful_temp_c')
+                    if t_min_useful_c is None or np.isnan(t_min_useful_c):
+                        t_min_useful_c = t_demand_in_c + 1.0  # ≥1 K usable ΔT floor
+                    if t_discharge_out_c >= t_min_useful_c and t_discharge_out_c - t_demand_in_c > 0.5:
+                        e_demand = mdot_demand_kg_per_s * (t_demand_out_c - t_demand_in_c)
+                        e_bypass = mdot_bypass_kg_per_s * (t_received_in_c - t_demand_out_c)
+                        mdot_discharge_kg_per_s = max(0.0, (e_demand - e_bypass) / (t_discharge_out_c - t_demand_in_c))
+                    else:
+                        # Tank spent (top below the usable threshold) — no
+                        # discharge; the demand reports q_uncovered instead.
+                        mdot_discharge_kg_per_s = 0.0
             else:
                 # If this energy can be provided, charging with the extra mass flow
                 mdot_bypass_kg_per_s = mdot_toprovide_kg_per_s
@@ -506,6 +603,17 @@ class StratifiedHeatStorageController(BasicProsumerController):
                                             mdot_charge_kg_per_s,
                                             mdot_discharge_kg_per_s,
                                             rho_kg_per_m3)
+
+        # Secondary NaN guard: ``mdot_charge_kg_per_s`` / ``mdot_discharge_kg_per_s``
+        # are derived above from the (now NaN-cleaned) received/demand values, so
+        # they should already be finite. Defend against a future refactor of the
+        # bypass arithmetic introducing a fresh NaN path -- a NaN mdot reaching
+        # the @njit TVD solver would corrupt every layer silently.
+        if np.isnan(mdot_charge_kg_per_s):
+            mdot_charge_kg_per_s = 0.0
+        if np.isnan(mdot_discharge_kg_per_s):
+            mdot_discharge_kg_per_s = 0.0
+
         self._layer_temps_c = tvd_resolution_in_time(layer_temps_c=np.array(self._layer_temps_c),
                                                      mdot_charge_kg_per_s=mdot_charge_kg_per_s,
                                                      t_charge_c=t_received_in_c,
@@ -548,7 +656,12 @@ class StratifiedHeatStorageController(BasicProsumerController):
             t_delivered_out_c = t_discharge_out_c
 
         if abs(mdot_charge_kg_per_s + mdot_bypass_kg_per_s) < 1e-3:
-            t_received_out_c = self._t_received_in_c
+            # Idle storage (no charge / no bypass): return ``t_received_in_c``
+            # as a pass-through so downstream q_received_kw resolves to zero.
+            # Note we use the NaN-cleaned ``t_received_in_c`` from above, not
+            # the raw ``self._t_received_in_c`` property which still reports
+            # NaN whenever upstream is off and would re-poison the result tuple.
+            t_received_out_c = t_received_in_c
         else:
             t_received_out_c = (mdot_charge_kg_per_s * t_charge_out_c + mdot_bypass_kg_per_s * t_demand_in_c) / (mdot_charge_kg_per_s + mdot_bypass_kg_per_s)
 

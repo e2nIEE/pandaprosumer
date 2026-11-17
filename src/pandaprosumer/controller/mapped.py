@@ -255,6 +255,29 @@ class MappedController(Controller):
         # return [item for item in container.mapping[container.mapping["initiator"] == self.index]
         # .sort_values("order")[["mapping", "responder"]].itertuples()]
 
+    @staticmethod
+    def _resolve_mapped_controller(mapping_obj, controller_index, role):
+        """
+        Resolve a controller object from a mapping endpoint, raising a clear
+        error if the referenced controller does not exist in the target network.
+
+        :param mapping_obj: The mapping object holding the responder network
+        :param controller_index: The index of the controller to resolve
+        :param role: 'initiator' or 'responder', used only for the error message
+        :return: The resolved controller object
+        """
+        responder_net = mapping_obj.responder_net
+        try:
+            return responder_net.controller.loc[controller_index]["object"]
+        except KeyError:
+            mapping_name = getattr(mapping_obj, "name", type(mapping_obj).__name__)
+            existing = list(responder_net.controller.index) if hasattr(responder_net, "controller") else []
+            raise KeyError(
+                f"{mapping_name} references a {role} controller #{controller_index} that does "
+                f"not exist in its target network (existing controller indices: {existing}). "
+                f"The mapping was likely created with a wrong controller index."
+            )
+
     def _get_mapped_responders(self, container, remove_duplicate=True):
         """
         Returns a list of all the controllers for which this controller is the initiator.
@@ -262,6 +285,8 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped responders
         """
+        if not hasattr(container, "mapping"):
+            return []
         # Boolean mask for responders matching self.index
         mask_initiator = container.mapping["initiator"] == self.index
 
@@ -277,7 +302,7 @@ class MappedController(Controller):
 
         # Build the list of initiators
         list_responders = [
-            obj.responder_net.controller.loc[responder]["object"]
+            self._resolve_mapped_controller(obj, responder, "responder")
             for obj, responder in filtered_mapping.itertuples(index=False)
         ]
 
@@ -305,6 +330,8 @@ class MappedController(Controller):
         :param container: The container object
         :return: List of mapped initiators
         """
+        if not hasattr(container, "mapping"):
+            return []
         # Boolean mask for responders matching self.index
         mask_responder = container.mapping["responder"] == self.index
 
@@ -320,7 +347,7 @@ class MappedController(Controller):
 
         # Build the list of initiators
         list_initiators = [
-            obj.responder_net.controller.loc[initiator]["object"]
+            self._resolve_mapped_controller(obj, initiator, "initiator")
             for obj, initiator in filtered_mapping.itertuples(index=False)
         ]
 

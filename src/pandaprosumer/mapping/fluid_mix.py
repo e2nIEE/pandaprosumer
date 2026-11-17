@@ -61,7 +61,18 @@ class FluidMixMapping(BaseMapping):
         if self._check_order():
             self.check_controllers_orders(initiator_controller, responder_controller)
 
-        initiator_mapped_results = initiator_controller.result_mass_flow_with_temp[self.order]
+        results = initiator_controller.result_mass_flow_with_temp
+        if results is None or self.order >= len(results):
+            n_results = 0 if results is None else len(results)
+            raise ValueError(
+                f"FluidMix mapping error: initiator controller '{initiator_controller.name}' "
+                f"did not produce a fluid output for mapping order {self.order} "
+                f"(it produced {n_results} fluid output(s)). This typically happens when the "
+                f"initiator is not a fluid producer, was not run before this mapping is applied, "
+                f"or the mapping 'order' is out of range. Mapping orders for a given initiator "
+                f"must be consecutive integers starting at 0."
+            )
+        initiator_mapped_results = results[self.order]
         initiator_temperature = initiator_mapped_results[self.TEMPERATURE_KEY]
         initiator_mass_flow = initiator_mapped_results[self.MASS_FLOW_KEY]
 
